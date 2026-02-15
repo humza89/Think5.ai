@@ -5,7 +5,7 @@ import { Marquee } from "@/components/ui/marquee";
 
 const logos = [
   { name: "OpenAI", src: "/Logos/openai-logo-0.png" },
-  { name: "Anthropic", src: "/Logos/anthropic-logo-11760037905ospzboujoo (1).webp" },
+  { name: "Anthropic", src: "/Logos/anthropic-logo.webp" },
   { name: "Google DeepMind", src: "/Logos/google-deepmind-logo.png" },
   { name: "Meta", src: "/Logos/png-clipart-meta-horizontal-logo-social-media-icons.png" },
   { name: "Microsoft", src: "/Logos/png-clipart-microsoft-logo-company-microsoft-company-text-thumbnail.png" },
