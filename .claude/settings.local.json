@@ -1,0 +1,41 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx create-next-app:*)",
+      "Bash(npm init:*)",
+      "Bash(npm install:*)",
+      "Bash(npx tailwindcss:*)",
+      "Bash(npx prisma init:*)",
+      "Bash(npx prisma:*)",
+      "Bash(npm run dev:*)",
+      "Bash(npm uninstall:*)",
+      "Bash(curl:*)",
+      "Bash(docker run:*)",
+      "Bash(lsof:*)",
+      "Bash(kill:*)",
+      "Bash(awk:*)",
+      "Bash(xargs kill:*)",
+      "Bash(node test-rockapis.js:*)",
+      "Bash(node test-fresh-linkedin.js:*)",
+      "Bash(brew install:*)",
+      "Bash(brew services start:*)",
+      "Bash(/opt/homebrew/opt/postgresql@15/bin/createdb:*)",
+      "Bash(psql:*)",
+      "Bash(/opt/homebrew/bin/psql:*)",
+      "Bash(/opt/homebrew/opt/postgresql@15/bin/psql:*)",
+      "Bash(cat:*)",
+      "Bash(chmod:*)",
+      "Bash(pip3 install:*)",
+      "Bash(pkill -f \"npm run dev\")",
+      "Bash(pkill:*)",
+      "Bash(npx shadcn@latest add:*)",
+      "Bash(node test-company-api.js:*)",
+      "Bash(brew services:*)",
+      "Bash(mkdir:*)",
+      "Bash(git init:*)",
+      "Bash(git add:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

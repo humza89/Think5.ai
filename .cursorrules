@@ -1,0 +1,1337 @@
+# ============================================================================
+# THINK5.AI - ENTERPRISE CURSOR RULES
+# Data Labeling Platform for Defense & Government AI
+# Version: 2.0.0 (Supabase Edition)
+# ============================================================================
+
+# ============================================================================
+# SECTION 1: PROJECT OVERVIEW
+# ============================================================================
+
+## What is Think5.ai?
+
+Think5.ai is an enterprise-grade data labeling platform for defense and government AI applications. We connect US-based, security-clearance-eligible experts with AI companies needing high-quality training data.
+
+## Core Value Proposition
+
+- **US-Based Only**: Every labeler is American, background-checked, clearance-eligible
+- **Defense-Ready**: ITAR compliant, security-focused, government-friendly
+- **Expert Quality**: Vetted professionals, not crowdsourced labor
+- **AI-Powered Vetting**: Automated interviews (like Micro1's Zara) for scale
+
+## Target Customers
+
+1. Defense tech startups (Shield AI, Anduril, Rebellion Defense)
+2. Government contractors (Booz Allen, Leidos, SAIC)
+3. Federal agencies (via GSA/SAM.gov)
+4. AI labs needing US-based labeling
+
+## Tech Stack
+
+| Layer | Technology |
+|-------|------------|
+| Frontend | React 18+, TypeScript, Vite, TailwindCSS |
+| Backend | Python 3.11+, FastAPI |
+| Database | **Supabase (PostgreSQL)** |
+| Auth | **Supabase Auth** |
+| Storage | **Supabase Storage** |
+| Real-time | **Supabase Realtime** |
+| Cache | Redis |
+| Queue | Celery with Redis broker |
+| AI/ML | OpenAI (Whisper), Anthropic (Claude) |
+| Testing | Pytest (backend), Vitest + RTL (frontend) |
+| Infrastructure | Supabase Cloud, Vercel/Railway |
+| CI/CD | GitHub Actions |
+
+## Key Principles
+
+1. **Security First**: This is defense tech - treat every feature as security-critical
+2. **Quality Over Speed**: Our edge is quality - never compromise it
+3. **US-Centric**: All labelers must be US-based, all data US-hosted
+4. **Scalable Foundation**: Build for 10x growth from day one
+5. **Type Safety**: Full type hints (Python) / strict TypeScript
+6. **Testing**: 80%+ coverage, all critical paths tested
+7. **Supabase-First**: Leverage Supabase features (Auth, RLS, Realtime) whenever possible
+
+# ============================================================================
+# SECTION 2: FILE ARCHITECTURE
+# ============================================================================
+
+```
+think5/
+├── .cursor/
+│   └── rules/
+├── .github/
+│   └── workflows/
+│       ├── backend-ci.yml
+│       ├── frontend-ci.yml
+│       └── deploy.yml
+├── backend/
+│   ├── app/
+│   │   ├── __init__.py
+│   │   ├── main.py
+│   │   ├── config/
+│   │   │   ├── __init__.py
+│   │   │   ├── settings.py
+│   │   │   ├── constants.py
+│   │   │   └── supabase.py           # Supabase client config
+│   │   ├── api/
+│   │   │   ├── __init__.py
+│   │   │   ├── deps.py               # Supabase dependencies
+│   │   │   └── v1/
+│   │   │       ├── __init__.py
+│   │   │       ├── router.py
+│   │   │       └── endpoints/
+│   │   │           ├── __init__.py
+│   │   │           ├── auth.py       # Uses Supabase Auth
+│   │   │           ├── users.py
+│   │   │           ├── labelers.py
+│   │   │           ├── clients.py
+│   │   │           ├── projects.py
+│   │   │           ├── tasks.py
+│   │   │           ├── interviews.py
+│   │   │           ├── storage.py    # Uses Supabase Storage
+│   │   │           └── admin.py
+│   │   ├── core/
+│   │   │   ├── __init__.py
+│   │   │   ├── security.py           # Supabase JWT verification
+│   │   │   ├── exceptions.py
+│   │   │   └── middleware.py
+│   │   ├── db/
+│   │   │   ├── __init__.py
+│   │   │   └── supabase.py           # Supabase client
+│   │   ├── models/                   # Pydantic models
+│   │   │   ├── __init__.py
+│   │   │   ├── user.py
+│   │   │   ├── labeler.py
+│   │   │   ├── client.py
+│   │   │   ├── project.py
+│   │   │   ├── task.py
+│   │   │   ├── interview.py
+│   │   │   └── audit.py
+│   │   ├── schemas/
+│   │   │   ├── __init__.py
+│   │   │   ├── user.py
+│   │   │   ├── labeler.py
+│   │   │   ├── client.py
+│   │   │   ├── project.py
+│   │   │   ├── task.py
+│   │   │   ├── interview.py
+│   │   │   └── common.py
+│   │   ├── services/
+│   │   │   ├── __init__.py
+│   │   │   ├── user_service.py
+│   │   │   ├── labeler_service.py
+│   │   │   ├── client_service.py
+│   │   │   ├── project_service.py
+│   │   │   ├── task_service.py
+│   │   │   ├── interview_service.py
+│   │   │   ├── ai_service.py
+│   │   │   ├── email_service.py
+│   │   │   └── storage_service.py    # Supabase Storage wrapper
+│   │   ├── repositories/
+│   │   │   ├── __init__.py
+│   │   │   ├── base.py               # Supabase repository pattern
+│   │   │   ├── user_repository.py
+│   │   │   ├── labeler_repository.py
+│   │   │   └── ...
+│   │   ├── workers/
+│   │   │   ├── __init__.py
+│   │   │   ├── celery_app.py
+│   │   │   └── tasks/
+│   │   │       ├── __init__.py
+│   │   │       ├── interview_tasks.py
+│   │   │       ├── email_tasks.py
+│   │   │       └── analytics_tasks.py
+│   │   └── utils/
+│   │       ├── __init__.py
+│   │       ├── validators.py
+│   │       ├── helpers.py
+│   │       └── decorators.py
+│   ├── tests/
+│   │   ├── __init__.py
+│   │   ├── conftest.py
+│   │   ├── unit/
+│   │   ├── integration/
+│   │   └── e2e/
+│   ├── supabase/                     # Supabase local config
+│   │   ├── config.toml
+│   │   ├── migrations/               # SQL migrations
+│   │   │   ├── 20240101000000_create_profiles.sql
+│   │   │   ├── 20240101000001_create_labelers.sql
+│   │   │   ├── 20240101000002_create_projects.sql
+│   │   │   ├── 20240101000003_create_interviews.sql
+│   │   │   └── ...
+│   │   └── seed.sql
+│   ├── scripts/
+│   │   ├── seed_db.py
+│   │   └── generate_test_data.py
+│   ├── requirements/
+│   │   ├── base.txt
+│   │   ├── dev.txt
+│   │   ├── prod.txt
+│   │   └── test.txt
+│   ├── Dockerfile
+│   ├── docker-compose.yml
+│   └── pyproject.toml
+├── frontend/
+│   ├── public/
+│   ├── src/
+│   │   ├── index.tsx
+│   │   ├── App.tsx
+│   │   ├── lib/
+│   │   │   └── supabase.ts           # Supabase client
+│   │   ├── api/
+│   │   │   ├── index.ts
+│   │   │   └── client.ts
+│   │   ├── components/
+│   │   │   ├── common/
+│   │   │   ├── layout/
+│   │   │   ├── auth/
+│   │   │   ├── dashboard/
+│   │   │   ├── projects/
+│   │   │   ├── tasks/
+│   │   │   ├── interview/
+│   │   │   └── labeling/
+│   │   ├── hooks/
+│   │   │   ├── useAuth.ts            # Supabase Auth hook
+│   │   │   ├── useSupabase.ts        # Supabase client hook
+│   │   │   ├── useRealtime.ts        # Supabase Realtime hook
+│   │   │   ├── useStorage.ts         # Supabase Storage hook
+│   │   │   ├── useApi.ts
+│   │   │   └── useMediaDevices.ts
+│   │   ├── contexts/
+│   │   │   ├── AuthContext.tsx       # Supabase Auth context
+│   │   │   └── ThemeContext.tsx
+│   │   ├── pages/
+│   │   │   ├── auth/
+│   │   │   ├── dashboard/
+│   │   │   ├── projects/
+│   │   │   ├── tasks/
+│   │   │   ├── interview/
+│   │   │   └── admin/
+│   │   ├── routes/
+│   │   ├── store/
+│   │   ├── styles/
+│   │   ├── types/
+│   │   │   ├── index.ts
+│   │   │   ├── supabase.ts           # Generated types from Supabase
+│   │   │   └── ...
+│   │   ├── utils/
+│   │   └── config/
+│   │       └── env.ts
+│   ├── tests/
+│   ├── .eslintrc.js
+│   ├── .prettierrc
+│   ├── tsconfig.json
+│   ├── vite.config.ts
+│   └── package.json
+├── docs/
+├── .env.example
+├── .gitignore
+├── docker-compose.yml
+├── Makefile
+└── README.md
+```
+
+# ============================================================================
+# SECTION 3: SUPABASE CONFIGURATION
+# ============================================================================
+
+## Supabase Client Setup (Backend - Python)
+
+```python
+# backend/app/db/supabase.py
+import os
+from supabase import create_client, Client
+from supabase.lib.client_options import ClientOptions
+
+SUPABASE_URL = os.environ["SUPABASE_URL"]
+SUPABASE_KEY = os.environ["SUPABASE_SERVICE_KEY"]  # Service key for backend
+
+def get_supabase_client() -> Client:
+    """Get Supabase client with service role key (backend only)."""
+    return create_client(SUPABASE_URL, SUPABASE_KEY)
+
+def get_supabase_admin() -> Client:
+    """Get Supabase admin client for auth operations."""
+    return create_client(
+        SUPABASE_URL,
+        SUPABASE_KEY,
+        options=ClientOptions(
+            auto_refresh_token=False,
+            persist_session=False,
+        )
+    )
+
+# Singleton instance
+supabase: Client = get_supabase_client()
+```
+
+## Supabase Client Setup (Frontend - TypeScript)
+
+```typescript
+// frontend/src/lib/supabase.ts
+import { createClient } from '@supabase/supabase-js';
+import type { Database } from '@/types/supabase';
+
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    autoRefreshToken: true,
+    persistSession: true,
+    detectSessionInUrl: true,
+  },
+});
+```
+
+## Generate TypeScript Types from Supabase
+
+```bash
+# Install Supabase CLI
+npm install -g supabase
+
+# Generate types
+npx supabase gen types typescript --project-id YOUR_PROJECT_ID > src/types/supabase.ts
+```
+
+```typescript
+// frontend/src/types/supabase.ts (auto-generated example)
+export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[]
+
+export interface Database {
+  public: {
+    Tables: {
+      labelers: {
+        Row: {
+          id: string
+          user_id: string
+          email: string
+          first_name: string
+          last_name: string
+          clearance_level: string
+          skills: string[]
+          hourly_rate: number
+          is_active: boolean
+          interview_score: number | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          email: string
+          first_name: string
+          last_name: string
+          clearance_level: string
+          skills?: string[]
+          hourly_rate: number
+          is_active?: boolean
+          interview_score?: number | null
+        }
+        Update: {
+          first_name?: string
+          last_name?: string
+          clearance_level?: string
+          skills?: string[]
+          hourly_rate?: number
+          is_active?: boolean
+          interview_score?: number | null
+        }
+      }
+      // ... other tables
+    }
+  }
+}
+```
+
+# ============================================================================
+# SECTION 4: SUPABASE DATABASE SCHEMA (SQL MIGRATIONS)
+# ============================================================================
+
+```sql
+-- supabase/migrations/20240101000000_create_profiles.sql
+
+-- Enable UUID extension
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+-- Profiles table (extends Supabase auth.users)
+CREATE TABLE public.profiles (
+    id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+    email TEXT UNIQUE NOT NULL,
+    first_name TEXT NOT NULL,
+    last_name TEXT NOT NULL,
+    role TEXT NOT NULL DEFAULT 'labeler' CHECK (role IN ('admin', 'client', 'labeler')),
+    avatar_url TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
+    updated_at TIMESTAMPTZ DEFAULT NOW() NOT NULL
+);
+
+-- Enable RLS
+ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
+
+-- Policies
+CREATE POLICY "Users can view own profile" ON public.profiles
+    FOR SELECT USING (auth.uid() = id);
+
+CREATE POLICY "Users can update own profile" ON public.profiles
+    FOR UPDATE USING (auth.uid() = id);
+
+CREATE POLICY "Admins can view all profiles" ON public.profiles
+    FOR SELECT USING (
+        EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin')
+    );
+
+-- Auto-create profile on signup
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS TRIGGER AS $$
+BEGIN
+    INSERT INTO public.profiles (id, email, first_name, last_name)
+    VALUES (
+        NEW.id,
+        NEW.email,
+        COALESCE(NEW.raw_user_meta_data->>'first_name', ''),
+        COALESCE(NEW.raw_user_meta_data->>'last_name', '')
+    );
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+CREATE TRIGGER on_auth_user_created
+    AFTER INSERT ON auth.users
+    FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+
+-- Updated_at trigger function
+CREATE OR REPLACE FUNCTION public.update_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER update_profiles_updated_at
+    BEFORE UPDATE ON public.profiles
+    FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
+```
+
+```sql
+-- supabase/migrations/20240101000001_create_labelers.sql
+
+CREATE TABLE public.labelers (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+    email TEXT UNIQUE NOT NULL,
+    first_name TEXT NOT NULL,
+    last_name TEXT NOT NULL,
+    clearance_level TEXT NOT NULL CHECK (clearance_level IN ('none', 'clearable', 'secret', 'top_secret')),
+    skills TEXT[] DEFAULT '{}',
+    hourly_rate DECIMAL(10, 2) NOT NULL CHECK (hourly_rate >= 0),
+    is_active BOOLEAN DEFAULT TRUE NOT NULL,
+    is_verified BOOLEAN DEFAULT FALSE NOT NULL,
+    interview_score DECIMAL(4, 2) CHECK (interview_score >= 0 AND interview_score <= 10),
+    metadata JSONB DEFAULT '{}',
+    created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
+    updated_at TIMESTAMPTZ DEFAULT NOW() NOT NULL
+);
+
+-- Indexes
+CREATE INDEX idx_labelers_user_id ON public.labelers(user_id);
+CREATE INDEX idx_labelers_clearance_active ON public.labelers(clearance_level, is_active);
+CREATE INDEX idx_labelers_email ON public.labelers(email);
+
+-- Enable RLS
+ALTER TABLE public.labelers ENABLE ROW LEVEL SECURITY;
+
+-- Policies
+CREATE POLICY "Labelers can view own profile" ON public.labelers
+    FOR SELECT USING (user_id = auth.uid());
+
+CREATE POLICY "Labelers can update own profile" ON public.labelers
+    FOR UPDATE USING (user_id = auth.uid());
+
+CREATE POLICY "Admins can do everything" ON public.labelers
+    FOR ALL USING (
+        EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin')
+    );
+
+CREATE POLICY "Clients can view active labelers" ON public.labelers
+    FOR SELECT USING (
+        is_active = TRUE AND
+        EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'client')
+    );
+
+-- Trigger
+CREATE TRIGGER update_labelers_updated_at
+    BEFORE UPDATE ON public.labelers
+    FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
+```
+
+```sql
+-- supabase/migrations/20240101000002_create_projects.sql
+
+CREATE TABLE public.clients (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+    company_name TEXT NOT NULL,
+    contact_email TEXT NOT NULL,
+    contact_phone TEXT,
+    is_active BOOLEAN DEFAULT TRUE NOT NULL,
+    metadata JSONB DEFAULT '{}',
+    created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
+    updated_at TIMESTAMPTZ DEFAULT NOW() NOT NULL
+);
+
+CREATE TABLE public.projects (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    client_id UUID NOT NULL REFERENCES public.clients(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    description TEXT,
+    status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'active', 'paused', 'completed', 'cancelled')),
+    project_type TEXT NOT NULL,
+    instructions TEXT,
+    price_per_task DECIMAL(10, 2) NOT NULL CHECK (price_per_task >= 0),
+    estimated_tasks INTEGER,
+    deadline TIMESTAMPTZ,
+    metadata JSONB DEFAULT '{}',
+    created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
+    updated_at TIMESTAMPTZ DEFAULT NOW() NOT NULL
+);
+
+CREATE TABLE public.tasks (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    project_id UUID NOT NULL REFERENCES public.projects(id) ON DELETE CASCADE,
+    labeler_id UUID REFERENCES public.labelers(id) ON DELETE SET NULL,
+    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'assigned', 'in_progress', 'submitted', 'approved', 'rejected')),
+    data JSONB NOT NULL,
+    result JSONB,
+    quality_score DECIMAL(4, 2) CHECK (quality_score >= 0 AND quality_score <= 10),
+    feedback TEXT,
+    assigned_at TIMESTAMPTZ,
+    submitted_at TIMESTAMPTZ,
+    reviewed_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
+    updated_at TIMESTAMPTZ DEFAULT NOW() NOT NULL
+);
+
+-- Indexes
+CREATE INDEX idx_projects_client_id ON public.projects(client_id);
+CREATE INDEX idx_projects_status ON public.projects(status);
+CREATE INDEX idx_tasks_project_id ON public.tasks(project_id);
+CREATE INDEX idx_tasks_labeler_id ON public.tasks(labeler_id);
+CREATE INDEX idx_tasks_status ON public.tasks(status);
+
+-- Enable RLS
+ALTER TABLE public.clients ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.projects ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.tasks ENABLE ROW LEVEL SECURITY;
+
+-- RLS Policies for clients
+CREATE POLICY "Clients can view own profile" ON public.clients
+    FOR SELECT USING (user_id = auth.uid());
+
+CREATE POLICY "Clients can update own profile" ON public.clients
+    FOR UPDATE USING (user_id = auth.uid());
+
+CREATE POLICY "Admins can do everything on clients" ON public.clients
+    FOR ALL USING (
+        EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin')
+    );
+
+-- RLS Policies for projects
+CREATE POLICY "Clients can manage own projects" ON public.projects
+    FOR ALL USING (
+        EXISTS (SELECT 1 FROM public.clients WHERE id = client_id AND user_id = auth.uid())
+    );
+
+CREATE POLICY "Admins can do everything on projects" ON public.projects
+    FOR ALL USING (
+        EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin')
+    );
+
+CREATE POLICY "Labelers can view assigned projects" ON public.projects
+    FOR SELECT USING (
+        EXISTS (
+            SELECT 1 FROM public.tasks
+            WHERE project_id = projects.id AND labeler_id IN (
+                SELECT id FROM public.labelers WHERE user_id = auth.uid()
+            )
+        )
+    );
+
+-- RLS Policies for tasks
+CREATE POLICY "Labelers can view and update assigned tasks" ON public.tasks
+    FOR ALL USING (
+        labeler_id IN (SELECT id FROM public.labelers WHERE user_id = auth.uid())
+    );
+
+CREATE POLICY "Clients can view own project tasks" ON public.tasks
+    FOR SELECT USING (
+        EXISTS (
+            SELECT 1 FROM public.projects p
+            JOIN public.clients c ON p.client_id = c.id
+            WHERE p.id = tasks.project_id AND c.user_id = auth.uid()
+        )
+    );
+
+CREATE POLICY "Admins can do everything on tasks" ON public.tasks
+    FOR ALL USING (
+        EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin')
+    );
+
+-- Triggers
+CREATE TRIGGER update_clients_updated_at BEFORE UPDATE ON public.clients
+    FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
+CREATE TRIGGER update_projects_updated_at BEFORE UPDATE ON public.projects
+    FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
+CREATE TRIGGER update_tasks_updated_at BEFORE UPDATE ON public.tasks
+    FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
+```
+
+```sql
+-- supabase/migrations/20240101000003_create_interviews.sql
+
+CREATE TABLE public.interviews (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    labeler_id UUID NOT NULL REFERENCES public.labelers(id) ON DELETE CASCADE,
+    job_type TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'in_progress', 'completed', 'failed')),
+    overall_score DECIMAL(4, 2) CHECK (overall_score >= 0 AND overall_score <= 10),
+    relevance_score DECIMAL(4, 2),
+    clarity_score DECIMAL(4, 2),
+    technical_score DECIMAL(4, 2),
+    communication_score DECIMAL(4, 2),
+    feedback TEXT,
+    started_at TIMESTAMPTZ,
+    completed_at TIMESTAMPTZ,
+    duration_seconds INTEGER,
+    created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
+    updated_at TIMESTAMPTZ DEFAULT NOW() NOT NULL
+);
+
+CREATE TABLE public.interview_questions (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    interview_id UUID NOT NULL REFERENCES public.interviews(id) ON DELETE CASCADE,
+    question_text TEXT NOT NULL,
+    question_type TEXT NOT NULL CHECK (question_type IN ('technical', 'behavioral', 'situational')),
+    order_num INTEGER NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL
+);
+
+CREATE TABLE public.interview_responses (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    interview_id UUID NOT NULL REFERENCES public.interviews(id) ON DELETE CASCADE,
+    question_id UUID NOT NULL REFERENCES public.interview_questions(id) ON DELETE CASCADE,
+    transcript TEXT NOT NULL,
+    audio_url TEXT,
+    evaluation JSONB,
+    created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL
+);
+
+-- Indexes
+CREATE INDEX idx_interviews_labeler_id ON public.interviews(labeler_id);
+CREATE INDEX idx_interviews_status ON public.interviews(status);
+CREATE INDEX idx_interview_questions_interview_id ON public.interview_questions(interview_id);
+CREATE INDEX idx_interview_responses_interview_id ON public.interview_responses(interview_id);
+
+-- Enable RLS
+ALTER TABLE public.interviews ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.interview_questions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.interview_responses ENABLE ROW LEVEL SECURITY;
+
+-- Interview policies
+CREATE POLICY "Labelers can view own interviews" ON public.interviews
+    FOR SELECT USING (
+        labeler_id IN (SELECT id FROM public.labelers WHERE user_id = auth.uid())
+    );
+
+CREATE POLICY "Labelers can update own in-progress interviews" ON public.interviews
+    FOR UPDATE USING (
+        labeler_id IN (SELECT id FROM public.labelers WHERE user_id = auth.uid())
+        AND status = 'in_progress'
+    );
+
+CREATE POLICY "Admins can do everything on interviews" ON public.interviews
+    FOR ALL USING (
+        EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin')
+    );
+
+-- Question policies
+CREATE POLICY "Labelers can view own interview questions" ON public.interview_questions
+    FOR SELECT USING (
+        interview_id IN (
+            SELECT id FROM public.interviews WHERE labeler_id IN (
+                SELECT id FROM public.labelers WHERE user_id = auth.uid()
+            )
+        )
+    );
+
+CREATE POLICY "Admins can do everything on questions" ON public.interview_questions
+    FOR ALL USING (
+        EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin')
+    );
+
+-- Response policies
+CREATE POLICY "Labelers can manage own responses" ON public.interview_responses
+    FOR ALL USING (
+        interview_id IN (
+            SELECT id FROM public.interviews WHERE labeler_id IN (
+                SELECT id FROM public.labelers WHERE user_id = auth.uid()
+            )
+        )
+    );
+
+CREATE POLICY "Admins can do everything on responses" ON public.interview_responses
+    FOR ALL USING (
+        EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin')
+    );
+
+-- Trigger
+CREATE TRIGGER update_interviews_updated_at BEFORE UPDATE ON public.interviews
+    FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
+```
+
+# ============================================================================
+# SECTION 5: PYTHON BACKEND WITH SUPABASE
+# ============================================================================
+
+## Repository Pattern with Supabase
+
+```python
+# backend/app/repositories/base.py
+from typing import TypeVar, Generic, Any
+from uuid import UUID
+from supabase import Client
+from app.db.supabase import supabase
+
+T = TypeVar("T")
+
+class BaseRepository(Generic[T]):
+    """Base repository using Supabase client."""
+    
+    def __init__(self, table_name: str) -> None:
+        self.table_name = table_name
+        self.client: Client = supabase
+    
+    async def get(self, id: UUID) -> dict | None:
+        """Get single record by ID."""
+        response = self.client.table(self.table_name)\
+            .select("*")\
+            .eq("id", str(id))\
+            .single()\
+            .execute()
+        return response.data if response.data else None
+    
+    async def get_multi(
+        self,
+        *,
+        skip: int = 0,
+        limit: int = 100,
+        order_by: str = "created_at",
+        ascending: bool = False,
+    ) -> list[dict]:
+        """Get multiple records with pagination."""
+        response = self.client.table(self.table_name)\
+            .select("*")\
+            .order(order_by, desc=not ascending)\
+            .range(skip, skip + limit - 1)\
+            .execute()
+        return response.data or []
+    
+    async def create(self, data: dict) -> dict:
+        """Create new record."""
+        response = self.client.table(self.table_name)\
+            .insert(data)\
+            .execute()
+        return response.data[0] if response.data else None
+    
+    async def update(self, id: UUID, data: dict) -> dict | None:
+        """Update record by ID."""
+        response = self.client.table(self.table_name)\
+            .update(data)\
+            .eq("id", str(id))\
+            .execute()
+        return response.data[0] if response.data else None
+    
+    async def delete(self, id: UUID) -> bool:
+        """Delete record by ID."""
+        response = self.client.table(self.table_name)\
+            .delete()\
+            .eq("id", str(id))\
+            .execute()
+        return len(response.data) > 0 if response.data else False
+    
+    async def get_by_field(self, field: str, value: Any) -> dict | None:
+        """Get record by specific field."""
+        response = self.client.table(self.table_name)\
+            .select("*")\
+            .eq(field, value)\
+            .single()\
+            .execute()
+        return response.data if response.data else None
+```
+
+```python
+# backend/app/repositories/labeler_repository.py
+from uuid import UUID
+from app.repositories.base import BaseRepository
+
+class LabelerRepository(BaseRepository):
+    """Repository for labeler operations."""
+    
+    def __init__(self) -> None:
+        super().__init__("labelers")
+    
+    async def get_by_email(self, email: str) -> dict | None:
+        return await self.get_by_field("email", email)
+    
+    async def get_by_user_id(self, user_id: UUID) -> dict | None:
+        return await self.get_by_field("user_id", str(user_id))
+    
+    async def get_active_by_clearance(
+        self,
+        clearance_level: str,
+        limit: int = 100,
+    ) -> list[dict]:
+        response = self.client.table(self.table_name)\
+            .select("*")\
+            .eq("clearance_level", clearance_level)\
+            .eq("is_active", True)\
+            .limit(limit)\
+            .execute()
+        return response.data or []
+    
+    async def search(
+        self,
+        *,
+        clearance_level: str | None = None,
+        min_score: float | None = None,
+        skills: list[str] | None = None,
+        is_active: bool = True,
+    ) -> list[dict]:
+        query = self.client.table(self.table_name)\
+            .select("*")\
+            .eq("is_active", is_active)
+        
+        if clearance_level:
+            query = query.eq("clearance_level", clearance_level)
+        if min_score is not None:
+            query = query.gte("interview_score", min_score)
+        if skills:
+            query = query.contains("skills", skills)
+        
+        response = query.execute()
+        return response.data or []
+```
+
+## Service Layer
+
+```python
+# backend/app/services/labeler_service.py
+from uuid import UUID
+from app.core.exceptions import NotFoundError, DuplicateEntityError
+from app.repositories.labeler_repository import LabelerRepository
+from app.schemas.labeler import LabelerCreate, LabelerUpdate
+
+class LabelerService:
+    """Service for labeler business logic."""
+    
+    def __init__(self) -> None:
+        self.repository = LabelerRepository()
+    
+    async def create(self, user_id: UUID, labeler_in: LabelerCreate) -> dict:
+        existing = await self.repository.get_by_email(labeler_in.email)
+        if existing:
+            raise DuplicateEntityError("Labeler with this email already exists")
+        
+        existing_user = await self.repository.get_by_user_id(user_id)
+        if existing_user:
+            raise DuplicateEntityError("User already has a labeler profile")
+        
+        data = labeler_in.model_dump()
+        data["user_id"] = str(user_id)
+        return await self.repository.create(data)
+    
+    async def get_by_id(self, labeler_id: UUID) -> dict:
+        labeler = await self.repository.get(labeler_id)
+        if not labeler:
+            raise NotFoundError(f"Labeler {labeler_id} not found")
+        return labeler
+    
+    async def update(self, labeler_id: UUID, labeler_in: LabelerUpdate) -> dict:
+        await self.get_by_id(labeler_id)
+        update_data = labeler_in.model_dump(exclude_unset=True)
+        if not update_data:
+            return await self.get_by_id(labeler_id)
+        return await self.repository.update(labeler_id, update_data)
+```
+
+## Supabase Auth Integration
+
+```python
+# backend/app/core/security.py
+from fastapi import Depends, HTTPException, status
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from jose import jwt, JWTError
+import os
+
+from app.db.supabase import get_supabase_client
+
+security = HTTPBearer()
+SUPABASE_JWT_SECRET = os.environ["SUPABASE_JWT_SECRET"]
+
+async def verify_supabase_token(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+) -> dict:
+    """Verify Supabase JWT token."""
+    token = credentials.credentials
+    try:
+        payload = jwt.decode(
+            token,
+            SUPABASE_JWT_SECRET,
+            algorithms=["HS256"],
+            audience="authenticated",
+        )
+        return payload
+    except JWTError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid authentication token",
+        )
+
+async def get_current_user(
+    token_payload: dict = Depends(verify_supabase_token),
+) -> dict:
+    """Extract user info from verified token."""
+    user_id = token_payload.get("sub")
+    if not user_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token payload",
+        )
+    return {"id": user_id, "email": token_payload.get("email")}
+
+async def get_current_admin_user(
+    current_user: dict = Depends(get_current_user),
+) -> dict:
+    """Verify admin role."""
+    supabase = get_supabase_client()
+    response = supabase.table("profiles")\
+        .select("role")\
+        .eq("id", current_user["id"])\
+        .single()\
+        .execute()
+    
+    if not response.data or response.data.get("role") != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access required",
+        )
+    return current_user
+```
+
+## Supabase Storage Service
+
+```python
+# backend/app/services/storage_service.py
+from uuid import UUID
+import os
+from app.db.supabase import supabase
+
+BUCKET_NAME = os.environ.get("SUPABASE_STORAGE_BUCKET", "uploads")
+
+class StorageService:
+    """Service for Supabase Storage."""
+    
+    def __init__(self) -> None:
+        self.client = supabase
+        self.bucket = BUCKET_NAME
+    
+    async def upload_file(
+        self,
+        file_path: str,
+        file_data: bytes,
+        content_type: str = "application/octet-stream",
+    ) -> str:
+        response = self.client.storage.from_(self.bucket).upload(
+            file_path, file_data, {"content-type": content_type}
+        )
+        return response.path
+    
+    async def upload_interview_audio(
+        self,
+        interview_id: UUID,
+        question_id: UUID,
+        audio_data: bytes,
+    ) -> str:
+        file_path = f"interviews/{interview_id}/{question_id}.webm"
+        return await self.upload_file(file_path, audio_data, "audio/webm")
+    
+    async def get_signed_url(self, file_path: str, expires_in: int = 3600) -> str:
+        response = self.client.storage.from_(self.bucket).create_signed_url(
+            file_path, expires_in
+        )
+        return response["signedURL"]
+    
+    async def delete_file(self, file_path: str) -> bool:
+        response = self.client.storage.from_(self.bucket).remove([file_path])
+        return len(response) > 0
+```
+
+# ============================================================================
+# SECTION 6: REACT FRONTEND WITH SUPABASE
+# ============================================================================
+
+## Auth Context with Supabase
+
+```tsx
+// frontend/src/contexts/AuthContext.tsx
+import { createContext, useContext, useEffect, useState, useCallback, ReactNode } from 'react';
+import { User, Session } from '@supabase/supabase-js';
+import { supabase } from '@/lib/supabase';
+
+interface Profile {
+  id: string;
+  email: string;
+  first_name: string;
+  last_name: string;
+  role: 'admin' | 'client' | 'labeler';
+  avatar_url: string | null;
+}
+
+interface AuthContextType {
+  user: User | null;
+  session: Session | null;
+  profile: Profile | null;
+  isLoading: boolean;
+  signUp: (email: string, password: string, metadata?: object) => Promise<void>;
+  signIn: (email: string, password: string) => Promise<void>;
+  signOut: () => Promise<void>;
+  resetPassword: (email: string) => Promise<void>;
+}
+
+const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+export function AuthProvider({ children }: { children: ReactNode }) {
+  const [user, setUser] = useState<User | null>(null);
+  const [session, setSession] = useState<Session | null>(null);
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  const fetchProfile = useCallback(async (userId: string) => {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', userId)
+      .single();
+    if (error) return null;
+    return data as Profile;
+  }, []);
+
+  useEffect(() => {
+    const initAuth = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      setSession(session);
+      setUser(session?.user ?? null);
+      if (session?.user) {
+        const profile = await fetchProfile(session.user.id);
+        setProfile(profile);
+      }
+      setIsLoading(false);
+    };
+
+    initAuth();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        setSession(session);
+        setUser(session?.user ?? null);
+        if (session?.user) {
+          const profile = await fetchProfile(session.user.id);
+          setProfile(profile);
+        } else {
+          setProfile(null);
+        }
+      }
+    );
+
+    return () => subscription.unsubscribe();
+  }, [fetchProfile]);
+
+  const signUp = useCallback(async (email: string, password: string, metadata?: object) => {
+    const { error } = await supabase.auth.signUp({ email, password, options: { data: metadata } });
+    if (error) throw error;
+  }, []);
+
+  const signIn = useCallback(async (email: string, password: string) => {
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) throw error;
+  }, []);
+
+  const signOut = useCallback(async () => {
+    const { error } = await supabase.auth.signOut();
+    if (error) throw error;
+  }, []);
+
+  const resetPassword = useCallback(async (email: string) => {
+    const { error } = await supabase.auth.resetPasswordForEmail(email);
+    if (error) throw error;
+  }, []);
+
+  return (
+    <AuthContext.Provider value={{ user, session, profile, isLoading, signUp, signIn, signOut, resetPassword }}>
+      {children}
+    </AuthContext.Provider>
+  );
+}
+
+export function useAuth() {
+  const context = useContext(AuthContext);
+  if (context === undefined) throw new Error('useAuth must be used within AuthProvider');
+  return context;
+}
+```
+
+## Realtime Hook
+
+```tsx
+// frontend/src/hooks/useRealtime.ts
+import { useEffect, useState, useCallback } from 'react';
+import { RealtimeChannel } from '@supabase/supabase-js';
+import { supabase } from '@/lib/supabase';
+
+type RealtimeEvent = 'INSERT' | 'UPDATE' | 'DELETE' | '*';
+
+interface UseRealtimeOptions<T> {
+  table: string;
+  event?: RealtimeEvent;
+  filter?: string;
+  onInsert?: (payload: T) => void;
+  onUpdate?: (payload: T) => void;
+  onDelete?: (payload: T) => void;
+}
+
+export function useRealtime<T>({ table, event = '*', filter, onInsert, onUpdate, onDelete }: UseRealtimeOptions<T>) {
+  const [isConnected, setIsConnected] = useState(false);
+
+  useEffect(() => {
+    const channel = supabase
+      .channel(`${table}-changes`)
+      .on('postgres_changes', { event, schema: 'public', table, filter }, (payload) => {
+        const record = payload.new as T;
+        const oldRecord = payload.old as T;
+        
+        switch (payload.eventType) {
+          case 'INSERT': onInsert?.(record); break;
+          case 'UPDATE': onUpdate?.(record); break;
+          case 'DELETE': onDelete?.(oldRecord); break;
+        }
+      })
+      .subscribe((status) => setIsConnected(status === 'SUBSCRIBED'));
+
+    return () => { channel.unsubscribe(); };
+  }, [table, event, filter, onInsert, onUpdate, onDelete]);
+
+  return { isConnected };
+}
+```
+
+## Data Hooks
+
+```tsx
+// frontend/src/hooks/useLabelers.ts
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { supabase } from '@/lib/supabase';
+import type { Database } from '@/types/supabase';
+
+type Labeler = Database['public']['Tables']['labelers']['Row'];
+type LabelerInsert = Database['public']['Tables']['labelers']['Insert'];
+type LabelerUpdate = Database['public']['Tables']['labelers']['Update'];
+
+export function useLabelers(filters?: { clearanceLevel?: string; isActive?: boolean }) {
+  return useQuery({
+    queryKey: ['labelers', filters],
+    queryFn: async () => {
+      let query = supabase.from('labelers').select('*');
+      if (filters?.clearanceLevel) query = query.eq('clearance_level', filters.clearanceLevel);
+      if (filters?.isActive !== undefined) query = query.eq('is_active', filters.isActive);
+      const { data, error } = await query.order('created_at', { ascending: false });
+      if (error) throw error;
+      return data as Labeler[];
+    },
+  });
+}
+
+export function useLabeler(id: string) {
+  return useQuery({
+    queryKey: ['labelers', id],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('labelers').select('*').eq('id', id).single();
+      if (error) throw error;
+      return data as Labeler;
+    },
+    enabled: !!id,
+  });
+}
+
+export function useCreateLabeler() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (labeler: LabelerInsert) => {
+      const { data, error } = await supabase.from('labelers').insert(labeler).select().single();
+      if (error) throw error;
+      return data as Labeler;
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['labelers'] }),
+  });
+}
+
+export function useUpdateLabeler() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, ...data }: LabelerUpdate & { id: string }) => {
+      const { data: updated, error } = await supabase.from('labelers').update(data).eq('id', id).select().single();
+      if (error) throw error;
+      return updated as Labeler;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['labelers'] });
+      queryClient.invalidateQueries({ queryKey: ['labelers', data.id] });
+    },
+  });
+}
+```
+
+## Storage Hook
+
+```tsx
+// frontend/src/hooks/useStorage.ts
+import { useState, useCallback } from 'react';
+import { supabase } from '@/lib/supabase';
+
+export function useStorage({ bucket }: { bucket: string }) {
+  const [isUploading, setIsUploading] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
+
+  const upload = useCallback(async (path: string, file: File) => {
+    setIsUploading(true);
+    setError(null);
+    try {
+      const { data, error } = await supabase.storage.from(bucket).upload(path, file, { upsert: false });
+      if (error) throw error;
+      return data.path;
+    } catch (err) {
+      setError(err as Error);
+      throw err;
+    } finally {
+      setIsUploading(false);
+    }
+  }, [bucket]);
+
+  const getPublicUrl = useCallback((path: string) => {
+    const { data } = supabase.storage.from(bucket).getPublicUrl(path);
+    return data.publicUrl;
+  }, [bucket]);
+
+  const getSignedUrl = useCallback(async (path: string, expiresIn = 3600) => {
+    const { data, error } = await supabase.storage.from(bucket).createSignedUrl(path, expiresIn);
+    if (error) throw error;
+    return data.signedUrl;
+  }, [bucket]);
+
+  return { upload, getPublicUrl, getSignedUrl, isUploading, error };
+}
+```
+
+# ============================================================================
+# SECTION 7: ENVIRONMENT VARIABLES
+# ============================================================================
+
+```bash
+# .env.example
+
+# Application
+APP_NAME=Think5
+APP_ENV=development
+DEBUG=true
+
+# Supabase
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_ANON_KEY=your-anon-key
+SUPABASE_SERVICE_KEY=your-service-key
+SUPABASE_JWT_SECRET=your-jwt-secret
+SUPABASE_STORAGE_BUCKET=uploads
+
+# Frontend (VITE_ prefix for Vite)
+VITE_SUPABASE_URL=https://your-project.supabase.co
+VITE_SUPABASE_ANON_KEY=your-anon-key
+VITE_API_URL=http://localhost:8000
+
+# Redis (for Celery)
+REDIS_URL=redis://localhost:6379/0
+
+# AI Services
+OPENAI_API_KEY=
+ANTHROPIC_API_KEY=
+
+# Email
+SMTP_HOST=
+SMTP_PORT=587
+SMTP_USER=
+SMTP_PASSWORD=
+FROM_EMAIL=noreply@think5.ai
+
+# Sentry
+SENTRY_DSN=
+```
+
+# ============================================================================
+# SECTION 8: IMPORTANT REMINDERS
+# ============================================================================
+
+## Supabase-Specific DO's
+
+1. ✅ ALWAYS enable RLS on all tables
+2. ✅ ALWAYS use Supabase Auth for authentication
+3. ✅ ALWAYS use service key only on backend
+4. ✅ ALWAYS generate TypeScript types from schema
+5. ✅ ALWAYS use Realtime for live updates
+6. ✅ ALWAYS use Supabase Storage for file uploads
+7. ✅ ALWAYS write RLS policies for every table
+8. ✅ ALWAYS test RLS policies thoroughly
+9. ✅ ALWAYS use database functions for complex operations
+10. ✅ ALWAYS use triggers for automatic timestamps
+
+## Supabase-Specific DON'Ts
+
+1. ❌ NEVER expose service key to frontend
+2. ❌ NEVER disable RLS in production
+3. ❌ NEVER store sensitive data without encryption
+4. ❌ NEVER bypass RLS unless absolutely necessary
+5. ❌ NEVER skip database migrations
+6. ❌ NEVER ignore Supabase rate limits
+7. ❌ NEVER store files without proper bucket policies
+8. ❌ NEVER trust client-side data without validation
+9. ❌ NEVER commit Supabase keys to version control
+10. ❌ NEVER use `any` in TypeScript
+
+## Code Quality Checklist
+
+Before every PR:
+- [ ] RLS policies in place for new tables
+- [ ] TypeScript types regenerated if schema changed
+- [ ] Migrations included for database changes
+- [ ] Tests cover Supabase interactions
+- [ ] No service key in frontend code
+- [ ] Storage bucket policies configured
+- [ ] Realtime subscriptions cleaned up
+- [ ] Error handling for Supabase operations
+- [ ] Loading states for async operations
+- [ ] Environment variables documented
+- [ ] 80%+ test coverage maintained
+
+# ============================================================================
+# END OF CURSOR RULES
+# ============================================================================

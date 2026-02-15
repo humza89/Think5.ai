@@ -1,0 +1,137 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum CandidateStatus {
+  SOURCED
+  CONTACTED
+  INTERVIEWED
+  OFFERED
+  HIRED
+  REJECTED
+}
+
+model Recruiter {
+  id         String      @id @default(uuid())
+  name       String
+  email      String      @unique
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+  candidates Candidate[]
+}
+
+model Candidate {
+  id               String          @id @default(uuid())
+  fullName         String
+  email            String?
+  phone            String?
+  linkedinUrl      String?
+  profileImage     String?
+  currentTitle     String?
+  currentCompany   String?
+  skills           Json            @default("[]")
+  experienceYears  Int?
+  industries       Json            @default("[]")
+  resumeText       String?         @db.Text
+  resumeUrl        String?
+  status           CandidateStatus @default(SOURCED)
+  recruiterId      String
+  recruiter        Recruiter       @relation(fields: [recruiterId], references: [id], onDelete: Cascade)
+  embedding        Json?
+  aiSummary        String?         @db.Text
+  experiences      Json?
+  education        Json?
+  headline         String?
+  location         String?
+  notes            Note[]
+  matches          Match[]
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  @@index([recruiterId])
+  @@index([status])
+}
+
+model Note {
+  id              String    @id @default(uuid())
+  content         String    @db.Text
+  isPrivate       Boolean   @default(true)
+  candidateId     String
+  candidate       Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  authorId        String
+
+  // Activity tracking fields
+  callAnswered    Boolean?
+  voicemailLeft   Boolean?
+  smsSent         Boolean?
+  emailSent       Boolean?
+
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([candidateId])
+}
+
+model Client {
+  id               String   @id @default(uuid())
+  name             String
+  industry         String?
+  funding          String?
+  companySize      String?
+  logoUrl          String?
+  website          String?
+  description      String?  @db.Text
+  linkedinUrl      String?
+  linkedinId       String?
+  companyLogoCdnUrl String?
+  employeeCount    Int?
+  foundedYear      Int?
+  headquarters     String?
+  specialties      Json?
+  roles            Role[]
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+model Role {
+  id              String   @id @default(uuid())
+  title           String
+  location        String?
+  salaryRange     String?
+  skillsRequired  Json     @default("[]")
+  description     String   @db.Text
+  experienceYears String?
+  clientId        String
+  client          Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  embedding       Json?
+  matches         Match[]
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([clientId])
+}
+
+model Match {
+  id          String    @id @default(uuid())
+  candidateId String
+  candidate   Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  roleId      String
+  role        Role      @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  fitScore    Float
+  reasoning   String?   @db.Text
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([candidateId, roleId])
+  @@index([candidateId])
+  @@index([roleId])
+  @@index([fitScore])
+}
