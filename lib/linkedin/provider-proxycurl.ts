@@ -23,7 +23,6 @@ const ProfileSchema = z.object({
         title: z.string().nullish(),
         company: z.string().nullish(),
         company_linkedin_profile_url: z.string().nullish(),
-        company: z.string().nullish(),
         location: z.string().nullish(),
         starts_at: z
           .object({

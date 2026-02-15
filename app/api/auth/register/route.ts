@@ -115,6 +115,7 @@ export async function POST(request: NextRequest) {
         first_name: firstName,
         last_name: lastName,
         role,
+        avatar_url: null,
         email_verified: false,
       });
 

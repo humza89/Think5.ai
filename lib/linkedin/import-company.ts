@@ -272,65 +272,30 @@ export async function importLinkedInCompany(
     throw new Error("No company data returned from API");
   }
 
-  // Parse employee count - it might be a range like "11-50"
-  let employeeCount: number | null = null;
-  if (companyData.employee_count) {
-    // If it's a number, use it directly
-    if (typeof companyData.employee_count === 'number') {
-      employeeCount = companyData.employee_count;
-    } else if (typeof companyData.employee_count === 'string') {
-      // If it's a range like "11-50", extract the max value
-      const match = companyData.employee_count.match(/(\d+)-(\d+)/);
-      if (match) {
-        employeeCount = parseInt(match[2]); // Use upper bound
-      } else {
-        const parsed = parseInt(companyData.employee_count);
-        if (!isNaN(parsed)) {
-          employeeCount = parsed;
-        }
-      }
-    }
-  }
+  // Parse employee count
+  const employeeCount = companyData.company_employee_count ?? null;
 
   // Parse founded year
   let foundedYear: number | null = null;
-  if (companyData.founded_year) {
-    const parsed = parseInt(companyData.founded_year.toString());
+  if (companyData.company_year_founded) {
+    const parsed = parseInt(companyData.company_year_founded);
     if (!isNaN(parsed)) {
       foundedYear = parsed;
     }
   }
 
-  // Format headquarters from location data
-  let headquarters: string | null = null;
-  if (companyData.headquarters) {
-    if (typeof companyData.headquarters === 'string') {
-      headquarters = companyData.headquarters;
-    } else if (companyData.headquarters.city || companyData.headquarters.country) {
-      const parts = [
-        companyData.headquarters.city,
-        companyData.headquarters.state,
-        companyData.headquarters.country
-      ].filter(Boolean);
-      headquarters = parts.join(', ');
-    }
-  }
-
-  // Use LinkedIn CDN URL directly (as requested - no local storage)
-  const companyLogoCdnUrl = companyData.logo_url || companyData.logo || null;
-
   return {
-    name: companyData.name || companyData.company_name || "Unknown Company",
-    industry: companyData.industry || companyData.industries?.[0] || null,
-    companySize: companyData.employee_count_range || companyData.company_size || null,
-    website: companyData.website || companyData.website_url || null,
-    description: companyData.description || companyData.tagline || null,
-    linkedinUrl: companyData.linkedin_url || normalizedUrl,
-    linkedinId: (companyData.linkedin_url || normalizedUrl).match(/company\/([^/]+)/)?.[1] || null,
-    companyLogoCdnUrl, // Using LinkedIn's CDN URL directly
+    name: companyData.company || "Unknown Company",
+    industry: companyData.company_industry || null,
+    companySize: companyData.company_employee_range || null,
+    website: companyData.company_website || companyData.company_domain || null,
+    description: companyData.company_description || null,
+    linkedinUrl: companyData.company_linkedin_url || normalizedUrl,
+    linkedinId: (companyData.company_linkedin_url || normalizedUrl).match(/company\/([^/]+)/)?.[1] || null,
+    companyLogoCdnUrl: companyData.company_logo_url || null,
     employeeCount,
     foundedYear,
-    headquarters,
-    specialties: companyData.specialties || null,
+    headquarters: null,
+    specialties: null,
   };
 }
