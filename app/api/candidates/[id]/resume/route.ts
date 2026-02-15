@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { parseResumeFile, extractCandidateData } from "@/lib/resume-parser";
+import { requireCandidateAccess, handleAuthError } from "@/lib/auth";
 
 export async function POST(
   request: NextRequest,
@@ -8,6 +9,9 @@ export async function POST(
 ) {
   try {
     const { id } = await params;
+
+    // Auth + ownership check
+    await requireCandidateAccess(id);
 
     // Check if candidate exists
     const candidate = await prisma.candidate.findUnique({
@@ -49,11 +53,11 @@ export async function POST(
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
 
-    console.log(`📄 Parsing resume for candidate ${id}...`);
+    console.log(`Parsing resume for candidate ${id}...`);
 
     // Parse the resume to extract text
     const resumeText = await parseResumeFile(buffer, file.type);
-    console.log(`✅ Resume text extracted (${resumeText.length} characters)`);
+    console.log(`Resume text extracted (${resumeText.length} characters)`);
 
     // Upload the file to get a URL
     const uploadFormData = new FormData();
@@ -73,12 +77,12 @@ export async function POST(
 
     const uploadData = await uploadResponse.json();
     const resumeUrl = uploadData.resumeUrl || uploadData.url;
-    console.log(`✅ Resume uploaded: ${resumeUrl}`);
+    console.log(`Resume uploaded: ${resumeUrl}`);
 
     // Extract candidate data using AI
-    console.log(`🤖 Extracting candidate data from resume...`);
+    console.log(`Extracting candidate data from resume...`);
     const extractedData = await extractCandidateData(resumeText);
-    console.log(`✅ Candidate data extracted:`, extractedData);
+    console.log(`Candidate data extracted:`, extractedData);
 
     // Prepare update data - merge with existing data (don't overwrite if field is empty)
     const updateData: any = {
@@ -142,7 +146,7 @@ export async function POST(
       data: updateData,
     });
 
-    console.log(`✅ Candidate updated with resume data`);
+    console.log(`Candidate updated with resume data`);
 
     return NextResponse.json({
       success: true,
@@ -150,10 +154,11 @@ export async function POST(
       extractedData,
     });
   } catch (error: any) {
-    console.error("❌ Resume upload error:", error);
+    const { error: errMsg, status } = handleAuthError(error);
+    console.error("Resume upload error:", error);
     return NextResponse.json(
-      { error: error.message || "Failed to process resume" },
-      { status: 500 }
+      { error: errMsg },
+      { status }
     );
   }
 }

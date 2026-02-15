@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { requireCandidateAccess, handleAuthError } from "@/lib/auth";
 
 // GET all notes for a candidate
 export async function GET(
@@ -9,18 +10,19 @@ export async function GET(
   try {
     const { id } = await params;
 
+    // Auth + ownership check
+    await requireCandidateAccess(id);
+
     const notes = await prisma.note.findMany({
       where: { candidateId: id },
       orderBy: { createdAt: "desc" },
     });
 
     return NextResponse.json(notes);
-  } catch (error: any) {
+  } catch (error) {
+    const { error: message, status } = handleAuthError(error);
     console.error("Error fetching notes:", error);
-    return NextResponse.json(
-      { error: "Failed to fetch notes" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: message }, { status });
   }
 }
 
@@ -31,10 +33,13 @@ export async function POST(
 ) {
   try {
     const { id } = await params;
+
+    // Auth + ownership check
+    const { user } = await requireCandidateAccess(id);
+
     const body = await request.json();
     const {
       content = "",
-      authorId = "default-user",
       callAnswered,
       voicemailLeft,
       smsSent,
@@ -54,7 +59,7 @@ export async function POST(
       data: {
         content,
         candidateId: id,
-        authorId,
+        authorId: user.id, // Always from session, never from body
         isPrivate: true,
         callAnswered,
         voicemailLeft,
@@ -64,11 +69,9 @@ export async function POST(
     });
 
     return NextResponse.json(note);
-  } catch (error: any) {
+  } catch (error) {
+    const { error: message, status } = handleAuthError(error);
     console.error("Error creating note:", error);
-    return NextResponse.json(
-      { error: "Failed to create note" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: message }, { status });
   }
 }

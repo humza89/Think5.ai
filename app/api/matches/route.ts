@@ -4,9 +4,13 @@ import {
   generateMatchesForRole,
   generateMatchesForCandidate,
 } from "@/lib/matching-engine";
+import { requireRole, handleAuthError } from "@/lib/auth";
 
 export async function GET(request: NextRequest) {
   try {
+    // Require recruiter or admin role
+    await requireRole(["recruiter", "admin"]);
+
     const searchParams = request.nextUrl.searchParams;
     const candidateId = searchParams.get("candidateId");
     const roleId = searchParams.get("roleId");
@@ -55,11 +59,9 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(matches);
   } catch (error) {
+    const { error: message, status } = handleAuthError(error);
     console.error("Error fetching matches:", error);
-    return NextResponse.json(
-      { error: "Failed to fetch matches" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: message }, { status });
   }
 }
 
@@ -69,7 +71,9 @@ export async function POST(request: NextRequest) {
     const { candidateId, roleId, regenerateAll } = body;
 
     if (regenerateAll) {
-      // Regenerate all matches (expensive operation)
+      // Regenerate all matches requires admin role
+      await requireRole(["admin"]);
+
       const roles = await prisma.role.findMany();
 
       for (const role of roles) {
@@ -78,6 +82,9 @@ export async function POST(request: NextRequest) {
 
       return NextResponse.json({ message: "All matches regenerated" });
     }
+
+    // Non-regenerateAll operations require recruiter or admin
+    await requireRole(["recruiter", "admin"]);
 
     if (candidateId) {
       const matches = await generateMatchesForCandidate(candidateId);
@@ -94,10 +101,8 @@ export async function POST(request: NextRequest) {
       { status: 400 }
     );
   } catch (error) {
+    const { error: message, status } = handleAuthError(error);
     console.error("Error generating matches:", error);
-    return NextResponse.json(
-      { error: "Failed to generate matches" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: message }, { status });
   }
 }

@@ -10,6 +10,10 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ============================================
+// Enums
+// ============================================
+
 enum CandidateStatus {
   SOURCED
   CONTACTED
@@ -19,13 +23,35 @@ enum CandidateStatus {
   REJECTED
 }
 
+enum InterviewStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  EXPIRED
+}
+
+enum InterviewType {
+  TECHNICAL
+  BEHAVIORAL
+  DOMAIN_EXPERT
+  LANGUAGE
+  CASE_STUDY
+}
+
+// ============================================
+// Core Models
+// ============================================
+
 model Recruiter {
-  id         String      @id @default(uuid())
-  name       String
-  email      String      @unique
-  createdAt  DateTime    @default(now())
-  updatedAt  DateTime    @updatedAt
-  candidates Candidate[]
+  id              String      @id @default(uuid())
+  supabaseUserId  String?     @unique
+  name            String
+  email           String      @unique
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  candidates      Candidate[]
+  interviews      Interview[] @relation("ScheduledByRecruiter")
 }
 
 model Candidate {
@@ -53,11 +79,18 @@ model Candidate {
   location         String?
   notes            Note[]
   matches          Match[]
+  interviews       Interview[]
+
+  // Aria interview flags
+  ariaInterviewed  Boolean         @default(false)
+  ariaOverallScore Float?
+
   createdAt        DateTime        @default(now())
   updatedAt        DateTime        @updatedAt
 
   @@index([recruiterId])
   @@index([status])
+  @@index([ariaInterviewed])
 }
 
 model Note {
@@ -134,4 +167,74 @@ model Match {
   @@index([candidateId])
   @@index([roleId])
   @@index([fitScore])
+}
+
+// ============================================
+// Aria AI Interview System
+// ============================================
+
+model Interview {
+  id              String            @id @default(uuid())
+  candidateId     String
+  candidate       Candidate         @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  scheduledBy     String
+  recruiter       Recruiter         @relation("ScheduledByRecruiter", fields: [scheduledBy], references: [id])
+  status          InterviewStatus   @default(PENDING)
+  type            InterviewType     @default(TECHNICAL)
+  duration        Int?              // duration in seconds
+  startedAt       DateTime?
+  completedAt     DateTime?
+
+  // Gemini AI session data
+  geminiSessionId String?
+  transcript      Json?             // [{role, content, timestamp}]
+  videoUrl        String?
+  audioUrl        String?
+
+  // Composite score (denormalized from report)
+  overallScore    Float?
+
+  // Detailed report (1:1)
+  report          InterviewReport?
+
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  @@index([candidateId])
+  @@index([scheduledBy])
+  @@index([status])
+}
+
+model InterviewReport {
+  id              String    @id @default(uuid())
+  interviewId     String    @unique
+  interview       Interview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+
+  // Per-skill ratings (micro1-style)
+  // [{skill: string, rating: 0-10, description: string, evidence: string}]
+  technicalSkills Json
+
+  // Soft skills assessment
+  // [{skill: string, rating: 0-10, description: string}]
+  softSkills      Json
+
+  // Dimension scores (mercor-style, 0-100)
+  domainExpertise     Float?
+  clarityStructure    Float?
+  problemSolving      Float?
+  communicationScore  Float?
+  measurableImpact    Float?
+
+  // AI-generated narrative
+  summary         String    @db.Text   // Executive summary for recruiters
+  strengths       Json                 // [string]
+  areasToImprove  Json                 // [string]
+  recommendation  String?              // STRONG_YES | YES | MAYBE | NO | STRONG_NO
+  hiringAdvice    String?   @db.Text   // Detailed guidance for recruiter
+
+  // Integrity / proctoring (future)
+  integrityScore  Float?
+  integrityFlags  Json?               // [{type, description, timestamp}]
+
+  createdAt       DateTime  @default(now())
 }

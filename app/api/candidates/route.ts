@@ -2,12 +2,19 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { generateCandidateEmbedding } from "@/lib/matching-engine";
 import { generateCandidateSummary } from "@/lib/openai";
+import {
+  getAuthenticatedUser,
+  getRecruiterForUser,
+  requireRole,
+  handleAuthError,
+} from "@/lib/auth";
 
 export async function GET(request: NextRequest) {
   try {
+    const { user, profile } = await getAuthenticatedUser();
+
     const searchParams = request.nextUrl.searchParams;
     const status = searchParams.get("status");
-    const recruiterId = searchParams.get("recruiterId");
 
     const where: any = {};
 
@@ -15,9 +22,16 @@ export async function GET(request: NextRequest) {
       where.status = status;
     }
 
-    if (recruiterId) {
-      where.recruiterId = recruiterId;
+    // Recruiters can only see their own candidates; admins see all
+    if (profile?.role === "recruiter") {
+      const recruiter = await getRecruiterForUser(
+        user.id,
+        profile.email,
+        `${profile.first_name} ${profile.last_name}`
+      );
+      where.recruiterId = recruiter.id;
     }
+    // Admins: no recruiterId filter (see all)
 
     const candidates = await prisma.candidate.findMany({
       where,
@@ -50,16 +64,16 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(candidates);
   } catch (error) {
+    const { error: message, status } = handleAuthError(error);
     console.error("Error fetching candidates:", error);
-    return NextResponse.json(
-      { error: "Failed to fetch candidates" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: message }, { status });
   }
 }
 
 export async function POST(request: NextRequest) {
   try {
+    const { user, profile } = await requireRole(["recruiter", "admin"]);
+
     const body = await request.json();
 
     const {
@@ -75,8 +89,7 @@ export async function POST(request: NextRequest) {
       industries,
       resumeText,
       resumeUrl,
-      status,
-      recruiterId,
+      status: candidateStatus,
       linkedinProfileData,
       headline,
       location,
@@ -89,19 +102,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Create or get recruiter
-    let recruiter = await prisma.recruiter.findUnique({
-      where: { email: recruiterId || "default@example.com" },
-    });
-
-    if (!recruiter) {
-      recruiter = await prisma.recruiter.create({
-        data: {
-          name: "Default Recruiter",
-          email: recruiterId || "default@example.com",
-        },
-      });
-    }
+    // Auto-set recruiter from session — never from request body
+    const recruiter = await getRecruiterForUser(
+      user.id,
+      profile.email,
+      `${profile.first_name} ${profile.last_name}`
+    );
 
     // Generate AI summary
     let aiSummary = "";
@@ -135,7 +141,7 @@ export async function POST(request: NextRequest) {
         industries: industries || [],
         resumeText,
         resumeUrl,
-        status: status || "SOURCED",
+        status: candidateStatus || "SOURCED",
         recruiterId: recruiter.id,
         aiSummary,
         headline,
@@ -154,10 +160,8 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(candidate, { status: 201 });
   } catch (error) {
+    const { error: message, status } = handleAuthError(error);
     console.error("Error creating candidate:", error);
-    return NextResponse.json(
-      { error: "Failed to create candidate" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: message }, { status });
   }
 }

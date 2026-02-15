@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { requireRole, handleAuthError } from "@/lib/auth";
 
 export async function GET() {
   try {
+    // Require recruiter or admin role
+    await requireRole(["recruiter", "admin"]);
+
     const clients = await prisma.client.findMany({
       include: {
         roles: {
@@ -20,16 +24,17 @@ export async function GET() {
 
     return NextResponse.json(clients);
   } catch (error) {
+    const { error: message, status } = handleAuthError(error);
     console.error("Error fetching clients:", error);
-    return NextResponse.json(
-      { error: "Failed to fetch clients" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: message }, { status });
   }
 }
 
 export async function POST(request: NextRequest) {
   try {
+    // Require recruiter or admin role
+    await requireRole(["recruiter", "admin"]);
+
     const body = await request.json();
 
     const {
@@ -77,10 +82,8 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(client, { status: 201 });
   } catch (error) {
+    const { error: message, status } = handleAuthError(error);
     console.error("Error creating client:", error);
-    return NextResponse.json(
-      { error: "Failed to create client" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: message }, { status });
   }
 }

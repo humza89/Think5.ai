@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { generateRoleEmbedding, generateMatchesForRole } from "@/lib/matching-engine";
+import { requireRole, handleAuthError } from "@/lib/auth";
 
 export async function GET(request: NextRequest) {
   try {
+    // Require recruiter or admin role
+    await requireRole(["recruiter", "admin"]);
+
     const searchParams = request.nextUrl.searchParams;
     const clientId = searchParams.get("clientId");
 
@@ -34,16 +38,17 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(roles);
   } catch (error) {
+    const { error: message, status } = handleAuthError(error);
     console.error("Error fetching roles:", error);
-    return NextResponse.json(
-      { error: "Failed to fetch roles" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: message }, { status });
   }
 }
 
 export async function POST(request: NextRequest) {
   try {
+    // Require recruiter or admin role
+    await requireRole(["recruiter", "admin"]);
+
     const body = await request.json();
 
     const {
@@ -89,10 +94,8 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(role, { status: 201 });
   } catch (error) {
+    const { error: message, status } = handleAuthError(error);
     console.error("Error creating role:", error);
-    return NextResponse.json(
-      { error: "Failed to create role" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: message }, { status });
   }
 }

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { requireCandidateAccess, handleAuthError } from "@/lib/auth";
 
 export async function GET(
   request: NextRequest,
@@ -7,6 +8,9 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
+
+    // Auth + ownership check (recruiters: own candidates only, admins: all)
+    await requireCandidateAccess(id);
 
     const candidate = await prisma.candidate.findUnique({
       where: { id },
@@ -35,6 +39,14 @@ export async function GET(
             fitScore: "desc",
           },
         },
+        interviews: {
+          include: {
+            report: true,
+          },
+          orderBy: {
+            createdAt: "desc",
+          },
+        },
       },
     });
 
@@ -47,11 +59,9 @@ export async function GET(
 
     return NextResponse.json(candidate);
   } catch (error) {
+    const { error: message, status } = handleAuthError(error);
     console.error("Error fetching candidate:", error);
-    return NextResponse.json(
-      { error: "Failed to fetch candidate" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: message }, { status });
   }
 }
 
@@ -61,7 +71,14 @@ export async function PATCH(
 ) {
   try {
     const { id } = await params;
+
+    // Auth + ownership check
+    await requireCandidateAccess(id);
+
     const body = await request.json();
+
+    // Prevent overriding recruiterId via body
+    delete body.recruiterId;
 
     const candidate = await prisma.candidate.update({
       where: { id },
@@ -70,11 +87,9 @@ export async function PATCH(
 
     return NextResponse.json(candidate);
   } catch (error) {
+    const { error: message, status } = handleAuthError(error);
     console.error("Error updating candidate:", error);
-    return NextResponse.json(
-      { error: "Failed to update candidate" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: message }, { status });
   }
 }
 
@@ -85,16 +100,17 @@ export async function DELETE(
   try {
     const { id } = await params;
 
+    // Auth + ownership check
+    await requireCandidateAccess(id);
+
     await prisma.candidate.delete({
       where: { id },
     });
 
     return NextResponse.json({ success: true });
   } catch (error) {
+    const { error: message, status } = handleAuthError(error);
     console.error("Error deleting candidate:", error);
-    return NextResponse.json(
-      { error: "Failed to delete candidate" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: message }, { status });
   }
 }
