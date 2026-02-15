@@ -2,10 +2,11 @@ import Link from "next/link";
 import Image from "next/image";
 import { prisma } from "@/lib/prisma";
 import { pickAvatar } from "@/lib/candidate-image";
+import type { Candidate } from "@prisma/client";
 
 export const dynamic = "force-dynamic";
 
-async function load() {
+async function load(): Promise<Candidate[]> {
   return prisma.candidate.findMany({
     orderBy: { updatedAt: "desc" },
     take: 50,
