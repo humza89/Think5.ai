@@ -38,7 +38,7 @@ const IntelligencePlatform = () => {
         <div className="relative flex justify-center mb-8">
           <div className="relative w-full max-w-3xl aspect-[16/10]">
             <Image
-              src="/uploads/Robot think5.png"
+              src="/uploads/Think5 Intelligence platform image.png"
               alt="Think5 Intelligence Platform"
               fill
               className="object-contain"
