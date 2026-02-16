@@ -103,9 +103,16 @@ IMPORTANT:
 - The summary and hiringAdvice should be actionable and written for a busy recruiter.
 - Return ONLY valid JSON. No markdown, no code blocks, no extra text.`;
 
+interface IntegrityEvent {
+  type: string;
+  description: string;
+  timestamp: string;
+}
+
 export async function generateInterviewReport(
   transcript: TranscriptEntry[],
-  candidateProfile: CandidateProfile
+  candidateProfile: CandidateProfile,
+  integrityEvents?: IntegrityEvent[] | null
 ): Promise<InterviewReportData> {
   if (!process.env.GEMINI_API_KEY) {
     throw new Error("GEMINI_API_KEY is not configured");
@@ -137,9 +144,32 @@ export async function generateInterviewReport(
     .filter(Boolean)
     .join("\n");
 
+  // Format integrity events if available
+  let integritySection = "";
+  if (integrityEvents && integrityEvents.length > 0) {
+    const eventsStr = integrityEvents
+      .map((e) => `- [${e.type}] ${e.description} (${e.timestamp})`)
+      .join("\n");
+    integritySection = `\n\nINTEGRITY EVENTS (proctoring data collected during interview):\n${eventsStr}\n\nINTEGRITY SCORING GUIDELINES:
+Start at 100 and deduct based on events:
+- tab_switch: -5 per occurrence (candidate left the interview tab)
+- focus_lost: -3 per occurrence (window lost focus)
+- paste_detected: -10 per occurrence (attempted to paste content — strong cheating indicator)
+- copy_detected: -2 per occurrence (copied text from interview)
+- right_click: -2 per occurrence (attempted right-click context menu)
+- devtools_attempt: -15 per occurrence (attempted to open browser developer tools — strong cheating indicator)
+- fullscreen_exit: -8 per occurrence (exited fullscreen mode)
+- keyboard_shortcut: -3 per occurrence (suspicious keyboard shortcut detected)
+- webcam_lost: -5 per occurrence (webcam disconnected)
+- webcam_denied: -10 (refused webcam monitoring)
+
+Minimum score is 0. Populate integrityFlags with each flagged event in format: [{type, description, timestamp}].
+If 3+ paste or devtools events, add a meta-flag: {type: "high_risk", description: "Multiple cheating indicators detected"}.`;
+  }
+
   const prompt = REPORT_GENERATION_PROMPT
     .replace("{candidateProfile}", profileStr)
-    .replace("{transcript}", formattedTranscript);
+    .replace("{transcript}", formattedTranscript) + integritySection;
 
   const result = await model.generateContent(prompt);
   const response = result.response;

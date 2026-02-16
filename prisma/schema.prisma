@@ -185,14 +185,21 @@ model Interview {
   startedAt       DateTime?
   completedAt     DateTime?
 
-  // Gemini AI session data
-  geminiSessionId String?
+  // Interview session data
   transcript      Json?             // [{role, content, timestamp}]
-  videoUrl        String?
-  audioUrl        String?
+  videoUrl        String?           // Future: webcam recording URL
+  audioUrl        String?           // Future: audio recording URL
 
   // Composite score (denormalized from report)
   overallScore    Float?
+
+  // Candidate access (unauthenticated interview room)
+  accessToken          String?           @unique
+  accessTokenExpiresAt DateTime?
+  invitedEmail         String?
+
+  // Proctoring events collected during interview
+  integrityEvents Json?             // [{type, description, timestamp}]
 
   // Detailed report (1:1)
   report          InterviewReport?
@@ -232,9 +239,16 @@ model InterviewReport {
   recommendation  String?              // STRONG_YES | YES | MAYBE | NO | STRONG_NO
   hiringAdvice    String?   @db.Text   // Detailed guidance for recruiter
 
-  // Integrity / proctoring (future)
+  // Composite score (denormalized from Gemini analysis)
+  overallScore    Float?
+
+  // Integrity / proctoring
   integrityScore  Float?
   integrityFlags  Json?               // [{type, description, timestamp}]
+
+  // Shareable report link (F2)
+  shareToken      String?   @unique
+  shareExpiresAt  DateTime?
 
   createdAt       DateTime  @default(now())
 }

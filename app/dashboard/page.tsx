@@ -74,6 +74,12 @@ export default async function DashboardPage() {
                 >
                   Clients
                 </Link>
+                <Link
+                  href="/interviews"
+                  className="text-gray-600 hover:text-gray-900 pb-4"
+                >
+                  Interviews
+                </Link>
               </nav>
             </div>
           </div>

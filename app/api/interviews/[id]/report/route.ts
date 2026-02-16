@@ -1,51 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import {
-  getAuthenticatedUser,
-  getRecruiterForUser,
+  requireInterviewAccess,
   handleAuthError,
-  AuthError,
 } from "@/lib/auth";
-
-async function requireInterviewAccess(interviewId: string) {
-  const { user, profile } = await getAuthenticatedUser();
-
-  if (!profile || !["recruiter", "admin"].includes(profile.role)) {
-    throw new AuthError("Forbidden: insufficient permissions", 403);
-  }
-
-  const interview = await prisma.interview.findUnique({
-    where: { id: interviewId },
-    select: { scheduledBy: true, candidateId: true },
-  });
-
-  if (!interview) {
-    throw new AuthError("Interview not found", 404);
-  }
-
-  if (profile.role === "admin") {
-    return { user, profile, interview };
-  }
-
-  const recruiter = await getRecruiterForUser(
-    user.id,
-    profile.email,
-    `${profile.first_name} ${profile.last_name}`
-  );
-
-  if (interview.scheduledBy !== recruiter.id) {
-    const candidate = await prisma.candidate.findUnique({
-      where: { id: interview.candidateId },
-      select: { recruiterId: true },
-    });
-
-    if (!candidate || candidate.recruiterId !== recruiter.id) {
-      throw new AuthError("Forbidden: you do not have access to this interview", 403);
-    }
-  }
-
-  return { user, profile, interview };
-}
 
 // GET - Get the report for an interview
 export async function GET(
@@ -108,7 +66,7 @@ export async function POST(
 
     await requireInterviewAccess(id);
 
-    // Get interview with transcript
+    // Get interview with transcript and integrity events
     const interview = await prisma.interview.findUnique({
       where: { id },
       include: {
@@ -162,7 +120,8 @@ export async function POST(
           skills: interview.candidate.skills as string[],
           experienceYears: interview.candidate.experienceYears,
           resumeText: interview.candidate.resumeText,
-        }
+        },
+        (interview as any).integrityEvents as any[] | null
       );
     } catch (geminiError) {
       console.error("Gemini report generation failed:", geminiError);
@@ -188,6 +147,7 @@ export async function POST(
         areasToImprove: reportData.areasToImprove,
         recommendation: reportData.recommendation,
         hiringAdvice: reportData.hiringAdvice,
+        overallScore: reportData.overallScore,
         integrityScore: reportData.integrityScore,
         integrityFlags: reportData.integrityFlags,
       },

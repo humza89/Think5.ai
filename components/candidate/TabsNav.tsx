@@ -6,6 +6,7 @@ const tabs = [
   { slug: "overview",  label: "Overview" },
   { slug: "linkedin",  label: "LinkedIn" },
   { slug: "resume",    label: "Resume" },
+  { slug: "interviews", label: "Interviews" },
   { slug: "notes",     label: "Private notes" },
 ];
 

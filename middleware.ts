@@ -3,7 +3,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 
 // Routes that don't require authentication
 const publicRoutes = ['/', '/auth/signin', '/auth/signup', '/auth/verify', '/auth/callback'];
-const publicPrefixes = ['/api/auth/', '/_next/', '/uploads/', '/Logos/', '/favicon'];
+const publicPrefixes = ['/api/auth/', '/_next/', '/uploads/', '/Logos/', '/favicon', '/interview', '/reports/shared'];
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -47,7 +47,12 @@ export async function middleware(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   // For API routes, return 401 if not authenticated
+  // Exception: interview stream/validate routes use accessToken auth instead
   if (pathname.startsWith('/api/')) {
+    const interviewPublicPattern = /^\/api\/interviews\/[^/]+\/(stream|validate|report-status)$/;
+    if (interviewPublicPattern.test(pathname)) {
+      return supabaseResponse;
+    }
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }

@@ -289,3 +289,43 @@
     transform: rotate(360deg);
   }
 }
+
+/* Print styles for report PDF export */
+@media print {
+  .no-print,
+  header,
+  nav,
+  .no-print * {
+    display: none !important;
+  }
+
+  body {
+    background: white !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  main {
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  .max-w-5xl {
+    max-width: 100% !important;
+  }
+
+  /* Ensure cards don't break across pages */
+  [class*="rounded-lg"],
+  [class*="rounded-xl"] {
+    break-inside: avoid;
+  }
+
+  /* Force background colors in print */
+  .bg-green-500,
+  .bg-blue-500,
+  .bg-yellow-500,
+  .bg-red-500 {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}

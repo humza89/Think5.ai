@@ -1,54 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import {
-  getAuthenticatedUser,
-  getRecruiterForUser,
+  requireInterviewAccess,
   handleAuthError,
-  AuthError,
 } from "@/lib/auth";
-
-async function requireInterviewAccess(interviewId: string) {
-  const { user, profile } = await getAuthenticatedUser();
-
-  if (!profile || !["recruiter", "admin"].includes(profile.role)) {
-    throw new AuthError("Forbidden: insufficient permissions", 403);
-  }
-
-  const interview = await prisma.interview.findUnique({
-    where: { id: interviewId },
-    select: { scheduledBy: true, candidateId: true },
-  });
-
-  if (!interview) {
-    throw new AuthError("Interview not found", 404);
-  }
-
-  // Admins can access any interview
-  if (profile.role === "admin") {
-    return { user, profile, interview };
-  }
-
-  // Recruiters: must have scheduled the interview OR own the candidate
-  const recruiter = await getRecruiterForUser(
-    user.id,
-    profile.email,
-    `${profile.first_name} ${profile.last_name}`
-  );
-
-  if (interview.scheduledBy !== recruiter.id) {
-    // Also check if recruiter owns the candidate
-    const candidate = await prisma.candidate.findUnique({
-      where: { id: interview.candidateId },
-      select: { recruiterId: true },
-    });
-
-    if (!candidate || candidate.recruiterId !== recruiter.id) {
-      throw new AuthError("Forbidden: you do not have access to this interview", 403);
-    }
-  }
-
-  return { user, profile, interview };
-}
 
 // GET - Get interview details with report
 export async function GET(
@@ -112,7 +67,7 @@ export async function PATCH(
     await requireInterviewAccess(id);
 
     const body = await request.json();
-    const { status: newStatus, transcript, geminiSessionId, duration, overallScore } = body;
+    const { status: newStatus, transcript, duration, overallScore } = body;
 
     const updateData: any = {};
 
@@ -145,7 +100,6 @@ export async function PATCH(
     }
 
     if (transcript !== undefined) updateData.transcript = transcript;
-    if (geminiSessionId !== undefined) updateData.geminiSessionId = geminiSessionId;
     if (duration !== undefined) updateData.duration = duration;
     if (overallScore !== undefined) updateData.overallScore = overallScore;
 

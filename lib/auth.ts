@@ -133,6 +133,50 @@ export async function requireCandidateAccess(candidateId: string) {
 }
 
 /**
+ * Verify that the authenticated user has access to a specific interview.
+ * Admins can access any interview. Recruiters must have scheduled it or own the candidate.
+ */
+export async function requireInterviewAccess(interviewId: string) {
+  const { user, profile } = await getAuthenticatedUser();
+
+  if (!profile || !['recruiter', 'admin'].includes(profile.role)) {
+    throw new AuthError('Forbidden: insufficient permissions', 403);
+  }
+
+  const interview = await prisma.interview.findUnique({
+    where: { id: interviewId },
+    select: { scheduledBy: true, candidateId: true },
+  });
+
+  if (!interview) {
+    throw new AuthError('Interview not found', 404);
+  }
+
+  if (profile.role === 'admin') {
+    return { user, profile, interview };
+  }
+
+  const recruiter = await getRecruiterForUser(
+    user.id,
+    profile.email,
+    `${profile.first_name} ${profile.last_name}`
+  );
+
+  if (interview.scheduledBy !== recruiter.id) {
+    const candidate = await prisma.candidate.findUnique({
+      where: { id: interview.candidateId },
+      select: { recruiterId: true },
+    });
+
+    if (!candidate || candidate.recruiterId !== recruiter.id) {
+      throw new AuthError('Forbidden: you do not have access to this interview', 403);
+    }
+  }
+
+  return { user, profile, interview };
+}
+
+/**
  * Helper to handle AuthError in API route handlers.
  */
 export function handleAuthError(error: unknown) {

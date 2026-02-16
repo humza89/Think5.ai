@@ -101,6 +101,13 @@ export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
     const status = searchParams.get("status");
     const type = searchParams.get("type");
+    const search = searchParams.get("search");
+    const page = parseInt(searchParams.get("page") || "1", 10);
+    const pageSize = parseInt(searchParams.get("pageSize") || "20", 10);
+    const sortBy = searchParams.get("sortBy") || "createdAt";
+    const sortOrder = searchParams.get("sortOrder") || "desc";
+    const dateFrom = searchParams.get("dateFrom");
+    const dateTo = searchParams.get("dateTo");
 
     const where: any = {};
 
@@ -122,39 +129,75 @@ export async function GET(request: NextRequest) {
       where.type = type;
     }
 
-    const interviews = await prisma.interview.findMany({
-      where,
-      include: {
-        candidate: {
-          select: {
-            id: true,
-            fullName: true,
-            email: true,
-            currentTitle: true,
-            profileImage: true,
-          },
-        },
-        recruiter: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-          },
-        },
-        report: {
-          select: {
-            id: true,
-            recommendation: true,
-            summary: true,
-          },
-        },
-      },
-      orderBy: {
-        createdAt: "desc",
-      },
-    });
+    // E2: Search by candidate name
+    if (search) {
+      where.candidate = {
+        fullName: { contains: search, mode: "insensitive" },
+      };
+    }
 
-    return NextResponse.json(interviews);
+    // E4: Date range filter
+    if (dateFrom || dateTo) {
+      where.createdAt = {};
+      if (dateFrom) where.createdAt.gte = new Date(dateFrom);
+      if (dateTo) {
+        const end = new Date(dateTo);
+        end.setHours(23, 59, 59, 999);
+        where.createdAt.lte = end;
+      }
+    }
+
+    // E3: Sort options
+    const validSortFields = ["createdAt", "overallScore", "status"];
+    const orderByField = validSortFields.includes(sortBy) ? sortBy : "createdAt";
+    const order = sortOrder === "asc" ? "asc" : "desc";
+
+    // E1: Pagination
+    const skip = (page - 1) * pageSize;
+    const take = Math.min(pageSize, 100); // Cap at 100
+
+    const [interviews, total] = await Promise.all([
+      prisma.interview.findMany({
+        where,
+        include: {
+          candidate: {
+            select: {
+              id: true,
+              fullName: true,
+              email: true,
+              currentTitle: true,
+              profileImage: true,
+            },
+          },
+          recruiter: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+            },
+          },
+          report: {
+            select: {
+              id: true,
+              overallScore: true,
+              recommendation: true,
+              summary: true,
+            },
+          },
+        },
+        orderBy: { [orderByField]: order } as any,
+        skip,
+        take,
+      }),
+      prisma.interview.count({ where }),
+    ]);
+
+    return NextResponse.json({
+      interviews,
+      total,
+      page,
+      pageSize: take,
+    });
   } catch (error) {
     const { error: message, status } = handleAuthError(error);
     console.error("Error fetching interviews:", error);
