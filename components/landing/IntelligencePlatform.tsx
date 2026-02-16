@@ -35,7 +35,7 @@ const IntelligencePlatform = () => {
         </div>
 
         {/* Central Visual */}
-        <div className="relative flex justify-center mb-8">
+        <div className="relative flex justify-center">
           <div className="relative w-full max-w-3xl aspect-[16/10]">
             <Image
               src="/uploads/Think5 Intelligence platform image.png"
@@ -48,7 +48,7 @@ const IntelligencePlatform = () => {
         </div>
 
         {/* Feature Cards with Connectors */}
-        <div className="grid md:grid-cols-3 gap-0 max-w-5xl mx-auto">
+        <div className="grid md:grid-cols-3 gap-0 max-w-5xl mx-auto -mt-28">
           {features.map((feature, index) => (
             <div key={feature.name} className="flex flex-col items-center text-center px-6">
               {/* Dotted connector line */}
