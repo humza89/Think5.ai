@@ -6,22 +6,22 @@ import { Twitter, Linkedin, Github } from "lucide-react";
 const Footer = () => {
   const footerLinks = {
     Platform: [
-      { name: "AI Interviewer", href: "/aria" },
-      { name: "Expert Network", href: "/experts" },
-      { name: "RLHF Services", href: "/services/rlhf" },
-      { name: "API & SDK", href: "/developers" },
+      { name: "Product", href: "/product" },
+      { name: "Aria", href: "/product#aria" },
+      { name: "Nexus", href: "/product#nexus" },
+      { name: "Forge", href: "/product#forge" },
     ],
     Company: [
       { name: "About", href: "/about" },
       { name: "Careers", href: "/careers" },
       { name: "Blog", href: "/blog" },
-      { name: "Press", href: "/press" },
+      { name: "Research", href: "/research" },
     ],
     Resources: [
       { name: "Documentation", href: "/docs" },
-      { name: "Research", href: "/research" },
       { name: "Case Studies", href: "/case-studies" },
-      { name: "Support", href: "/support" },
+      { name: "Contact", href: "/contact" },
+      { name: "Support", href: "/contact" },
     ],
     Legal: [
       { name: "Privacy Policy", href: "/privacy" },
