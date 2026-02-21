@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/lib/supabase";
 import { Mail, Lock, ArrowLeft, Eye, EyeOff } from "lucide-react";
 import { AnimatedTestimonials } from "@/components/ui/animated-testimonials";
 
@@ -70,7 +71,23 @@ export default function SignInPage() {
       return;
     }
 
-    router.push("/dashboard");
+    // Fetch profile to determine role-based redirect
+    let redirectTo = "/dashboard";
+    if (supabase) {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("role")
+          .eq("id", user.id)
+          .single();
+        if (profile?.role === "candidate") {
+          redirectTo = "/candidate/dashboard";
+        }
+      }
+    }
+
+    router.push(redirectTo);
   };
 
   return (

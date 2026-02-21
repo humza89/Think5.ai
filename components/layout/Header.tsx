@@ -70,7 +70,7 @@ const Header = () => {
                   {getRoleLabel(profile.role)}
                 </span>
               )}
-              <Link href="/dashboard">
+              <Link href={profile?.role === "candidate" ? "/candidate/dashboard" : "/dashboard"}>
                 <Button
                   variant="ghost"
                   size="sm"
