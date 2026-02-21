@@ -106,10 +106,10 @@ export async function POST(request: NextRequest) {
       // Continue anyway - user can request new verification email
     }
 
-    // Create profile
+    // Create profile (upsert to handle race with on_auth_user_created trigger)
     const { error: profileError } = await supabase
       .from('profiles')
-      .insert({
+      .upsert({
         id: authData.user.id,
         email: email.toLowerCase(),
         first_name: firstName,
@@ -117,7 +117,7 @@ export async function POST(request: NextRequest) {
         role,
         avatar_url: null,
         email_verified: false,
-      });
+      }, { onConflict: 'id' });
 
     if (profileError) {
       console.error('Profile creation error:', profileError);
