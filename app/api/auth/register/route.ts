@@ -59,7 +59,7 @@ export async function POST(request: NextRequest) {
       .from('profiles')
       .select('id')
       .eq('email', email.toLowerCase())
-      .single();
+      .maybeSingle();
 
     if (existingUser) {
       return NextResponse.json(
@@ -95,11 +95,15 @@ export async function POST(request: NextRequest) {
     // Ensure profile exists with correct data
     // The on_auth_user_created trigger fires during createUser() and auto-creates
     // the profile. We verify it exists and update, or insert as fallback.
-    const { data: existingProfile } = await supabase
+    const { data: existingProfile, error: selectError } = await supabase
       .from('profiles')
       .select('id')
       .eq('id', authData.user.id)
-      .single();
+      .maybeSingle();
+
+    if (selectError) {
+      console.error('Profile select error:', selectError);
+    }
 
     let profileError: unknown = null;
 
@@ -117,8 +121,10 @@ export async function POST(request: NextRequest) {
         })
         .eq('id', authData.user.id);
       profileError = updateError;
+      if (updateError) console.error('Profile update failed:', updateError);
     } else {
       // Fallback: trigger didn't fire — insert manually
+      console.log('Profile not found after createUser, inserting manually for:', authData.user.id);
       const { error: insertError } = await supabase
         .from('profiles')
         .insert({
@@ -131,13 +137,16 @@ export async function POST(request: NextRequest) {
           email_verified: false,
         });
       profileError = insertError;
+      if (insertError) console.error('Profile insert failed:', insertError);
     }
 
     if (profileError) {
-      console.error('Profile error:', profileError);
       await supabase.auth.admin.deleteUser(authData.user.id);
+      const errDetail = profileError && typeof profileError === 'object' && 'message' in profileError
+        ? (profileError as { message: string }).message
+        : 'Unknown error';
       return NextResponse.json(
-        { error: 'Failed to create user profile' },
+        { error: `Failed to create user profile: ${errDetail}` },
         { status: 500 }
       );
     }
