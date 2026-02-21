@@ -92,7 +92,57 @@ export async function POST(request: NextRequest) {
     const verificationToken = crypto.randomBytes(32).toString('hex');
     const tokenExpiry = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
 
-    // Store verification token in database
+    // Ensure profile exists with correct data
+    // The on_auth_user_created trigger fires during createUser() and auto-creates
+    // the profile. We verify it exists and update, or insert as fallback.
+    const { data: existingProfile } = await supabase
+      .from('profiles')
+      .select('id')
+      .eq('id', authData.user.id)
+      .single();
+
+    let profileError: unknown = null;
+
+    if (existingProfile) {
+      // Normal path: trigger created the profile — update with canonical values
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update({
+          email: email.toLowerCase(),
+          first_name: firstName,
+          last_name: lastName,
+          role,
+          avatar_url: null,
+          email_verified: false,
+        })
+        .eq('id', authData.user.id);
+      profileError = updateError;
+    } else {
+      // Fallback: trigger didn't fire — insert manually
+      const { error: insertError } = await supabase
+        .from('profiles')
+        .insert({
+          id: authData.user.id,
+          email: email.toLowerCase(),
+          first_name: firstName,
+          last_name: lastName,
+          role,
+          avatar_url: null,
+          email_verified: false,
+        });
+      profileError = insertError;
+    }
+
+    if (profileError) {
+      console.error('Profile error:', profileError);
+      await supabase.auth.admin.deleteUser(authData.user.id);
+      return NextResponse.json(
+        { error: 'Failed to create user profile' },
+        { status: 500 }
+      );
+    }
+
+    // Store verification token (profile guaranteed to exist now)
     const { error: tokenError } = await supabase
       .from('verification_tokens')
       .insert({
@@ -104,29 +154,6 @@ export async function POST(request: NextRequest) {
     if (tokenError) {
       console.error('Token storage error:', tokenError);
       // Continue anyway - user can request new verification email
-    }
-
-    // Create profile (upsert to handle race with on_auth_user_created trigger)
-    const { error: profileError } = await supabase
-      .from('profiles')
-      .upsert({
-        id: authData.user.id,
-        email: email.toLowerCase(),
-        first_name: firstName,
-        last_name: lastName,
-        role,
-        avatar_url: null,
-        email_verified: false,
-      }, { onConflict: 'id' });
-
-    if (profileError) {
-      console.error('Profile creation error:', profileError);
-      // Delete auth user if profile creation fails
-      await supabase.auth.admin.deleteUser(authData.user.id);
-      return NextResponse.json(
-        { error: 'Failed to create user profile' },
-        { status: 500 }
-      );
     }
 
     // Send verification email
