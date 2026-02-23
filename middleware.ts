@@ -3,7 +3,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 
 // Routes that don't require authentication
 const publicRoutes = ['/', '/auth/signin', '/auth/signup', '/auth/verify', '/auth/callback'];
-const publicPrefixes = ['/api/auth/', '/_next/', '/uploads/', '/Logos/', '/favicon', '/interview', '/reports/shared'];
+const publicPrefixes = ['/api/auth/', '/api/health', '/_next/', '/uploads/', '/Logos/', '/favicon', '/interview', '/reports/shared'];
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;

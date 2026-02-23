@@ -4,7 +4,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/AuthContext";
-import { LogOut, User, LayoutDashboard } from "lucide-react";
+import { LogOut, User, LayoutDashboard, Briefcase } from "lucide-react";
+import { NotificationBell } from "@/components/notifications/NotificationBell";
 
 const Header = () => {
   const router = useRouter();
@@ -80,6 +81,19 @@ const Header = () => {
                   Dashboard
                 </Button>
               </Link>
+              {profile?.role && ["recruiter", "admin"].includes(profile.role) && (
+                <Link href="/jobs">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="rounded-full text-gray-600 hover:text-gray-900 hover:bg-gray-100"
+                  >
+                    <Briefcase className="w-4 h-4 mr-2" />
+                    Jobs
+                  </Button>
+                </Link>
+              )}
+              <NotificationBell />
               <button
                 onClick={handleSignOut}
                 className="flex items-center gap-2 px-4 py-2 text-sm text-gray-600 hover:text-gray-900 transition-colors rounded-full hover:bg-gray-100"

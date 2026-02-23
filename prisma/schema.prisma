@@ -39,6 +39,83 @@ enum InterviewType {
   CASE_STUDY
 }
 
+enum JobStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  CLOSED
+  FILLED
+}
+
+enum EmploymentType {
+  FULL_TIME
+  PART_TIME
+  CONTRACT
+  TEMP_TO_HIRE
+}
+
+enum RemoteType {
+  REMOTE
+  ONSITE
+  HYBRID
+}
+
+enum ApplicationStatus {
+  APPLIED
+  SCREENING
+  INTERVIEWING
+  SHORTLISTED
+  OFFERED
+  HIRED
+  REJECTED
+  WITHDRAWN
+}
+
+enum InvitationStatus {
+  PENDING
+  SENT
+  OPENED
+  ACCEPTED
+  COMPLETED
+  EXPIRED
+  DECLINED
+}
+
+enum NotificationType {
+  INTERVIEW_INVITE
+  APPLICATION_UPDATE
+  MATCH_ALERT
+  FEEDBACK_READY
+  SYSTEM
+}
+
+enum SkillImportance {
+  REQUIRED
+  PREFERRED
+  NICE_TO_HAVE
+}
+
+enum PassiveProfileStatus {
+  CREATED
+  INVITED
+  LINKED
+  EXPIRED
+}
+
+enum DocumentType {
+  RESUME
+  COVER_LETTER
+  CERTIFICATION
+  OTHER
+}
+
+enum ProctoringEventSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
 // ============================================
 // Core Models
 // ============================================
@@ -48,10 +125,22 @@ model Recruiter {
   supabaseUserId  String?     @unique
   name            String
   email           String      @unique
+  phone           String?
+  title           String?
+  department      String?
+  companyId       String?
+  company         Client?     @relation(fields: [companyId], references: [id])
   createdAt       DateTime    @default(now())
   updatedAt       DateTime    @updatedAt
-  candidates      Candidate[]
-  interviews      Interview[] @relation("ScheduledByRecruiter")
+
+  candidates            Candidate[]
+  interviews            Interview[]            @relation("ScheduledByRecruiter")
+  jobs                  Job[]
+  interviewTemplates    InterviewTemplate[]
+  interviewInvitations  InterviewInvitation[]
+  passiveProfiles       PassiveProfile[]
+
+  @@index([companyId])
 }
 
 model Candidate {
@@ -85,12 +174,23 @@ model Candidate {
   ariaInterviewed  Boolean         @default(false)
   ariaOverallScore Float?
 
+  // New relations
+  applications          Application[]
+  invitations           InterviewInvitation[]
+  documents             Document[]
+  candidateSkills       CandidateSkill[]
+  candidateExperiences  CandidateExperience[]
+  candidateEducation    CandidateEducation[]
+  certifications        CandidateCertification[]
+  notifications         Notification[]
+
   createdAt        DateTime        @default(now())
   updatedAt        DateTime        @updatedAt
 
   @@index([recruiterId])
   @@index([status])
   @@index([ariaInterviewed])
+  @@index([email])
 }
 
 model Note {
@@ -130,6 +230,9 @@ model Client {
   headquarters     String?
   specialties      Json?
   roles            Role[]
+  jobs             Job[]
+  recruiters       Recruiter[]
+  interviewTemplates InterviewTemplate[]
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 }
@@ -153,20 +256,119 @@ model Role {
 }
 
 model Match {
-  id          String    @id @default(uuid())
-  candidateId String
-  candidate   Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
-  roleId      String
-  role        Role      @relation(fields: [roleId], references: [id], onDelete: Cascade)
-  fitScore    Float
-  reasoning   String?   @db.Text
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  id                   String    @id @default(uuid())
+  candidateId          String
+  candidate            Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  roleId               String
+  role                 Role      @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  jobId                String?
+  job                  Job?      @relation(fields: [jobId], references: [id], onDelete: SetNull)
+  fitScore             Float
+  skillMatchScore      Float?
+  experienceMatchScore Float?
+  reasoning            String?   @db.Text
+  status               String?   @default("pending") // pending, reviewed, shortlisted, rejected
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
 
   @@unique([candidateId, roleId])
   @@index([candidateId])
   @@index([roleId])
+  @@index([jobId])
   @@index([fitScore])
+}
+
+// ============================================
+// Job Management System
+// ============================================
+
+model Job {
+  id              String         @id @default(uuid())
+  title           String
+  description     String         @db.Text
+  location        String?
+  department      String?
+  industry        String?
+  status          JobStatus      @default(DRAFT)
+  employmentType  EmploymentType @default(FULL_TIME)
+  remoteType      RemoteType     @default(ONSITE)
+  salaryMin       Float?
+  salaryMax       Float?
+  salaryCurrency  String?        @default("USD")
+  experienceMin   Int?
+  experienceMax   Int?
+  urgencyLevel    Int?           @default(3) // 1-5, 5 = most urgent
+  skillsRequired  Json           @default("[]")
+  embedding       Json?
+  postedAt        DateTime?
+  closesAt        DateTime?
+
+  // Relations
+  recruiterId     String
+  recruiter       Recruiter      @relation(fields: [recruiterId], references: [id])
+  companyId       String
+  company         Client         @relation(fields: [companyId], references: [id])
+  templateId      String?
+  template        InterviewTemplate? @relation(fields: [templateId], references: [id])
+
+  jobSkills       JobSkill[]
+  applications    Application[]
+  matches         Match[]
+  invitations     InterviewInvitation[]
+  interviews      Interview[]
+
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  @@index([recruiterId])
+  @@index([companyId])
+  @@index([status])
+  @@index([employmentType])
+  @@index([remoteType])
+  @@index([postedAt])
+}
+
+model JobSkill {
+  id            String          @id @default(uuid())
+  jobId         String
+  job           Job             @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  skillName     String
+  skillCategory String?
+  importance    SkillImportance @default(REQUIRED)
+  minYears      Int?
+  createdAt     DateTime        @default(now())
+
+  @@unique([jobId, skillName])
+  @@index([jobId])
+  @@index([skillName])
+}
+
+// ============================================
+// Application System
+// ============================================
+
+model Application {
+  id             String            @id @default(uuid())
+  candidateId    String
+  candidate      Candidate         @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  jobId          String
+  job            Job               @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  status         ApplicationStatus @default(APPLIED)
+  appliedAt      DateTime          @default(now())
+  source         String?           // organic, invited, imported, referral
+  coverLetterUrl String?
+  notes          String?           @db.Text
+  reviewedAt     DateTime?
+  reviewedBy     String?
+
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  @@unique([candidateId, jobId])
+  @@index([candidateId])
+  @@index([jobId])
+  @@index([status])
+  @@index([appliedAt])
 }
 
 // ============================================
@@ -179,6 +381,12 @@ model Interview {
   candidate       Candidate         @relation(fields: [candidateId], references: [id], onDelete: Cascade)
   scheduledBy     String
   recruiter       Recruiter         @relation("ScheduledByRecruiter", fields: [scheduledBy], references: [id])
+  jobId           String?
+  job             Job?              @relation(fields: [jobId], references: [id], onDelete: SetNull)
+  templateId      String?
+  template        InterviewTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  invitationId    String?           @unique
+  invitation      InterviewInvitation? @relation(fields: [invitationId], references: [id], onDelete: SetNull)
   status          InterviewStatus   @default(PENDING)
   type            InterviewType     @default(TECHNICAL)
   duration        Int?              // duration in seconds
@@ -204,12 +412,18 @@ model Interview {
   // Detailed report (1:1)
   report          InterviewReport?
 
+  // Structured responses and feedback
+  responses       InterviewResponse[]
+  feedback        InterviewFeedback[]
+  proctoringEvents ProctoringEvent[]
+
   createdAt       DateTime          @default(now())
   updatedAt       DateTime          @updatedAt
 
   @@index([candidateId])
   @@index([scheduledBy])
   @@index([status])
+  @@index([jobId])
 }
 
 model InterviewReport {
@@ -251,4 +465,259 @@ model InterviewReport {
   shareExpiresAt  DateTime?
 
   createdAt       DateTime  @default(now())
+}
+
+// ============================================
+// Interview Templates & Invitations
+// ============================================
+
+model InterviewTemplate {
+  id              String    @id @default(uuid())
+  name            String
+  description     String?   @db.Text
+  roleType        String?   // e.g. "Software Engineer", "Electrician"
+  durationMinutes Int       @default(30)
+  questions       Json      @default("[]") // [{text, type, category, followUpDepth}]
+  aiConfig        Json      @default("{}") // {personality, followUpDepth, language, antiCheatLevel}
+  isDefault       Boolean   @default(false)
+
+  recruiterId     String?
+  recruiter       Recruiter? @relation(fields: [recruiterId], references: [id])
+  companyId       String?
+  company         Client?   @relation(fields: [companyId], references: [id])
+
+  jobs            Job[]
+  interviews      Interview[]
+  invitations     InterviewInvitation[]
+
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([recruiterId])
+  @@index([companyId])
+}
+
+model InterviewInvitation {
+  id              String           @id @default(uuid())
+  recruiterId     String
+  recruiter       Recruiter        @relation(fields: [recruiterId], references: [id])
+  candidateId     String?
+  candidate       Candidate?       @relation(fields: [candidateId], references: [id])
+  jobId           String?
+  job             Job?             @relation(fields: [jobId], references: [id])
+  templateId      String?
+  template        InterviewTemplate? @relation(fields: [templateId], references: [id])
+  token           String           @unique
+  status          InvitationStatus @default(PENDING)
+  sentAt          DateTime?
+  expiresAt       DateTime
+  openedAt        DateTime?
+  acceptedAt      DateTime?
+  completedAt     DateTime?
+  reminderCount   Int              @default(0)
+  lastReminderAt  DateTime?
+  email           String?          // for passive profile invitations
+
+  interview       Interview?
+
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  @@index([recruiterId])
+  @@index([candidateId])
+  @@index([jobId])
+  @@index([status])
+  @@index([token])
+}
+
+// ============================================
+// Structured Interview Data
+// ============================================
+
+model InterviewResponse {
+  id                  String    @id @default(uuid())
+  interviewId         String
+  interview           Interview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+  questionIndex       Int
+  questionText        String    @db.Text
+  responseTranscript  String?   @db.Text
+  videoUrl            String?
+  startTime           DateTime?
+  endTime             DateTime?
+  aiScore             Float?
+  aiFeedback          String?   @db.Text
+  skillsDemonstrated  Json?     @default("[]") // [string]
+
+  createdAt           DateTime  @default(now())
+
+  @@index([interviewId])
+}
+
+model InterviewFeedback {
+  id            String    @id @default(uuid())
+  interviewId   String
+  interview     Interview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+  category      String    // e.g. "Technical Skills", "Communication", "Problem Solving"
+  score         Float
+  narrative     String?   @db.Text
+  strengths     Json?     @default("[]") // [string]
+  improvements  Json?     @default("[]") // [string]
+
+  createdAt     DateTime  @default(now())
+
+  @@index([interviewId])
+}
+
+model ProctoringEvent {
+  id          String                   @id @default(uuid())
+  interviewId String
+  interview   Interview                @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+  eventType   String                   // tab_switch, webcam_disabled, clipboard_paste, fullscreen_exit, etc.
+  timestamp   DateTime                 @default(now())
+  details     Json?                    // Additional context
+  severity    ProctoringEventSeverity  @default(LOW)
+
+  @@index([interviewId])
+  @@index([eventType])
+}
+
+// ============================================
+// Passive Profiles & Candidate Import
+// ============================================
+
+model PassiveProfile {
+  id                 String               @id @default(uuid())
+  email              String?
+  linkedinUrl        String?
+  firstName          String?
+  lastName           String?
+  extractedData      Json?                // Parsed LinkedIn/resume data
+  source             String?              // linkedin, resume, csv, manual
+  status             PassiveProfileStatus @default(CREATED)
+
+  sourceRecruiterId  String?
+  sourceRecruiter    Recruiter?           @relation(fields: [sourceRecruiterId], references: [id])
+  linkedCandidateId  String?              // Links to Candidate after signup
+
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+
+  @@index([email])
+  @@index([sourceRecruiterId])
+  @@index([status])
+}
+
+// ============================================
+// Notifications
+// ============================================
+
+model Notification {
+  id          String           @id @default(uuid())
+  userId      String           // Can be recruiter or candidate supabase user ID
+  candidateId String?
+  candidate   Candidate?       @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  type        NotificationType @default(SYSTEM)
+  title       String
+  message     String           @db.Text
+  data        Json?            // Additional context (e.g. jobId, interviewId)
+  read        Boolean          @default(false)
+
+  createdAt   DateTime         @default(now())
+
+  @@index([userId])
+  @@index([userId, read])
+  @@index([type])
+  @@index([createdAt])
+}
+
+// ============================================
+// Documents & File Management
+// ============================================
+
+model Document {
+  id          String       @id @default(uuid())
+  candidateId String
+  candidate   Candidate    @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  type        DocumentType @default(RESUME)
+  fileUrl     String
+  filename    String
+  mimeType    String?
+  fileSize    Int?
+  parsedData  Json?        // Extracted text/structured data
+
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@index([candidateId])
+  @@index([type])
+}
+
+// ============================================
+// Structured Candidate Data
+// ============================================
+
+model CandidateSkill {
+  id          String    @id @default(uuid())
+  candidateId String
+  candidate   Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  skillName   String
+  category    String?   // e.g. "Programming", "Electrical", "Management"
+  proficiency Int?      // 1-5 scale
+  yearsExp    Float?
+  verified    Boolean   @default(false)
+  source      String?   // resume, linkedin, interview, manual
+
+  createdAt   DateTime  @default(now())
+
+  @@unique([candidateId, skillName])
+  @@index([candidateId])
+  @@index([skillName])
+}
+
+model CandidateExperience {
+  id          String    @id @default(uuid())
+  candidateId String
+  candidate   Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  company     String
+  title       String
+  startDate   DateTime?
+  endDate     DateTime?
+  isCurrent   Boolean   @default(false)
+  description String?   @db.Text
+  location    String?
+
+  createdAt   DateTime  @default(now())
+
+  @@index([candidateId])
+}
+
+model CandidateEducation {
+  id          String    @id @default(uuid())
+  candidateId String
+  candidate   Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  institution String
+  degree      String?
+  field       String?
+  startDate   DateTime?
+  endDate     DateTime?
+  gpa         Float?
+
+  createdAt   DateTime  @default(now())
+
+  @@index([candidateId])
+}
+
+model CandidateCertification {
+  id           String    @id @default(uuid())
+  candidateId  String
+  candidate    Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  name         String
+  issuingOrg   String?
+  issueDate    DateTime?
+  expiryDate   DateTime?
+  credentialId String?
+
+  createdAt    DateTime  @default(now())
+
+  @@index([candidateId])
 }

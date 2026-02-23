@@ -16,6 +16,8 @@ import {
   User,
   FileText,
   ExternalLink,
+  Briefcase,
+  Send,
 } from "lucide-react";
 
 interface Interview {
@@ -256,6 +258,36 @@ export default function CandidateDashboard() {
 
           {/* Quick Links */}
           <div className="mt-12 grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Link
+              href="/candidate/jobs"
+              className="rounded-2xl border border-white/10 bg-white/5 p-6 hover:bg-white/[0.07] transition-colors flex items-center gap-4"
+            >
+              <div className="w-10 h-10 rounded-lg bg-green-500/10 border border-green-500/20 flex items-center justify-center">
+                <Briefcase className="w-5 h-5 text-green-400" />
+              </div>
+              <div>
+                <h3 className="text-white font-medium">Browse Jobs</h3>
+                <p className="text-xs text-white/40">
+                  Discover new opportunities
+                </p>
+              </div>
+              <ArrowRight className="w-4 h-4 text-white/20 ml-auto" />
+            </Link>
+            <Link
+              href="/candidate/applications"
+              className="rounded-2xl border border-white/10 bg-white/5 p-6 hover:bg-white/[0.07] transition-colors flex items-center gap-4"
+            >
+              <div className="w-10 h-10 rounded-lg bg-purple-500/10 border border-purple-500/20 flex items-center justify-center">
+                <Send className="w-5 h-5 text-purple-400" />
+              </div>
+              <div>
+                <h3 className="text-white font-medium">My Applications</h3>
+                <p className="text-xs text-white/40">
+                  Track your application status
+                </p>
+              </div>
+              <ArrowRight className="w-4 h-4 text-white/20 ml-auto" />
+            </Link>
             <Link
               href="/candidate/interviews"
               className="rounded-2xl border border-white/10 bg-white/5 p-6 hover:bg-white/[0.07] transition-colors flex items-center gap-4"
