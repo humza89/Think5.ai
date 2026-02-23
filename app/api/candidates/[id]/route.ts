@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireCandidateAccess, handleAuthError } from "@/lib/auth";
+import { updateCandidateSchema } from "@/lib/validations/candidate";
 
 export async function GET(
   request: NextRequest,
@@ -77,12 +78,18 @@ export async function PATCH(
 
     const body = await request.json();
 
-    // Prevent overriding recruiterId via body
-    delete body.recruiterId;
+    // Validate and whitelist fields - prevents mass assignment
+    const validation = updateCandidateSchema.safeParse(body);
+    if (!validation.success) {
+      return NextResponse.json(
+        { error: "Validation failed", details: validation.error.flatten() },
+        { status: 400 }
+      );
+    }
 
     const candidate = await prisma.candidate.update({
       where: { id },
-      data: body,
+      data: validation.data,
     });
 
     return NextResponse.json(candidate);

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireRole, handleAuthError, getRecruiterForUser } from "@/lib/auth";
+import { createJobSchema } from "@/lib/validations/job";
 
 export async function GET(request: NextRequest) {
   try {
@@ -80,6 +81,15 @@ export async function POST(request: NextRequest) {
     );
 
     const body = await request.json();
+
+    const validation = createJobSchema.safeParse(body);
+    if (!validation.success) {
+      return NextResponse.json(
+        { error: "Validation failed", details: validation.error.flatten() },
+        { status: 400 }
+      );
+    }
+
     const {
       title,
       description,

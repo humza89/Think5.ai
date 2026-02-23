@@ -51,7 +51,10 @@
       "WebFetch(domain:skywork.ai)",
       "WebFetch(domain:digidai.github.io)",
       "WebFetch(domain:kb.micro1.ai)",
-      "WebFetch(domain:www.mercor.com)"
+      "WebFetch(domain:www.mercor.com)",
+      "Bash(find:*)",
+      "Bash(npx next build:*)",
+      "Bash(git reset:*)"
     ],
     "deny": [],
     "ask": []

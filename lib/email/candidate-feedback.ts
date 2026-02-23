@@ -34,7 +34,7 @@ export async function sendCandidateFeedbackEmail({
                   <td style="padding: 48px 40px;">
                     <!-- Logo -->
                     <div style="text-align: center; margin-bottom: 32px;">
-                      <span style="font-size: 28px; font-weight: bold; color: #ffffff;">think5</span>
+                      <span style="font-size: 28px; font-weight: bold; color: #ffffff;">Think5</span>
                       <span style="font-size: 28px; font-weight: bold; color: #3B82F6;">.</span>
                     </div>
 
@@ -87,7 +87,7 @@ export async function sendCandidateFeedbackEmail({
 
               <!-- Footer text -->
               <p style="color: rgba(255,255,255,0.3); font-size: 12px; text-align: center; margin-top: 24px;">
-                &copy; ${new Date().getFullYear()} Think5.ai — Powered by Aria AI. All rights reserved.
+                &copy; ${new Date().getFullYear()} Think5 — Powered by Aria AI. All rights reserved.
               </p>
             </td>
           </tr>

@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { importCompanyFromApollo } from "@/lib/apollo/import-company";
+import { requireRole, handleAuthError } from "@/lib/auth";
 
 export async function POST(request: NextRequest) {
   try {
+    await requireRole(["recruiter", "admin"]);
+
     const body = await request.json();
     const { linkedinUrl, domain } = body;
 
@@ -47,6 +50,10 @@ export async function POST(request: NextRequest) {
       );
     }
   } catch (error: any) {
+    const authResult = handleAuthError(error);
+    if (authResult.status !== 500) {
+      return NextResponse.json({ error: authResult.error }, { status: authResult.status });
+    }
     console.error("Company import error:", error);
     return NextResponse.json(
       { error: error.message || "Failed to import company data" },

@@ -12,18 +12,31 @@ export async function GET(request: NextRequest) {
       `${profile.first_name} ${profile.last_name}`
     );
 
+    const url = new URL(request.url);
+    const page = Math.max(1, parseInt(url.searchParams.get("page") || "1"));
+    const limit = Math.min(100, Math.max(1, parseInt(url.searchParams.get("limit") || "20")));
+    const skip = (page - 1) * limit;
+
     const searchParams = request.nextUrl.searchParams;
     const status = searchParams.get("status");
 
     const where: any = { sourceRecruiterId: recruiter.id };
     if (status) where.status = status;
 
-    const profiles = await prisma.passiveProfile.findMany({
-      where,
-      orderBy: { createdAt: "desc" },
-    });
+    const [profiles, total] = await Promise.all([
+      prisma.passiveProfile.findMany({
+        where,
+        orderBy: { createdAt: "desc" },
+        skip,
+        take: limit,
+      }),
+      prisma.passiveProfile.count({ where }),
+    ]);
 
-    return NextResponse.json(profiles);
+    return NextResponse.json({
+      data: profiles,
+      pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
+    });
   } catch (error) {
     const { error: message, status } = handleAuthError(error);
     return NextResponse.json({ error: message }, { status });

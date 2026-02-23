@@ -3,10 +3,20 @@ import { prisma } from "@/lib/prisma";
 import { requireRole, handleAuthError, getRecruiterForUser } from "@/lib/auth";
 import crypto from "crypto";
 import { sendEmail } from "@/lib/email/resend";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 export async function POST(request: NextRequest) {
   try {
     const { user, profile } = await requireRole(["recruiter", "admin"]);
+
+    const ip = request.headers.get("x-forwarded-for") ?? request.headers.get("x-real-ip") ?? "unknown";
+    const rateLimitResult = checkRateLimit(`invite:${ip}`, { maxRequests: 20, windowMs: 60000 });
+    if (!rateLimitResult.allowed) {
+      return NextResponse.json(
+        { error: "Too many invitation requests. Please try again later." },
+        { status: 429 }
+      );
+    }
 
     const recruiter = await getRecruiterForUser(
       user.id,
@@ -65,7 +75,7 @@ export async function POST(request: NextRequest) {
                     <table width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;background-color:#111;border-radius:16px;border:1px solid rgba(255,255,255,0.1);">
                       <tr><td style="padding:48px 40px;">
                         <div style="text-align:center;margin-bottom:32px;">
-                          <span style="font-size:28px;font-weight:bold;color:#fff;">think5</span>
+                          <span style="font-size:28px;font-weight:bold;color:#fff;">Think5</span>
                           <span style="font-size:28px;font-weight:bold;color:#3B82F6;">.</span>
                         </div>
                         <h1 style="color:#fff;font-size:24px;font-weight:600;text-align:center;margin:0 0 16px 0;">

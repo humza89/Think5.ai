@@ -4,9 +4,22 @@ import { importLinkedInProfile } from "@/lib/linkedin/importer";
 import { writeFile, mkdir } from "fs/promises";
 import path from "path";
 import { existsSync } from "fs";
+import { requireRole, handleAuthError } from "@/lib/auth";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 export async function POST(request: NextRequest) {
   try {
+    await requireRole(["recruiter", "admin"]);
+
+    const ip = request.headers.get("x-forwarded-for") ?? request.headers.get("x-real-ip") ?? "unknown";
+    const rateLimitResult = checkRateLimit(`upload:${ip}`, { maxRequests: 10, windowMs: 60000 });
+    if (!rateLimitResult.allowed) {
+      return NextResponse.json(
+        { error: "Too many upload requests. Please try again later." },
+        { status: 429 }
+      );
+    }
+
     const formData = await request.formData();
     const file = formData.get("file") as File | null;
     const linkedinUrl = formData.get("linkedinUrl") as string | null;
@@ -74,6 +87,10 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(result);
   } catch (error: any) {
+    const authResult = handleAuthError(error);
+    if (authResult.status !== 500) {
+      return NextResponse.json({ error: authResult.error }, { status: authResult.status });
+    }
     console.error("Upload error:", error);
     return NextResponse.json(
       { error: error.message || "Failed to process upload" },

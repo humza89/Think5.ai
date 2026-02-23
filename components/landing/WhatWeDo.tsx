@@ -7,7 +7,7 @@ const WhatWeDo = () => {
     {
       title: "Human Intelligence Powers AI",
       description:
-        "think5 transforms human brilliance into the driving force behind the world's most ambitious AI systems.",
+        "Think5 transforms human brilliance into the driving force behind the world's most ambitious AI systems.",
     },
     {
       title: "Data That Defines Breakthroughs",
@@ -17,7 +17,7 @@ const WhatWeDo = () => {
     {
       title: "Orchestrating Elite Expertise",
       description:
-        "think5 conducts that orchestra—finding the sharpest minds and forging their expertise into datasets that shape how AI reasons, adapts, and evolves.",
+        "Think5 conducts that orchestra—finding the sharpest minds and forging their expertise into datasets that shape how AI reasons, adapts, and evolves.",
     },
     {
       title: "Building Tomorrow's Intelligence",

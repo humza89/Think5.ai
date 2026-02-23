@@ -13,6 +13,11 @@ export async function GET(request: NextRequest) {
   try {
     const { user, profile } = await getAuthenticatedUser();
 
+    const url = new URL(request.url);
+    const page = Math.max(1, parseInt(url.searchParams.get("page") || "1"));
+    const limit = Math.min(100, Math.max(1, parseInt(url.searchParams.get("limit") || "20")));
+    const skip = (page - 1) * limit;
+
     const searchParams = request.nextUrl.searchParams;
     const status = searchParams.get("status");
 
@@ -33,36 +38,44 @@ export async function GET(request: NextRequest) {
     }
     // Admins: no recruiterId filter (see all)
 
-    const candidates = await prisma.candidate.findMany({
-      where,
-      include: {
-        recruiter: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-          },
-        },
-        matches: {
-          include: {
-            role: {
-              include: {
-                client: true,
-              },
+    const [candidates, total] = await Promise.all([
+      prisma.candidate.findMany({
+        where,
+        include: {
+          recruiter: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
             },
           },
-          orderBy: {
-            fitScore: "desc",
+          matches: {
+            include: {
+              role: {
+                include: {
+                  client: true,
+                },
+              },
+            },
+            orderBy: {
+              fitScore: "desc",
+            },
+            take: 5,
           },
-          take: 5,
         },
-      },
-      orderBy: {
-        createdAt: "desc",
-      },
-    });
+        orderBy: {
+          createdAt: "desc",
+        },
+        skip,
+        take: limit,
+      }),
+      prisma.candidate.count({ where }),
+    ]);
 
-    return NextResponse.json(candidates);
+    return NextResponse.json({
+      data: candidates,
+      pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
+    });
   } catch (error) {
     const { error: message, status } = handleAuthError(error);
     console.error("Error fetching candidates:", error);

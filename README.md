@@ -1,4 +1,4 @@
-# Paraform - AI-Powered Recruitment Dashboard
+# Think5 - AI-Powered Recruitment Dashboard
 
 A full-stack recruitment agency platform that automatically matches candidates with job roles using AI-powered embeddings and semantic similarity.
 
@@ -45,7 +45,7 @@ A full-stack recruitment agency platform that automatically matches candidates w
 ## Project Structure
 
 ```
-paraform/
+think5/
 ├── app/
 │   ├── api/
 │   │   ├── candidates/     # Candidate CRUD endpoints
@@ -94,7 +94,7 @@ paraform/
 
 1. **Clone and install dependencies**:
 ```bash
-cd Paraform
+cd Think5
 npm install
 ```
 
@@ -105,7 +105,7 @@ cp .env.example .env
 
 Edit `.env` and add:
 ```env
-DATABASE_URL="postgresql://user:password@localhost:5432/paraform"
+DATABASE_URL="postgresql://user:password@localhost:5432/think5"
 OPENAI_API_KEY="your-openai-api-key"
 JWT_SECRET="your-secret-key"
 ```
@@ -339,7 +339,7 @@ For issues or questions:
 - UI components from ShadCN UI
 - AI powered by OpenAI
 - Icons from Lucide React
-- Inspired by Paraform's recruitment platform
+- Inspired by Think5's recruitment platform
 
 ---
 

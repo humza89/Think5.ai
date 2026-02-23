@@ -48,7 +48,7 @@ export interface InterviewReportData {
   integrityFlags: any[] | null;
 }
 
-const REPORT_GENERATION_PROMPT = `You are Aria, an elite AI interview analyst for think5, a platform that sources human intelligence for training the world's most advanced AI systems. Your role is to analyze interview transcripts and produce comprehensive, enterprise-grade candidate assessments that match the quality of platforms like micro1 and mercor.
+const REPORT_GENERATION_PROMPT = `You are Aria, an elite AI interview analyst for Think5, a platform that sources human intelligence for training the world's most advanced AI systems. Your role is to analyze interview transcripts and produce comprehensive, enterprise-grade candidate assessments that match the quality of platforms like micro1 and mercor.
 
 Analyze the following interview transcript and candidate profile to generate a detailed assessment report.
 

@@ -55,7 +55,9 @@ export function NotificationBell() {
         setNotifications(data.notifications || []);
         setUnreadCount(data.unreadCount || 0);
       }
-    } catch {}
+    } catch (err) {
+      console.error("Error fetching notifications:", err);
+    }
   }
 
   async function markAllRead() {
@@ -63,7 +65,9 @@ export function NotificationBell() {
       await fetch("/api/notifications", { method: "PATCH" });
       setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
       setUnreadCount(0);
-    } catch {}
+    } catch (err) {
+      console.error("Error marking all notifications as read:", err);
+    }
   }
 
   async function markRead(id: string) {
@@ -77,7 +81,9 @@ export function NotificationBell() {
         prev.map((n) => (n.id === id ? { ...n, read: true } : n))
       );
       setUnreadCount((prev) => Math.max(0, prev - 1));
-    } catch {}
+    } catch (err) {
+      console.error("Error marking notification as read:", err);
+    }
   }
 
   if (!user) return null;
@@ -86,7 +92,10 @@ export function NotificationBell() {
     <div ref={ref} className="relative">
       <button
         onClick={() => setOpen(!open)}
-        className="relative p-2 rounded-full hover:bg-gray-100 transition-colors"
+        aria-label="Notifications"
+        aria-expanded={open}
+        aria-haspopup="true"
+        className="relative p-2 rounded-full hover:bg-gray-100 transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
       >
         <Bell className="h-5 w-5 text-gray-600" />
         {unreadCount > 0 && (
@@ -97,13 +106,13 @@ export function NotificationBell() {
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full mt-2 w-80 bg-white rounded-xl shadow-lg border z-50 max-h-[400px] overflow-hidden">
+        <div role="menu" aria-label="Notifications menu" className="absolute right-0 top-full mt-2 w-80 bg-white rounded-xl shadow-lg border z-50 max-h-[400px] overflow-hidden">
           <div className="flex items-center justify-between px-4 py-3 border-b">
             <h3 className="font-semibold text-sm">Notifications</h3>
             {unreadCount > 0 && (
               <button
                 onClick={markAllRead}
-                className="text-xs text-blue-600 hover:underline"
+                className="text-xs text-blue-600 hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded"
               >
                 Mark all read
               </button>
@@ -116,9 +125,10 @@ export function NotificationBell() {
               </div>
             ) : (
               notifications.map((n) => (
-                <div
+                <button
                   key={n.id}
-                  className={`px-4 py-3 border-b last:border-0 hover:bg-gray-50 cursor-pointer ${
+                  role="menuitem"
+                  className={`w-full text-left px-4 py-3 border-b last:border-0 hover:bg-gray-50 cursor-pointer focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
                     !n.read ? "bg-blue-50/50" : ""
                   }`}
                   onClick={() => !n.read && markRead(n.id)}
@@ -142,7 +152,7 @@ export function NotificationBell() {
                       <div className="w-2 h-2 bg-blue-500 rounded-full shrink-0 mt-2" />
                     )}
                   </div>
-                </div>
+                </button>
               ))
             )}
           </div>

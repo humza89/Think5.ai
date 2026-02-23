@@ -77,7 +77,7 @@ export default function CandidateDashboard() {
           {/* Welcome */}
           <div className="mb-12">
             <div className="flex items-center gap-3 mb-2">
-              <h1 className="text-4xl md:text-5xl font-bold text-white">
+              <h1 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold text-white">
                 Welcome back{profile ? `, ${profile.first_name}` : ""}
               </h1>
               <Badge className="bg-blue-400/10 text-blue-400 border-blue-400/20">
@@ -260,7 +260,7 @@ export default function CandidateDashboard() {
           <div className="mt-12 grid grid-cols-1 md:grid-cols-2 gap-4">
             <Link
               href="/candidate/jobs"
-              className="rounded-2xl border border-white/10 bg-white/5 p-6 hover:bg-white/[0.07] transition-colors flex items-center gap-4"
+              className="rounded-2xl border border-white/10 bg-white/5 p-6 hover:bg-white/[0.07] transition-colors flex items-center gap-4 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             >
               <div className="w-10 h-10 rounded-lg bg-green-500/10 border border-green-500/20 flex items-center justify-center">
                 <Briefcase className="w-5 h-5 text-green-400" />
@@ -275,7 +275,7 @@ export default function CandidateDashboard() {
             </Link>
             <Link
               href="/candidate/applications"
-              className="rounded-2xl border border-white/10 bg-white/5 p-6 hover:bg-white/[0.07] transition-colors flex items-center gap-4"
+              className="rounded-2xl border border-white/10 bg-white/5 p-6 hover:bg-white/[0.07] transition-colors flex items-center gap-4 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             >
               <div className="w-10 h-10 rounded-lg bg-purple-500/10 border border-purple-500/20 flex items-center justify-center">
                 <Send className="w-5 h-5 text-purple-400" />
@@ -290,7 +290,7 @@ export default function CandidateDashboard() {
             </Link>
             <Link
               href="/candidate/interviews"
-              className="rounded-2xl border border-white/10 bg-white/5 p-6 hover:bg-white/[0.07] transition-colors flex items-center gap-4"
+              className="rounded-2xl border border-white/10 bg-white/5 p-6 hover:bg-white/[0.07] transition-colors flex items-center gap-4 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             >
               <div className="w-10 h-10 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center">
                 <ClipboardList className="w-5 h-5 text-blue-400" />
@@ -305,7 +305,7 @@ export default function CandidateDashboard() {
             </Link>
             <Link
               href="/candidate/profile"
-              className="rounded-2xl border border-white/10 bg-white/5 p-6 hover:bg-white/[0.07] transition-colors flex items-center gap-4"
+              className="rounded-2xl border border-white/10 bg-white/5 p-6 hover:bg-white/[0.07] transition-colors flex items-center gap-4 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             >
               <div className="w-10 h-10 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center">
                 <User className="w-5 h-5 text-blue-400" />

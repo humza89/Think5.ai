@@ -130,7 +130,7 @@ export default function SignInPage() {
           {/* Logo */}
           <div className="p-8">
             <Link href="/" className="inline-flex items-center">
-              <span className="text-2xl font-bold text-white">think5</span>
+              <span className="text-2xl font-bold text-white">Think5</span>
               <span className="text-2xl font-bold text-blue-400">.</span>
             </Link>
           </div>
@@ -153,7 +153,7 @@ export default function SignInPage() {
           {/* Mobile Logo */}
           <div className="lg:hidden mb-8">
             <Link href="/" className="inline-flex items-center">
-              <span className="text-2xl font-bold text-white">think5</span>
+              <span className="text-2xl font-bold text-white">Think5</span>
               <span className="text-2xl font-bold text-blue-500">.</span>
             </Link>
           </div>

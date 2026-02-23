@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -129,9 +130,10 @@ export function JobCreationWizard() {
       }
 
       const job = await res.json();
+      toast.success("Job created successfully");
       router.push(`/jobs/${job.id}`);
     } catch (error: any) {
-      alert(error.message);
+      toast.error(error.message);
     }
     setLoading(false);
   }

@@ -2,11 +2,13 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { JobStatusBadge } from "./JobStatusBadge";
+import { PipelineKanban } from "./PipelineKanban";
 import {
   ArrowLeft,
   Building2,
@@ -24,6 +26,8 @@ import {
   XCircle,
   Send,
   ChevronRight,
+  LayoutGrid,
+  List,
 } from "lucide-react";
 
 interface JobDetailViewProps {
@@ -52,6 +56,7 @@ const interviewStatusColors: Record<string, string> = {
 export function JobDetailView({ job }: JobDetailViewProps) {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState("overview");
+  const [pipelineView, setPipelineView] = useState<"board" | "list">("board");
   const [statusLoading, setStatusLoading] = useState(false);
 
   async function handleStatusChange(newStatus: string) {
@@ -63,13 +68,14 @@ export function JobDetailView({ job }: JobDetailViewProps) {
         body: JSON.stringify({ status: newStatus }),
       });
       if (res.ok) {
+        toast.success("Status updated successfully");
         router.refresh();
       } else {
         const err = await res.json();
-        alert(err.error || "Failed to update status");
+        toast.error(err.error || "Failed to update status");
       }
     } catch {
-      alert("Failed to update status");
+      toast.error("Failed to update status");
     }
     setStatusLoading(false);
   }
@@ -104,7 +110,7 @@ export function JobDetailView({ job }: JobDetailViewProps) {
           <div>
             <button
               onClick={() => router.push("/jobs")}
-              className="flex items-center text-sm text-gray-500 hover:text-gray-700 mb-3"
+              className="flex items-center text-sm text-gray-500 hover:text-gray-700 mb-3 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded"
             >
               <ArrowLeft className="h-4 w-4 mr-1" />
               Back to Jobs
@@ -160,7 +166,7 @@ export function JobDetailView({ job }: JobDetailViewProps) {
         </div>
 
         {/* Stats Cards */}
-        <div className="grid grid-cols-4 gap-4 mb-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
           <Card>
             <CardContent className="pt-6">
               <div className="flex items-center justify-between">
@@ -213,7 +219,7 @@ export function JobDetailView({ job }: JobDetailViewProps) {
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
                 activeTab === tab.id
                   ? "border-blue-600 text-blue-600"
                   : "border-transparent text-gray-500 hover:text-gray-700"
@@ -226,8 +232,8 @@ export function JobDetailView({ job }: JobDetailViewProps) {
 
         {/* Tab Content */}
         {activeTab === "overview" && (
-          <div className="grid grid-cols-3 gap-6">
-            <div className="col-span-2 space-y-6">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="lg:col-span-2 space-y-6">
               <Card>
                 <CardHeader>
                   <CardTitle className="text-lg">Description</CardTitle>
@@ -354,54 +360,114 @@ export function JobDetailView({ job }: JobDetailViewProps) {
 
         {activeTab === "pipeline" && (
           <div className="space-y-4">
-            {job.applications.length === 0 ? (
-              <Card className="p-12 text-center">
-                <Users className="h-12 w-12 text-gray-300 mx-auto mb-4" />
-                <h3 className="text-lg font-medium text-gray-900 mb-2">No applications yet</h3>
-                <p className="text-gray-500">Applications will appear here as candidates apply</p>
-              </Card>
-            ) : (
-              <div className="grid grid-cols-1 gap-3">
-                {job.applications.map((app: any) => (
-                  <Card key={app.id} className="p-4">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-4">
-                        <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center text-sm font-medium text-gray-600">
-                          {app.candidate.fullName.charAt(0)}
-                        </div>
-                        <div>
-                          <Link
-                            href={`/candidates/${app.candidate.id}`}
-                            className="font-medium text-gray-900 hover:text-blue-600"
-                          >
-                            {app.candidate.fullName}
-                          </Link>
-                          <p className="text-sm text-gray-500">
-                            {app.candidate.currentTitle}
-                            {app.candidate.currentCompany && ` at ${app.candidate.currentCompany}`}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        {app.candidate.ariaOverallScore && (
-                          <span className="text-sm font-medium text-gray-600">
-                            Score: {Math.round(app.candidate.ariaOverallScore)}
-                          </span>
-                        )}
-                        <Badge className={applicationStatusColors[app.status] || "bg-gray-100 text-gray-700"}>
-                          {app.status.replace("_", " ")}
-                        </Badge>
-                        <span className="text-xs text-gray-400">
-                          {new Date(app.appliedAt).toLocaleDateString()}
-                        </span>
-                        <Link href={`/candidates/${app.candidate.id}`}>
-                          <ChevronRight className="h-4 w-4 text-gray-400" />
-                        </Link>
-                      </div>
-                    </div>
-                  </Card>
-                ))}
+            {/* View Toggle */}
+            {job.applications.length > 0 && (
+              <div className="flex items-center justify-between">
+                <p className="text-sm text-gray-500">
+                  {job.applications.length} application{job.applications.length !== 1 ? "s" : ""}
+                </p>
+                <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden">
+                  <button
+                    onClick={() => setPipelineView("board")}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 text-sm transition-colors ${
+                      pipelineView === "board"
+                        ? "bg-gray-100 text-gray-900 font-medium"
+                        : "text-gray-500 hover:text-gray-700 hover:bg-gray-50"
+                    }`}
+                    aria-label="Board view"
+                  >
+                    <LayoutGrid className="h-4 w-4" />
+                    Board
+                  </button>
+                  <button
+                    onClick={() => setPipelineView("list")}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 text-sm border-l border-gray-200 transition-colors ${
+                      pipelineView === "list"
+                        ? "bg-gray-100 text-gray-900 font-medium"
+                        : "text-gray-500 hover:text-gray-700 hover:bg-gray-50"
+                    }`}
+                    aria-label="List view"
+                  >
+                    <List className="h-4 w-4" />
+                    List
+                  </button>
+                </div>
               </div>
+            )}
+
+            {/* Board View (Kanban) */}
+            {pipelineView === "board" && (
+              <PipelineKanban
+                jobId={job.id}
+                applications={job.applications.map((app: any) => ({
+                  id: app.id,
+                  status: app.status,
+                  appliedAt: app.appliedAt,
+                  candidate: {
+                    id: app.candidate.id,
+                    fullName: app.candidate.fullName,
+                    currentTitle: app.candidate.currentTitle || null,
+                    currentCompany: app.candidate.currentCompany || null,
+                    profileImage: app.candidate.profileImage || null,
+                    ariaOverallScore: app.candidate.ariaOverallScore ?? null,
+                  },
+                }))}
+              />
+            )}
+
+            {/* List View (Original) */}
+            {pipelineView === "list" && (
+              <>
+                {job.applications.length === 0 ? (
+                  <Card className="p-12 text-center">
+                    <Users className="h-12 w-12 text-gray-300 mx-auto mb-4" />
+                    <h3 className="text-lg font-medium text-gray-900 mb-2">No applications yet</h3>
+                    <p className="text-gray-500">Applications will appear here as candidates apply</p>
+                  </Card>
+                ) : (
+                  <div className="grid grid-cols-1 gap-3">
+                    {job.applications.map((app: any) => (
+                      <Card key={app.id} className="p-4">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-4">
+                            <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center text-sm font-medium text-gray-600">
+                              {app.candidate.fullName.charAt(0)}
+                            </div>
+                            <div>
+                              <Link
+                                href={`/candidates/${app.candidate.id}`}
+                                className="font-medium text-gray-900 hover:text-blue-600"
+                              >
+                                {app.candidate.fullName}
+                              </Link>
+                              <p className="text-sm text-gray-500">
+                                {app.candidate.currentTitle}
+                                {app.candidate.currentCompany && ` at ${app.candidate.currentCompany}`}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            {app.candidate.ariaOverallScore && (
+                              <span className="text-sm font-medium text-gray-600">
+                                Score: {Math.round(app.candidate.ariaOverallScore)}
+                              </span>
+                            )}
+                            <Badge className={applicationStatusColors[app.status] || "bg-gray-100 text-gray-700"}>
+                              {app.status.replace("_", " ")}
+                            </Badge>
+                            <span className="text-xs text-gray-400">
+                              {new Date(app.appliedAt).toLocaleDateString()}
+                            </span>
+                            <Link href={`/candidates/${app.candidate.id}`}>
+                              <ChevronRight className="h-4 w-4 text-gray-400" />
+                            </Link>
+                          </div>
+                        </div>
+                      </Card>
+                    ))}
+                  </div>
+                )}
+              </>
             )}
           </div>
         )}

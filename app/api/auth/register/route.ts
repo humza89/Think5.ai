@@ -3,6 +3,7 @@ import { createSupabaseAdminClient } from '@/lib/supabase-server';
 import { sendVerificationEmail } from '@/lib/email/resend';
 import crypto from 'crypto';
 import type { UserRole } from '@/types/supabase';
+import { checkRateLimit } from '@/lib/rate-limit';
 
 interface RegisterRequest {
   email: string;
@@ -14,6 +15,15 @@ interface RegisterRequest {
 
 export async function POST(request: NextRequest) {
   try {
+    const ip = request.headers.get("x-forwarded-for") ?? request.headers.get("x-real-ip") ?? "unknown";
+    const rateLimitResult = checkRateLimit(`register:${ip}`, { maxRequests: 5, windowMs: 60000 });
+    if (!rateLimitResult.allowed) {
+      return NextResponse.json(
+        { error: "Too many registration attempts. Please try again later." },
+        { status: 429 }
+      );
+    }
+
     const body: RegisterRequest = await request.json();
     const { email, password, firstName, lastName, role } = body;
 

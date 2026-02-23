@@ -2,7 +2,7 @@
 
 ## 🎉 What's Done
 
-Your Paraform recruitment platform is now fully configured with **real LinkedIn profile importing** via RapidAPI!
+Your Think5 recruitment platform is now fully configured with **real LinkedIn profile importing** via RapidAPI!
 
 ---
 
@@ -273,7 +273,7 @@ When ready to deploy:
 ```env
 # Switch to S3 for production
 ASSET_STORE="s3"
-S3_BUCKET="your-paraform-assets"
+S3_BUCKET="your-think5-assets"
 S3_REGION="us-east-1"
 S3_PUBLIC_BASE="https://your-bucket.s3.amazonaws.com"
 ```
@@ -282,7 +282,7 @@ S3_PUBLIC_BASE="https://your-bucket.s3.amazonaws.com"
 
 ```env
 # Replace mock database with real PostgreSQL
-DATABASE_URL="postgresql://user:pass@host:5432/paraform"
+DATABASE_URL="postgresql://user:pass@host:5432/think5"
 ```
 
 #### Add OpenAI API Key (for AI features):
@@ -372,7 +372,7 @@ OPENAI_API_KEY="sk-..."
 
 🟢 **FULLY OPERATIONAL**
 
-Your Paraform recruitment platform is ready to import real LinkedIn profiles and manage candidates!
+Your Think5 recruitment platform is ready to import real LinkedIn profiles and manage candidates!
 
 ---
 

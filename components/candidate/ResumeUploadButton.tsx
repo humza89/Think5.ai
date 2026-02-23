@@ -2,6 +2,7 @@
 
 import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 
 export default function ResumeUploadButton({ candidateId }: { candidateId: string }) {
   const [isUploading, setIsUploading] = useState(false);
@@ -28,11 +29,12 @@ export default function ResumeUploadButton({ candidateId }: { candidateId: strin
         throw new Error("Upload failed");
       }
 
+      toast.success("Resume uploaded successfully");
       // Refresh the page to show the new resume
       router.refresh();
     } catch (error) {
       console.error("Error uploading resume:", error);
-      alert("Failed to upload resume. Please try again.");
+      toast.error("Failed to upload resume. Please try again.");
     } finally {
       setIsUploading(false);
       if (fileInputRef.current) {

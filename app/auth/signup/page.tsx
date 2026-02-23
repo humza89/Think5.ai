@@ -231,7 +231,7 @@ export default function SignUpPage() {
         {/* Header Content */}
         <div className="absolute top-0 left-0 right-0 z-20 p-8">
           <Link href="/" className="inline-flex items-center">
-            <span className="text-2xl font-bold text-white">think5</span>
+            <span className="text-2xl font-bold text-white">Think5</span>
             <span className="text-2xl font-bold text-blue-500">.</span>
           </Link>
           <div className="mt-8 max-w-md">
@@ -294,7 +294,7 @@ export default function SignUpPage() {
           {/* Mobile Logo */}
           <div className="lg:hidden mb-8">
             <Link href="/" className="inline-flex items-center">
-              <span className="text-2xl font-bold text-white">think5</span>
+              <span className="text-2xl font-bold text-white">Think5</span>
               <span className="text-2xl font-bold text-blue-500">.</span>
             </Link>
           </div>

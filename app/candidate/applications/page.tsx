@@ -1,10 +1,19 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Building2, MapPin, Briefcase, Clock, FileText } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import {
+  Building2,
+  MapPin,
+  Briefcase,
+  Clock,
+  FileText,
+  AlertTriangle,
+  RefreshCw,
+} from "lucide-react";
 
 const statusConfig: Record<string, { label: string; className: string }> = {
   APPLIED: { label: "Applied", className: "bg-blue-100 text-blue-700" },
@@ -20,16 +29,31 @@ const statusConfig: Record<string, { label: string; className: string }> = {
 export default function CandidateApplicationsPage() {
   const [applications, setApplications] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchApplications = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/candidate/applications");
+      if (!res.ok) {
+        throw new Error(`Failed to load applications (${res.status})`);
+      }
+      const data = await res.json();
+      setApplications(data.applications || []);
+    } catch (err) {
+      console.error("Error fetching applications:", err);
+      setError(
+        err instanceof Error ? err.message : "Failed to load applications"
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    fetch("/api/candidate/applications")
-      .then((r) => r.json())
-      .then((data) => {
-        setApplications(data.applications || []);
-        setLoading(false);
-      })
-      .catch(() => setLoading(false));
-  }, []);
+    fetchApplications();
+  }, [fetchApplications]);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -41,6 +65,18 @@ export default function CandidateApplicationsPage() {
 
         {loading ? (
           <div className="text-center py-12 text-gray-500">Loading...</div>
+        ) : error ? (
+          <Card className="p-12 text-center">
+            <AlertTriangle className="h-12 w-12 text-red-400 mx-auto mb-4" />
+            <h3 className="text-lg font-medium text-gray-900 mb-2">
+              Something went wrong
+            </h3>
+            <p className="text-sm text-red-600 mb-4">{error}</p>
+            <Button variant="outline" size="sm" onClick={fetchApplications}>
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Retry
+            </Button>
+          </Card>
         ) : applications.length === 0 ? (
           <Card className="p-12 text-center">
             <FileText className="h-12 w-12 text-gray-300 mx-auto mb-4" />

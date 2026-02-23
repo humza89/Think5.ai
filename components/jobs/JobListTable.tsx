@@ -157,8 +157,10 @@ export function JobListTable({ initialJobs, initialPagination }: JobListTablePro
       {/* Search */}
       <form onSubmit={handleSearch} className="flex gap-3">
         <div className="relative flex-1">
+          <label htmlFor="jobs-search" className="sr-only">Search jobs</label>
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
           <Input
+            id="jobs-search"
             placeholder="Search jobs by title, location, department..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}

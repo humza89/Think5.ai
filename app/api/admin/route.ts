@@ -8,15 +8,16 @@ export async function GET(request: NextRequest) {
   try {
     await requireRole(["admin"]);
 
+    const supabase = await createSupabaseAdminClient();
+
     const [
-      totalUsers,
       totalJobs,
       totalCandidates,
       totalInterviews,
       totalApplications,
-      recentProfiles,
+      profilesResult,
+      roleCounts,
     ] = await Promise.all([
-      prisma.recruiter.count(),
       prisma.job.count(),
       prisma.candidate.count(),
       prisma.interview.count(),
@@ -24,7 +25,6 @@ export async function GET(request: NextRequest) {
       // Get recent user profiles from Supabase
       (async () => {
         try {
-          const supabase = await createSupabaseAdminClient();
           const { data } = await supabase
             .from("profiles")
             .select("id, email, first_name, last_name, role, created_at, email_verified")
@@ -35,17 +35,44 @@ export async function GET(request: NextRequest) {
           return [];
         }
       })(),
+      // Get user counts by role
+      (async () => {
+        try {
+          const roles = ["admin", "recruiter", "candidate", "hiring_manager"] as const;
+          const counts: Record<string, number> = {};
+          let total = 0;
+
+          for (const role of roles) {
+            const { count } = await supabase
+              .from("profiles")
+              .select("*", { count: "exact", head: true })
+              .eq("role", role as any);
+            counts[role] = count || 0;
+            total += count || 0;
+          }
+
+          return { ...counts, total };
+        } catch {
+          return { admin: 0, recruiter: 0, candidate: 0, hiring_manager: 0, total: 0 };
+        }
+      })(),
     ]);
 
     return NextResponse.json({
       stats: {
-        totalUsers,
+        totalUsers: roleCounts.total,
         totalJobs,
         totalCandidates,
         totalInterviews,
         totalApplications,
+        usersByRole: {
+          admin: roleCounts.admin,
+          recruiter: roleCounts.recruiter,
+          candidate: roleCounts.candidate,
+          hiring_manager: roleCounts.hiring_manager,
+        },
       },
-      recentProfiles,
+      recentProfiles: profilesResult,
     });
   } catch (error) {
     const { error: message, status } = handleAuthError(error);

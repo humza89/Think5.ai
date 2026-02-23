@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { deleteCandidate } from "@/app/candidates/actions";
+import { toast } from "sonner";
+import { deleteCandidate } from "@/app/(dashboard)/candidates/actions";
 
 export default function DeleteCandidateButton({ candidateId, candidateName }: { candidateId: string; candidateName: string }) {
   const [showConfirm, setShowConfirm] = useState(false);
@@ -14,7 +15,7 @@ export default function DeleteCandidateButton({ candidateId, candidateName }: { 
     } catch (error) {
       console.error("Failed to delete candidate:", error);
       setIsDeleting(false);
-      alert("Failed to delete candidate. Please try again.");
+      toast.error("Failed to delete candidate. Please try again.");
     }
   };
 

@@ -6,8 +6,8 @@ import { Providers } from "@/components/providers/Providers";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Think5.ai - The AI Platform for Human Intelligence",
-  description: "Think5.ai sources, vets, and deploys elite experts — PhDs, engineers, doctors, lawyers — to train the world's most advanced AI systems.",
+  title: "Think5 - AI Recruiting Platform",
+  description: "Think5 is an enterprise AI recruiting platform for sourcing, vetting, and hiring top talent with AI-powered interviews and analytics.",
 };
 
 export default function RootLayout({

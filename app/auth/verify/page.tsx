@@ -196,7 +196,7 @@ export default function VerifyPage() {
 
       <div className="relative w-full max-w-md">
         <div className="flex items-center justify-center mb-8">
-          <span className="text-2xl font-bold text-white">think5</span>
+          <span className="text-2xl font-bold text-white">Think5</span>
           <span className="text-2xl font-bold text-blue-500">.</span>
         </div>
 

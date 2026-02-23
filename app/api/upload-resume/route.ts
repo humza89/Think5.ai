@@ -4,9 +4,12 @@ import { parseResumeFile, extractCandidateData } from "@/lib/resume-parser";
 import { writeFile, mkdir } from "fs/promises";
 import path from "path";
 import { existsSync } from "fs";
+import { requireRole, handleAuthError } from "@/lib/auth";
 
 export async function POST(request: NextRequest) {
   try {
+    await requireRole(["recruiter", "admin"]);
+
     const formData = await request.formData();
     const file = formData.get("file") as File | null;
     const candidateId = formData.get("candidateId") as string | null;
@@ -60,6 +63,10 @@ export async function POST(request: NextRequest) {
       resumeUrl: `/uploads/${filename}`,
     });
   } catch (error: any) {
+    const authResult = handleAuthError(error);
+    if (authResult.status !== 500) {
+      return NextResponse.json({ error: authResult.error }, { status: authResult.status });
+    }
     console.error("Resume upload error:", error);
     return NextResponse.json(
       { error: error.message || "Failed to upload resume" },

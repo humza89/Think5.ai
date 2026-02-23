@@ -47,7 +47,7 @@ export async function sendVerificationEmail(email: string, token: string, firstN
                   <td style="padding: 48px 40px;">
                     <!-- Logo -->
                     <div style="text-align: center; margin-bottom: 32px;">
-                      <span style="font-size: 28px; font-weight: bold; color: #ffffff;">think5</span>
+                      <span style="font-size: 28px; font-weight: bold; color: #ffffff;">Think5</span>
                       <span style="font-size: 28px; font-weight: bold; color: #3B82F6;">.</span>
                     </div>
 
@@ -86,7 +86,7 @@ export async function sendVerificationEmail(email: string, token: string, firstN
 
               <!-- Footer text -->
               <p style="color: rgba(255,255,255,0.3); font-size: 12px; text-align: center; margin-top: 24px;">
-                &copy; ${new Date().getFullYear()} Think5.ai. All rights reserved.
+                &copy; ${new Date().getFullYear()} Think5. All rights reserved.
               </p>
             </td>
           </tr>
@@ -129,7 +129,7 @@ export async function sendWelcomeEmail(email: string, firstName: string, role: s
                   <td style="padding: 48px 40px;">
                     <!-- Logo -->
                     <div style="text-align: center; margin-bottom: 32px;">
-                      <span style="font-size: 28px; font-weight: bold; color: #ffffff;">think5</span>
+                      <span style="font-size: 28px; font-weight: bold; color: #ffffff;">Think5</span>
                       <span style="font-size: 28px; font-weight: bold; color: #3B82F6;">.</span>
                     </div>
 
@@ -171,7 +171,7 @@ export async function sendWelcomeEmail(email: string, firstName: string, role: s
 
               <!-- Footer text -->
               <p style="color: rgba(255,255,255,0.3); font-size: 12px; text-align: center; margin-top: 24px;">
-                &copy; ${new Date().getFullYear()} Think5.ai. All rights reserved.
+                &copy; ${new Date().getFullYear()} Think5. All rights reserved.
               </p>
             </td>
           </tr>
@@ -207,7 +207,7 @@ export async function sendPasswordResetEmail(email: string, token: string) {
                   <td style="padding: 48px 40px;">
                     <!-- Logo -->
                     <div style="text-align: center; margin-bottom: 32px;">
-                      <span style="font-size: 28px; font-weight: bold; color: #ffffff;">think5</span>
+                      <span style="font-size: 28px; font-weight: bold; color: #ffffff;">Think5</span>
                       <span style="font-size: 28px; font-weight: bold; color: #3B82F6;">.</span>
                     </div>
 
@@ -245,7 +245,7 @@ export async function sendPasswordResetEmail(email: string, token: string) {
 
               <!-- Footer text -->
               <p style="color: rgba(255,255,255,0.3); font-size: 12px; text-align: center; margin-top: 24px;">
-                &copy; ${new Date().getFullYear()} Think5.ai. All rights reserved.
+                &copy; ${new Date().getFullYear()} Think5. All rights reserved.
               </p>
             </td>
           </tr>
