@@ -23,7 +23,11 @@ const typeIcons: Record<string, string> = {
   SYSTEM: "bg-gray-100 text-gray-600",
 };
 
-export function NotificationBell() {
+interface NotificationBellProps {
+  variant?: "light" | "dark";
+}
+
+export function NotificationBell({ variant = "light" }: NotificationBellProps) {
   const { user } = useAuth();
   const [open, setOpen] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
@@ -95,9 +99,13 @@ export function NotificationBell() {
         aria-label="Notifications"
         aria-expanded={open}
         aria-haspopup="true"
-        className="relative p-2 rounded-full hover:bg-gray-100 transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+        className={`relative p-2 rounded-full transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
+          variant === "dark"
+            ? "text-white/70 hover:bg-white/10"
+            : "text-gray-600 hover:bg-gray-100"
+        }`}
       >
-        <Bell className="h-5 w-5 text-gray-600" />
+        <Bell className={`h-5 w-5 ${variant === "dark" ? "text-white/70" : "text-gray-600"}`} />
         {unreadCount > 0 && (
           <span className="absolute -top-0.5 -right-0.5 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center font-medium">
             {unreadCount > 9 ? "9+" : unreadCount}
