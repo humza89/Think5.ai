@@ -69,10 +69,10 @@ const Header = () => {
 
   return (
     <nav className="fixed top-4 left-1/2 -translate-x-1/2 z-50 w-[calc(100%-2rem)] max-w-4xl">
-      <div className="flex items-center bg-white/10 backdrop-blur-md rounded-full px-3 py-2 shadow-lg shadow-black/20 border border-white/10">
+      <div className="flex items-center bg-white/95 backdrop-blur-md rounded-full px-3 py-2 shadow-lg shadow-black/10">
         {/* Logo */}
         <Link href="/" className="flex items-center pl-3 pr-4 md:pr-6">
-          <span className="text-xl font-bold text-white">Think5</span>
+          <span className="text-xl font-bold text-gray-900">Think5</span>
         </Link>
 
         {/* Center Nav — desktop only */}
@@ -81,7 +81,7 @@ const Header = () => {
             <Link
               key={link.href}
               href={link.href}
-              className="px-4 py-2 text-sm text-white/70 hover:text-white transition-colors rounded-full hover:bg-white/10"
+              className="px-4 py-2 text-sm text-gray-600 hover:text-gray-900 transition-colors rounded-full hover:bg-gray-100"
             >
               {link.label}
             </Link>
@@ -94,35 +94,35 @@ const Header = () => {
             <>
               <Link
                 href="/auth/signin"
-                className="px-4 py-2 text-sm text-white/70 hover:text-white transition-colors"
+                className="px-4 py-2 text-sm text-gray-600 hover:text-gray-900 transition-colors"
               >
                 Sign in
               </Link>
               <Link href="/auth/signup">
-                <Button className="rounded-full bg-white text-black hover:bg-white/90 px-5 h-9 text-sm font-medium">
+                <Button className="rounded-full bg-gray-900 text-white hover:bg-gray-800 px-5 h-9 text-sm font-medium">
                   Get Started
                 </Button>
               </Link>
             </>
           ) : isLoading ? (
-            <div className="w-20 h-9 bg-white/10 animate-pulse rounded-full" />
+            <div className="w-20 h-9 bg-gray-100 animate-pulse rounded-full" />
           ) : user ? (
             <>
-              <NotificationBell variant="dark" />
+              <NotificationBell />
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="gap-2 rounded-full text-white/80 hover:text-white hover:bg-white/10"
+                    className="gap-2 rounded-full text-gray-600 hover:text-gray-900 hover:bg-gray-100"
                     aria-label="User menu"
                   >
                     <Avatar className="h-7 w-7">
-                      <AvatarFallback className="bg-white/20 text-white text-xs font-medium">
+                      <AvatarFallback className="bg-primary/10 text-primary text-xs font-medium">
                         {profile?.first_name?.charAt(0) || "U"}
                       </AvatarFallback>
                     </Avatar>
-                    <span className="hidden sm:inline text-sm font-medium">
+                    <span className="hidden sm:inline text-sm font-medium text-gray-900">
                       {profile?.first_name || "User"}
                     </span>
                   </Button>
@@ -194,12 +194,12 @@ const Header = () => {
             <>
               <Link
                 href="/auth/signin"
-                className="px-4 py-2 text-sm text-white/70 hover:text-white transition-colors"
+                className="px-4 py-2 text-sm text-gray-600 hover:text-gray-900 transition-colors"
               >
                 Sign in
               </Link>
               <Link href="/auth/signup">
-                <Button className="rounded-full bg-white text-black hover:bg-white/90 px-5 h-9 text-sm font-medium">
+                <Button className="rounded-full bg-gray-900 text-white hover:bg-gray-800 px-5 h-9 text-sm font-medium">
                   Get Started
                 </Button>
               </Link>
@@ -209,48 +209,45 @@ const Header = () => {
 
         {/* Mobile: notification + hamburger */}
         <div className="flex md:hidden items-center gap-1 ml-auto">
-          {user && <NotificationBell variant="dark" />}
+          {user && <NotificationBell />}
           <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
             <SheetTrigger asChild>
               <Button
                 variant="ghost"
                 size="sm"
-                className="rounded-full text-white/80 hover:bg-white/10"
+                className="rounded-full"
                 aria-label="Open menu"
               >
                 <Menu className="h-5 w-5" />
               </Button>
             </SheetTrigger>
-            <SheetContent
-              side="right"
-              className="w-72 bg-zinc-950 border-white/10"
-            >
+            <SheetContent side="right" className="w-72">
               <SheetHeader>
-                <SheetTitle className="text-left text-lg font-bold text-white">
+                <SheetTitle className="text-left text-lg font-bold">
                   Think5
                 </SheetTitle>
               </SheetHeader>
 
               {/* User info section at top when authenticated */}
               {user && profile && (
-                <div className="mt-4 px-4 py-3 rounded-lg bg-white/5 border border-white/10">
+                <div className="mt-4 px-4 py-3 rounded-lg bg-gray-50 border border-gray-200">
                   <div className="flex items-center gap-3">
                     <Avatar className="h-9 w-9">
-                      <AvatarFallback className="bg-white/20 text-white text-sm font-medium">
+                      <AvatarFallback className="bg-primary/10 text-primary text-sm font-medium">
                         {profile.first_name?.charAt(0) || "U"}
                       </AvatarFallback>
                     </Avatar>
                     <div className="min-w-0">
-                      <p className="text-sm font-medium text-white truncate">
+                      <p className="text-sm font-medium text-gray-900 truncate">
                         {profile.first_name} {profile.last_name}
                       </p>
-                      <p className="text-xs text-white/50 truncate">
+                      <p className="text-xs text-gray-500 truncate">
                         {profile.email}
                       </p>
                     </div>
                   </div>
                   {profile.role && (
-                    <span className="mt-2 inline-block px-2 py-0.5 text-xs rounded-full bg-white/10 text-white/70">
+                    <span className="mt-2 inline-block px-2 py-0.5 text-xs rounded-full bg-gray-100 text-gray-500">
                       {getRoleLabel(profile.role)}
                     </span>
                   )}
@@ -263,20 +260,20 @@ const Header = () => {
                     key={link.href}
                     href={link.href}
                     onClick={() => setMobileOpen(false)}
-                    className="px-4 py-3 text-sm font-medium text-white/70 hover:text-white hover:bg-white/10 rounded-lg transition-colors"
+                    className="px-4 py-3 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
                   >
                     {link.label}
                   </Link>
                 ))}
 
-                <div className="my-3 border-t border-white/10" />
+                <div className="my-3 border-t" />
 
                 {!isConfigured || (!isLoading && !user) ? (
                   <>
                     <Link
                       href="/auth/signin"
                       onClick={() => setMobileOpen(false)}
-                      className="px-4 py-3 text-sm font-medium text-white/70 hover:text-white hover:bg-white/10 rounded-lg transition-colors"
+                      className="px-4 py-3 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
                     >
                       Sign in
                     </Link>
@@ -285,7 +282,7 @@ const Header = () => {
                       onClick={() => setMobileOpen(false)}
                       className="mt-2"
                     >
-                      <Button className="w-full rounded-lg bg-white text-black hover:bg-white/90 h-10 text-sm font-medium">
+                      <Button className="w-full rounded-lg bg-gray-900 text-white hover:bg-gray-800 h-10 text-sm font-medium">
                         Get Started
                       </Button>
                     </Link>
@@ -295,7 +292,7 @@ const Header = () => {
                     <Link
                       href={dashboardHref}
                       onClick={() => setMobileOpen(false)}
-                      className="flex items-center gap-3 px-4 py-3 text-sm font-medium text-white/70 hover:text-white hover:bg-white/10 rounded-lg transition-colors"
+                      className="flex items-center gap-3 px-4 py-3 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
                     >
                       <LayoutDashboard className="w-4 h-4" />
                       Dashboard
@@ -303,7 +300,7 @@ const Header = () => {
                     <Link
                       href={profileHref}
                       onClick={() => setMobileOpen(false)}
-                      className="flex items-center gap-3 px-4 py-3 text-sm font-medium text-white/70 hover:text-white hover:bg-white/10 rounded-lg transition-colors"
+                      className="flex items-center gap-3 px-4 py-3 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
                     >
                       <User className="w-4 h-4" />
                       Profile
@@ -312,7 +309,7 @@ const Header = () => {
                       <Link
                         href="/settings"
                         onClick={() => setMobileOpen(false)}
-                        className="flex items-center gap-3 px-4 py-3 text-sm font-medium text-white/70 hover:text-white hover:bg-white/10 rounded-lg transition-colors"
+                        className="flex items-center gap-3 px-4 py-3 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
                       >
                         <Settings className="w-4 h-4" />
                         Settings
@@ -322,16 +319,16 @@ const Header = () => {
                       <Link
                         href="/jobs"
                         onClick={() => setMobileOpen(false)}
-                        className="flex items-center gap-3 px-4 py-3 text-sm font-medium text-white/70 hover:text-white hover:bg-white/10 rounded-lg transition-colors"
+                        className="flex items-center gap-3 px-4 py-3 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
                       >
                         <Briefcase className="w-4 h-4" />
                         Jobs
                       </Link>
                     )}
-                    <div className="my-3 border-t border-white/10" />
+                    <div className="my-3 border-t" />
                     <button
                       onClick={handleSignOut}
-                      className="flex items-center gap-3 px-4 py-3 text-sm font-medium text-red-400 hover:bg-red-500/10 rounded-lg transition-colors w-full text-left"
+                      className="flex items-center gap-3 px-4 py-3 text-sm font-medium text-red-600 hover:bg-red-50 rounded-lg transition-colors w-full text-left"
                     >
                       <LogOut className="w-4 h-4" />
                       Sign out
