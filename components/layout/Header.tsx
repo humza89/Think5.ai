@@ -12,24 +12,7 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import {
-  LogOut,
-  LayoutDashboard,
-  Briefcase,
-  Menu,
-  User,
-  Settings,
-} from "lucide-react";
-import { NotificationBell } from "@/components/notifications/NotificationBell";
-
+import { LogOut, Menu } from "lucide-react";
 const NAV_LINKS = [
   { href: "/product", label: "Product" },
   { href: "/research", label: "Research" },
@@ -47,25 +30,8 @@ const Header = () => {
     router.push("/");
   };
 
-  const getRoleLabel = (role: string) => {
-    const labels: Record<string, string> = {
-      admin: "Admin",
-      candidate: "Candidate",
-      recruiter: "Recruiter",
-      hiring_manager: "Hiring Manager",
-    };
-    return labels[role] || role;
-  };
-
   const dashboardHref =
     profile?.role === "candidate" ? "/candidate/dashboard" : "/dashboard";
-  const profileHref =
-    profile?.role === "candidate" ? "/candidate/profile" : "/settings";
-  const isRecruiterOrAdmin =
-    profile?.role && ["recruiter", "admin"].includes(profile.role);
-  const isNonCandidate =
-    profile?.role &&
-    ["recruiter", "admin", "hiring_manager"].includes(profile.role);
 
   return (
     <nav className="fixed top-4 left-1/2 -translate-x-1/2 z-50 w-[calc(100%-2rem)] max-w-4xl">
@@ -108,87 +74,17 @@ const Header = () => {
             <div className="w-20 h-9 bg-gray-100 animate-pulse rounded-full" />
           ) : user ? (
             <>
-              <NotificationBell />
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="gap-2 rounded-full text-gray-600 hover:text-gray-900 hover:bg-gray-100"
-                    aria-label="User menu"
-                  >
-                    <Avatar className="h-7 w-7">
-                      <AvatarFallback className="bg-primary/10 text-primary text-xs font-medium">
-                        {profile?.first_name?.charAt(0) || "U"}
-                      </AvatarFallback>
-                    </Avatar>
-                    <span className="hidden sm:inline text-sm font-medium text-gray-900">
-                      {profile?.first_name || "User"}
-                    </span>
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-56">
-                  <div className="px-3 py-2">
-                    <p className="text-sm font-medium">
-                      {profile?.first_name} {profile?.last_name}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {profile?.email}
-                    </p>
-                    {profile?.role && (
-                      <span className="mt-1.5 inline-block px-2 py-0.5 text-xs rounded-full bg-primary/10 text-primary">
-                        {getRoleLabel(profile.role)}
-                      </span>
-                    )}
-                  </div>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem asChild>
-                    <Link
-                      href={dashboardHref}
-                      className="flex items-center gap-2"
-                    >
-                      <LayoutDashboard className="h-4 w-4" />
-                      Dashboard
-                    </Link>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem asChild>
-                    <Link
-                      href={profileHref}
-                      className="flex items-center gap-2"
-                    >
-                      <User className="h-4 w-4" />
-                      Profile
-                    </Link>
-                  </DropdownMenuItem>
-                  {isNonCandidate && (
-                    <DropdownMenuItem asChild>
-                      <Link
-                        href="/settings"
-                        className="flex items-center gap-2"
-                      >
-                        <Settings className="h-4 w-4" />
-                        Settings
-                      </Link>
-                    </DropdownMenuItem>
-                  )}
-                  {isRecruiterOrAdmin && (
-                    <DropdownMenuItem asChild>
-                      <Link href="/jobs" className="flex items-center gap-2">
-                        <Briefcase className="h-4 w-4" />
-                        Jobs
-                      </Link>
-                    </DropdownMenuItem>
-                  )}
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    onClick={handleSignOut}
-                    className="flex items-center gap-2 text-destructive focus:text-destructive"
-                  >
-                    <LogOut className="h-4 w-4" />
-                    Sign out
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+              <Link href={dashboardHref}>
+                <Button className="rounded-full bg-gray-900 text-white hover:bg-gray-800 px-5 h-9 text-sm font-medium">
+                  Dashboard
+                </Button>
+              </Link>
+              <button
+                onClick={handleSignOut}
+                className="px-4 py-2 text-sm text-gray-600 hover:text-gray-900 transition-colors"
+              >
+                Sign out
+              </button>
             </>
           ) : (
             <>
@@ -209,7 +105,6 @@ const Header = () => {
 
         {/* Mobile: notification + hamburger */}
         <div className="flex md:hidden items-center gap-1 ml-auto">
-          {user && <NotificationBell />}
           <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
             <SheetTrigger asChild>
               <Button
@@ -227,32 +122,6 @@ const Header = () => {
                   Think5
                 </SheetTitle>
               </SheetHeader>
-
-              {/* User info section at top when authenticated */}
-              {user && profile && (
-                <div className="mt-4 px-4 py-3 rounded-lg bg-gray-50 border border-gray-200">
-                  <div className="flex items-center gap-3">
-                    <Avatar className="h-9 w-9">
-                      <AvatarFallback className="bg-primary/10 text-primary text-sm font-medium">
-                        {profile.first_name?.charAt(0) || "U"}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium text-gray-900 truncate">
-                        {profile.first_name} {profile.last_name}
-                      </p>
-                      <p className="text-xs text-gray-500 truncate">
-                        {profile.email}
-                      </p>
-                    </div>
-                  </div>
-                  {profile.role && (
-                    <span className="mt-2 inline-block px-2 py-0.5 text-xs rounded-full bg-gray-100 text-gray-500">
-                      {getRoleLabel(profile.role)}
-                    </span>
-                  )}
-                </div>
-              )}
 
               <div className="flex flex-col gap-1 mt-6">
                 {NAV_LINKS.map((link) => (
@@ -292,39 +161,10 @@ const Header = () => {
                     <Link
                       href={dashboardHref}
                       onClick={() => setMobileOpen(false)}
-                      className="flex items-center gap-3 px-4 py-3 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+                      className="px-4 py-3 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
                     >
-                      <LayoutDashboard className="w-4 h-4" />
                       Dashboard
                     </Link>
-                    <Link
-                      href={profileHref}
-                      onClick={() => setMobileOpen(false)}
-                      className="flex items-center gap-3 px-4 py-3 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
-                    >
-                      <User className="w-4 h-4" />
-                      Profile
-                    </Link>
-                    {isNonCandidate && (
-                      <Link
-                        href="/settings"
-                        onClick={() => setMobileOpen(false)}
-                        className="flex items-center gap-3 px-4 py-3 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
-                      >
-                        <Settings className="w-4 h-4" />
-                        Settings
-                      </Link>
-                    )}
-                    {isRecruiterOrAdmin && (
-                      <Link
-                        href="/jobs"
-                        onClick={() => setMobileOpen(false)}
-                        className="flex items-center gap-3 px-4 py-3 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
-                      >
-                        <Briefcase className="w-4 h-4" />
-                        Jobs
-                      </Link>
-                    )}
                     <div className="my-3 border-t" />
                     <button
                       onClick={handleSignOut}
