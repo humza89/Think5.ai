@@ -56,23 +56,7 @@ const Header = () => {
 
         {/* Right side — desktop */}
         <div className="hidden md:flex items-center gap-2 ml-auto">
-          {!isConfigured ? (
-            <>
-              <Link
-                href="/auth/signin"
-                className="px-4 py-2 text-sm text-gray-600 hover:text-gray-900 transition-colors"
-              >
-                Sign in
-              </Link>
-              <Link href="/auth/signup">
-                <Button className="rounded-full bg-gray-900 text-white hover:bg-gray-800 px-5 h-9 text-sm font-medium">
-                  Get Started
-                </Button>
-              </Link>
-            </>
-          ) : isLoading ? (
-            <div className="w-20 h-9 bg-gray-100 animate-pulse rounded-full" />
-          ) : user ? (
+          {user ? (
             <>
               <Link href={dashboardHref}>
                 <Button className="rounded-full bg-gray-900 text-white hover:bg-gray-800 px-5 h-9 text-sm font-medium">
@@ -86,6 +70,8 @@ const Header = () => {
                 Sign out
               </button>
             </>
+          ) : isLoading ? (
+            <div className="w-20 h-9 bg-gray-200 animate-pulse rounded-full" />
           ) : (
             <>
               <Link
@@ -137,7 +123,25 @@ const Header = () => {
 
                 <div className="my-3 border-t" />
 
-                {!isConfigured || (!isLoading && !user) ? (
+                {user ? (
+                  <>
+                    <Link
+                      href={dashboardHref}
+                      onClick={() => setMobileOpen(false)}
+                      className="px-4 py-3 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+                    >
+                      Dashboard
+                    </Link>
+                    <div className="my-3 border-t" />
+                    <button
+                      onClick={handleSignOut}
+                      className="flex items-center gap-3 px-4 py-3 text-sm font-medium text-red-600 hover:bg-red-50 rounded-lg transition-colors w-full text-left"
+                    >
+                      <LogOut className="w-4 h-4" />
+                      Sign out
+                    </button>
+                  </>
+                ) : (
                   <>
                     <Link
                       href="/auth/signin"
@@ -156,25 +160,7 @@ const Header = () => {
                       </Button>
                     </Link>
                   </>
-                ) : user ? (
-                  <>
-                    <Link
-                      href={dashboardHref}
-                      onClick={() => setMobileOpen(false)}
-                      className="px-4 py-3 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
-                    >
-                      Dashboard
-                    </Link>
-                    <div className="my-3 border-t" />
-                    <button
-                      onClick={handleSignOut}
-                      className="flex items-center gap-3 px-4 py-3 text-sm font-medium text-red-600 hover:bg-red-50 rounded-lg transition-colors w-full text-left"
-                    >
-                      <LogOut className="w-4 h-4" />
-                      Sign out
-                    </button>
-                  </>
-                ) : null}
+                )}
               </div>
             </SheetContent>
           </Sheet>
