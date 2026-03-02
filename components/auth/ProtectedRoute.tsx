@@ -22,17 +22,17 @@ export function ProtectedRoute({
   useEffect(() => {
     if (isLoading) return;
 
-    if (!user) {
+    if (!user || !profile) {
       router.push("/auth/signin");
       return;
     }
 
-    if (requireEmailVerified && profile && !profile.email_verified) {
+    if (requireEmailVerified && !profile.email_verified) {
       router.push("/auth/verify");
       return;
     }
 
-    if (allowedRoles && profile && !allowedRoles.includes(profile.role)) {
+    if (allowedRoles && !allowedRoles.includes(profile.role)) {
       router.push("/unauthorized");
       return;
     }
@@ -49,15 +49,15 @@ export function ProtectedRoute({
     );
   }
 
-  if (!user) {
+  if (!user || !profile) {
     return null;
   }
 
-  if (requireEmailVerified && profile && !profile.email_verified) {
+  if (requireEmailVerified && !profile.email_verified) {
     return null;
   }
 
-  if (allowedRoles && profile && !allowedRoles.includes(profile.role)) {
+  if (allowedRoles && !allowedRoles.includes(profile.role)) {
     return null;
   }
 
