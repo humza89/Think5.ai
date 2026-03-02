@@ -32,7 +32,10 @@ import {
   ChevronLeft,
   ChevronDown,
   Plus,
-  X
+  X,
+  Send,
+  UserPlus,
+  Trash2,
 } from "lucide-react";
 
 interface Experience {
@@ -122,6 +125,25 @@ export default function CandidatesPage() {
     excludeDegrees: [],
   });
 
+  // Shadow Profiles state
+  const [activeTab, setActiveTab] = useState("candidates");
+  const [shadowProfiles, setShadowProfiles] = useState<Array<{
+    id: string;
+    firstName?: string;
+    lastName?: string;
+    email?: string;
+    phone?: string;
+    currentTitle?: string;
+    currentCompany?: string;
+    linkedinUrl?: string;
+    source?: string;
+    status: string;
+    skills: string[];
+    createdAt: string;
+  }>>([]);
+  const [shadowStatusFilter, setShadowStatusFilter] = useState("all");
+  const [shadowLoading, setShadowLoading] = useState(false);
+
   // Upload form state
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [linkedinUrl, setLinkedinUrl] = useState("");
@@ -138,6 +160,10 @@ export default function CandidatesPage() {
   useEffect(() => {
     fetchCandidates();
   }, []);
+
+  useEffect(() => {
+    if (activeTab === "shadow") fetchShadowProfiles();
+  }, [activeTab, shadowStatusFilter]);
 
   useEffect(() => {
     extractFilterOptions();
@@ -157,6 +183,36 @@ export default function CandidatesPage() {
       }
     } catch (error) {
       console.error("Error fetching candidates:", error);
+    }
+  }
+
+  async function fetchShadowProfiles() {
+    setShadowLoading(true);
+    try {
+      const statusParam = shadowStatusFilter !== "all" ? `&status=${shadowStatusFilter.toUpperCase()}` : "";
+      const response = await fetch(`/api/passive-profiles?limit=100${statusParam}`);
+      if (response.ok) {
+        const data = await response.json();
+        setShadowProfiles(data.data || []);
+      }
+    } catch (error) {
+      console.error("Error fetching shadow profiles:", error);
+    } finally {
+      setShadowLoading(false);
+    }
+  }
+
+  async function handleDeleteShadowProfile(id: string) {
+    try {
+      const response = await fetch(`/api/passive-profiles/${id}`, { method: "DELETE" });
+      if (response.ok) {
+        setShadowProfiles(prev => prev.filter(p => p.id !== id));
+        toast.success("Profile deleted");
+      } else {
+        toast.error("Failed to delete profile");
+      }
+    } catch {
+      toast.error("Failed to delete profile");
     }
   }
 
@@ -481,7 +537,144 @@ export default function CandidatesPage() {
           </p>
         </div>
 
-        {/* Filter Bar */}
+        {/* Main Tabs */}
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="mb-4">
+          <TabsList>
+            <TabsTrigger value="candidates">Candidates</TabsTrigger>
+            <TabsTrigger value="shadow">Shadow Profiles</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="shadow" className="mt-4">
+            {/* Shadow Profiles Tab */}
+            <div className="mb-4 flex items-center gap-2">
+              <Button
+                variant={shadowStatusFilter === "all" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setShadowStatusFilter("all")}
+              >
+                All
+              </Button>
+              <Button
+                variant={shadowStatusFilter === "created" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setShadowStatusFilter("created")}
+              >
+                Created
+              </Button>
+              <Button
+                variant={shadowStatusFilter === "invited" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setShadowStatusFilter("invited")}
+              >
+                Invited
+              </Button>
+              <Button
+                variant={shadowStatusFilter === "linked" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setShadowStatusFilter("linked")}
+              >
+                Linked
+              </Button>
+              <div className="ml-auto">
+                <Link href="/source">
+                  <Button size="sm">
+                    <UserPlus className="h-4 w-4 mr-2" />
+                    Source New
+                  </Button>
+                </Link>
+              </div>
+            </div>
+
+            {shadowLoading ? (
+              <div className="text-center py-12 text-muted-foreground">Loading shadow profiles...</div>
+            ) : shadowProfiles.length === 0 ? (
+              <div className="text-center py-12">
+                <p className="text-muted-foreground mb-4">No shadow profiles found</p>
+                <Link href="/source">
+                  <Button>
+                    <UserPlus className="mr-2 h-4 w-4" />
+                    Source Your First Candidate
+                  </Button>
+                </Link>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {shadowProfiles.map((profile) => (
+                  <div
+                    key={profile.id}
+                    className="flex items-center justify-between p-4 border rounded-lg hover:bg-accent/50 transition-colors"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <p className="font-medium truncate">
+                          {[profile.firstName, profile.lastName].filter(Boolean).join(" ") || "Unnamed"}
+                        </p>
+                        <Badge
+                          variant={
+                            profile.status === "LINKED"
+                              ? "default"
+                              : profile.status === "INVITED"
+                              ? "secondary"
+                              : "outline"
+                          }
+                          className="text-xs"
+                        >
+                          {profile.status}
+                        </Badge>
+                        {profile.source && (
+                          <Badge variant="outline" className="text-xs">
+                            {profile.source}
+                          </Badge>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-4 mt-1 text-sm text-muted-foreground">
+                        {profile.email && <span>{profile.email}</span>}
+                        {profile.currentTitle && <span>{profile.currentTitle}</span>}
+                        {profile.currentCompany && <span>at {profile.currentCompany}</span>}
+                      </div>
+                      {profile.skills && profile.skills.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-2">
+                          {profile.skills.slice(0, 5).map((skill, i) => (
+                            <Badge key={i} variant="outline" className="text-xs">
+                              {skill}
+                            </Badge>
+                          ))}
+                          {profile.skills.length > 5 && (
+                            <Badge variant="outline" className="text-xs">
+                              +{profile.skills.length - 5}
+                            </Badge>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 ml-4">
+                      {profile.status !== "LINKED" && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => toast.info("Use the Source page to send invitations")}
+                        >
+                          <Send className="h-3.5 w-3.5 mr-1.5" />
+                          Invite
+                        </Button>
+                      )}
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-destructive hover:text-destructive"
+                        onClick={() => handleDeleteShadowProfile(profile.id)}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </TabsContent>
+
+        </Tabs>
+        {activeTab === "candidates" && (<>
         <div className="mb-3 flex items-center gap-2 flex-wrap">
           <Button variant="outline" size="sm" className="h-8 gap-1 text-xs border-gray-300 hover:bg-gray-50">
             <Plus className="h-3.5 w-3.5" />
@@ -1127,6 +1320,7 @@ export default function CandidatesPage() {
             </div>
           )}
         </div>
+        </>)}
       </div>
 
       {/* Upload Dialog */}

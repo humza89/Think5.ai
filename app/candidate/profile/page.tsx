@@ -2,8 +2,6 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import Header from "@/components/layout/Header";
-import Footer from "@/components/landing/Footer";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -88,10 +86,7 @@ export default function CandidateProfilePage() {
   };
 
   return (
-    <main className="min-h-screen bg-black">
-      <Header />
-
-      <div className="pt-28 pb-24">
+    <div>
         <div className="container mx-auto px-6 max-w-3xl">
           <Link
             href="/candidate/dashboard"
@@ -257,9 +252,6 @@ export default function CandidateProfilePage() {
             </div>
           )}
         </div>
-      </div>
-
-      <Footer />
-    </main>
+    </div>
   );
 }

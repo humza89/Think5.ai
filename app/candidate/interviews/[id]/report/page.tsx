@@ -3,8 +3,6 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import Header from "@/components/layout/Header";
-import Footer from "@/components/landing/Footer";
 import { InterviewReportViewer } from "@/components/interview/InterviewReportViewer";
 import { ArrowLeft } from "lucide-react";
 
@@ -61,10 +59,7 @@ export default function CandidateReportPage() {
   }, [id]);
 
   return (
-    <main className="min-h-screen bg-black">
-      <Header />
-
-      <div className="pt-28 pb-24">
+    <div>
         <div className="container mx-auto px-6">
           <Link
             href="/candidate/interviews"
@@ -98,9 +93,6 @@ export default function CandidateReportPage() {
             />
           ) : null}
         </div>
-      </div>
-
-      <Footer />
-    </main>
+    </div>
   );
 }

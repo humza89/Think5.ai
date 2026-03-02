@@ -16,6 +16,12 @@ import {
   Building2,
   ChevronLeft,
   ChevronRight,
+  Kanban,
+  Search,
+  UserPlus,
+  FolderOpen,
+  UsersRound,
+  Mail,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/layout/ThemeToggle";
@@ -32,9 +38,21 @@ const NAV_SECTIONS: { title?: string; items: NavItem[] }[] = [
     items: [
       { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
       { label: "Jobs", href: "/jobs", icon: Briefcase },
+      { label: "Pipeline", href: "/pipeline", icon: Kanban },
       { label: "Candidates", href: "/candidates", icon: Users },
+      { label: "Search", href: "/search", icon: Search },
+      { label: "Source", href: "/source", icon: UserPlus },
+      { label: "Invitations", href: "/invitations", icon: Mail },
       { label: "Interviews", href: "/interviews", icon: MessageSquare },
       { label: "Clients", href: "/clients", icon: Building2 },
+    ],
+  },
+  {
+    title: "Collaborate",
+    items: [
+      { label: "Messaging", href: "/messaging", icon: MessageSquare },
+      { label: "Team", href: "/team", icon: UsersRound },
+      { label: "Talent Pools", href: "/talent-pools", icon: FolderOpen },
     ],
   },
   {

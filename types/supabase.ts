@@ -20,6 +20,15 @@ export type VerificationToken = {
   created_at: string;
 };
 
+export type PasswordResetToken = {
+  id: string;
+  user_id: string;
+  token: string;
+  expires_at: string;
+  used_at: string | null;
+  created_at: string;
+};
+
 type GenericRelationship = {
   foreignKeyName: string;
   columns: string[];
@@ -41,6 +50,12 @@ export interface Database {
         Row: VerificationToken;
         Insert: Omit<VerificationToken, 'id' | 'created_at'>;
         Update: Partial<Omit<VerificationToken, 'id' | 'created_at'>>;
+        Relationships: GenericRelationship[];
+      };
+      password_reset_tokens: {
+        Row: PasswordResetToken;
+        Insert: Omit<PasswordResetToken, 'id' | 'created_at' | 'used_at'>;
+        Update: Partial<Omit<PasswordResetToken, 'id' | 'created_at'>>;
         Relationships: GenericRelationship[];
       };
     };

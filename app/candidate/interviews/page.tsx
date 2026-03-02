@@ -2,8 +2,6 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import Header from "@/components/layout/Header";
-import Footer from "@/components/landing/Footer";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -68,10 +66,7 @@ export default function CandidateInterviewsPage() {
   }, [activeFilter]);
 
   return (
-    <main className="min-h-screen bg-black">
-      <Header />
-
-      <div className="pt-28 pb-24">
+    <div>
         <div className="container mx-auto px-6">
           {/* Header */}
           <div className="mb-8">
@@ -214,9 +209,6 @@ export default function CandidateInterviewsPage() {
             </div>
           )}
         </div>
-      </div>
-
-      <Footer />
-    </main>
+    </div>
   );
 }

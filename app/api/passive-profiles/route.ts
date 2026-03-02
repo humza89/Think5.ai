@@ -54,7 +54,7 @@ export async function POST(request: NextRequest) {
     );
 
     const body = await request.json();
-    const { email, linkedinUrl, firstName, lastName, source } = body;
+    const { email, linkedinUrl, firstName, lastName, fullName, source, phone, currentTitle, currentCompany, yearsExperience, skills, notes } = body;
 
     if (!email && !linkedinUrl) {
       return NextResponse.json(
@@ -63,12 +63,27 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Support both fullName (from source page) and firstName/lastName
+    let resolvedFirst = firstName;
+    let resolvedLast = lastName;
+    if (!resolvedFirst && !resolvedLast && fullName) {
+      const parts = fullName.trim().split(/\s+/);
+      resolvedFirst = parts[0] || null;
+      resolvedLast = parts.slice(1).join(" ") || null;
+    }
+
     const passiveProfile = await prisma.passiveProfile.create({
       data: {
         email,
         linkedinUrl,
-        firstName,
-        lastName,
+        firstName: resolvedFirst,
+        lastName: resolvedLast,
+        phone: phone || null,
+        currentTitle: currentTitle || null,
+        currentCompany: currentCompany || null,
+        yearsExperience: yearsExperience ? parseInt(String(yearsExperience)) : null,
+        skills: skills || [],
+        notes: notes || null,
         source: source || "manual",
         sourceRecruiterId: recruiter.id,
         status: "CREATED",

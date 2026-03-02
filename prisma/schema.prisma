@@ -116,6 +116,21 @@ enum ProctoringEventSeverity {
   CRITICAL
 }
 
+enum RemotePreference {
+  REMOTE
+  HYBRID
+  ONSITE
+  FLEXIBLE
+}
+
+enum CandidateAvailability {
+  IMMEDIATELY
+  TWO_WEEKS
+  ONE_MONTH
+  THREE_MONTHS
+  NOT_LOOKING
+}
+
 // ============================================
 // Core Models
 // ============================================
@@ -174,6 +189,10 @@ model Candidate {
   ariaInterviewed  Boolean         @default(false)
   ariaOverallScore Float?
 
+  // Onboarding tracking
+  onboardingCompleted Boolean       @default(false)
+  onboardingStep      Int           @default(0)
+
   // New relations
   applications          Application[]
   invitations           InterviewInvitation[]
@@ -183,6 +202,7 @@ model Candidate {
   candidateEducation    CandidateEducation[]
   certifications        CandidateCertification[]
   notifications         Notification[]
+  jobPreferences        JobPreference?
 
   createdAt        DateTime        @default(now())
   updatedAt        DateTime        @updatedAt
@@ -591,6 +611,13 @@ model PassiveProfile {
   linkedinUrl        String?
   firstName          String?
   lastName           String?
+  phone              String?
+  currentTitle       String?
+  currentCompany     String?
+  yearsExperience    Int?
+  skills             String[]             @default([])
+  resumeUrl          String?
+  notes              String?              @db.Text
   extractedData      Json?                // Parsed LinkedIn/resume data
   source             String?              // linkedin, resume, csv, manual
   status             PassiveProfileStatus @default(CREATED)
@@ -718,6 +745,101 @@ model CandidateCertification {
   credentialId String?
 
   createdAt    DateTime  @default(now())
+
+  @@index([candidateId])
+}
+
+// ============================================
+// Messaging System
+// ============================================
+
+enum MessageSenderRole {
+  RECRUITER
+  CANDIDATE
+  SYSTEM
+}
+
+model Message {
+  id              String            @id @default(uuid())
+  conversationId  String
+  senderId        String
+  senderRole      MessageSenderRole
+  recipientId     String
+  recipientRole   MessageSenderRole
+  content         String            @db.Text
+  read            Boolean           @default(false)
+  readAt          DateTime?
+  attachmentUrl   String?
+  attachmentName  String?
+
+  createdAt       DateTime          @default(now())
+
+  @@index([conversationId])
+  @@index([senderId])
+  @@index([recipientId])
+  @@index([conversationId, createdAt])
+}
+
+// ============================================
+// Activity Log / Audit Trail
+// ============================================
+
+model ActivityLog {
+  id          String   @id @default(uuid())
+  userId      String
+  userRole    String
+  action      String   // e.g. "application.created", "interview.completed", "candidate.status_changed"
+  entityType  String   // e.g. "Application", "Interview", "Candidate"
+  entityId    String
+  metadata    Json?    // Additional context
+  ipAddress   String?
+
+  createdAt   DateTime @default(now())
+
+  @@index([userId])
+  @@index([entityType])
+  @@index([action])
+  @@index([createdAt])
+}
+
+// ============================================
+// Notification Preferences
+// ============================================
+
+model NotificationPreference {
+  id                   String   @id @default(uuid())
+  userId               String   @unique
+  emailNotifications   Boolean  @default(true)
+  pushNotifications    Boolean  @default(true)
+  interviewInvites     Boolean  @default(true)
+  applicationUpdates   Boolean  @default(true)
+  matchAlerts          Boolean  @default(true)
+  feedbackReady        Boolean  @default(true)
+  systemAlerts         Boolean  @default(true)
+
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+}
+
+// ============================================
+// Job Preferences (Candidate Onboarding)
+// ============================================
+
+model JobPreference {
+  id                  String               @id @default(uuid())
+  candidateId         String               @unique
+  candidate           Candidate            @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  jobTypes            String[]             @default([])
+  preferredLocations  String[]             @default([])
+  remotePreference    RemotePreference     @default(FLEXIBLE)
+  salaryMin           Int?
+  salaryMax           Int?
+  salaryCurrency      String               @default("USD")
+  availability        CandidateAvailability @default(IMMEDIATELY)
+  willingToRelocate   Boolean              @default(false)
+
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
 
   @@index([candidateId])
 }

@@ -31,6 +31,8 @@ export async function GET() {
         location: true,
         headline: true,
         profileImage: true,
+        onboardingCompleted: true,
+        onboardingStep: true,
       },
     });
 
@@ -44,6 +46,9 @@ export async function GET() {
       lastName: profile.last_name,
       avatarUrl: profile.avatar_url,
       emailVerified: profile.email_verified,
+      phone: (profile as Record<string, unknown>).phone || null,
+      jobTitle: (profile as Record<string, unknown>).job_title || null,
+      bio: (profile as Record<string, unknown>).bio || null,
       // From candidate records (display-only)
       currentTitle: latest?.currentTitle || null,
       currentCompany: latest?.currentCompany || null,
@@ -55,6 +60,8 @@ export async function GET() {
       location: latest?.location || null,
       headline: latest?.headline || null,
       profileImage: latest?.profileImage || null,
+      onboardingCompleted: latest?.onboardingCompleted || false,
+      onboardingStep: latest?.onboardingStep || 0,
     });
   } catch (error) {
     const { error: message, status } = handleAuthError(error);
@@ -71,7 +78,7 @@ export async function PUT(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { first_name, last_name } = body;
+    const { first_name, last_name, phone, job_title, bio, location, linkedinUrl } = body;
 
     if (!first_name || !last_name) {
       return NextResponse.json(
@@ -81,17 +88,41 @@ export async function PUT(req: NextRequest) {
     }
 
     const supabase = await createSupabaseServerClient();
+    const profileUpdate: Record<string, unknown> = {
+      first_name,
+      last_name,
+      updated_at: new Date().toISOString(),
+    };
+    if (phone !== undefined) profileUpdate.phone = phone;
+    if (job_title !== undefined) profileUpdate.job_title = job_title;
+    if (bio !== undefined) profileUpdate.bio = bio;
+
     const { error } = await supabase
       .from("profiles")
-      .update({
-        first_name,
-        last_name,
-        updated_at: new Date().toISOString(),
-      })
+      .update(profileUpdate)
       .eq("id", user.id);
 
     if (error) {
       throw new AuthError("Failed to update profile", 500);
+    }
+
+    // Also update candidate record if it exists
+    const candidate = await prisma.candidate.findFirst({
+      where: { email: { equals: profile.email, mode: "insensitive" } },
+    });
+
+    if (candidate) {
+      const candidateUpdate: Record<string, unknown> = {
+        fullName: `${first_name} ${last_name}`.trim(),
+      };
+      if (location !== undefined) candidateUpdate.location = location;
+      if (linkedinUrl !== undefined) candidateUpdate.linkedinUrl = linkedinUrl;
+      if (job_title !== undefined) candidateUpdate.currentTitle = job_title;
+
+      await prisma.candidate.update({
+        where: { id: candidate.id },
+        data: candidateUpdate,
+      });
     }
 
     return NextResponse.json({ success: true });

@@ -2,8 +2,6 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import Header from "@/components/layout/Header";
-import Footer from "@/components/landing/Footer";
 import { useAuth } from "@/contexts/AuthContext";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -69,10 +67,7 @@ export default function CandidateDashboard() {
       : 0;
 
   return (
-    <main className="min-h-screen bg-black">
-      <Header />
-
-      <div className="pt-28 pb-24">
+    <div>
         <div className="container mx-auto px-6">
           {/* Welcome */}
           <div className="mb-12">
@@ -320,9 +315,6 @@ export default function CandidateDashboard() {
             </Link>
           </div>
         </div>
-      </div>
-
-      <Footer />
-    </main>
+    </div>
   );
 }
