@@ -52,9 +52,7 @@ async function getDashboardStats() {
         take: 5,
       }),
       prisma.interview.findMany({
-        include: {
-          candidate: { select: { fullName: true } },
-        },
+        select: { id: true, status: true, candidate: { select: { fullName: true } } },
         orderBy: { createdAt: "desc" },
         take: 5,
       }),
