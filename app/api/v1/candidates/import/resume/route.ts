@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { PrismaClient } from "@prisma/client";
-import pdfParse from "pdf-parse";
 import { getAuthenticatedUser } from "@/lib/auth";
 
 const prisma = new PrismaClient();
 
 export async function POST(req: NextRequest) {
   try {
+    const pdfParse = require("pdf-parse");
     const { user, profile } = await getAuthenticatedUser();
 
     if (!user || profile?.role !== "recruiter") {

@@ -5,7 +5,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 const publicRoutes = ['/', '/auth/signin', '/auth/signup', '/auth/verify', '/auth/callback'];
 const publicPrefixes = ['/api/auth/', '/api/health', '/_next/', '/uploads/', '/Logos/', '/favicon', '/interview', '/reports/shared'];
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Allow public routes
