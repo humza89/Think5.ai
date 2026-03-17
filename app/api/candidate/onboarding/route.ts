@@ -22,7 +22,13 @@ async function getOrCreateCandidate(userId: string, email: string, firstName: st
       systemRecruiter = await prisma.recruiter.findFirst();
     }
     if (!systemRecruiter) {
-      throw new AuthError("Platform not configured — no recruiter exists", 500);
+      // Auto-create system recruiter instead of blocking candidate onboarding
+      systemRecruiter = await prisma.recruiter.create({
+        data: {
+          name: "System",
+          email: "system@think5.ai",
+        },
+      });
     }
 
     candidate = await prisma.candidate.create({

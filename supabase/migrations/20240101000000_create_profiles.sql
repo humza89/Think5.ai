@@ -39,6 +39,16 @@ CREATE INDEX idx_profiles_email_verified ON public.profiles(email_verified);
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 
 -- ============================================
+-- Admin helper function (SECURITY DEFINER bypasses RLS to avoid circular reference)
+-- ============================================
+CREATE OR REPLACE FUNCTION public.is_admin()
+RETURNS BOOLEAN AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin'
+  );
+$$ LANGUAGE sql SECURITY DEFINER STABLE;
+
+-- ============================================
 -- Profiles RLS Policies
 -- ============================================
 
@@ -50,17 +60,13 @@ CREATE POLICY "Users can view own profile" ON public.profiles
 CREATE POLICY "Users can update own profile" ON public.profiles
     FOR UPDATE USING (auth.uid() = id);
 
--- Admins can view all profiles
+-- Admins can view all profiles (uses SECURITY DEFINER function to avoid circular RLS)
 CREATE POLICY "Admins can view all profiles" ON public.profiles
-    FOR SELECT USING (
-        EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin')
-    );
+    FOR SELECT USING (public.is_admin());
 
 -- Admins can update all profiles
 CREATE POLICY "Admins can update all profiles" ON public.profiles
-    FOR UPDATE USING (
-        EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin')
-    );
+    FOR UPDATE USING (public.is_admin());
 
 -- Service role can do everything (for API routes)
 CREATE POLICY "Service role has full access to profiles" ON public.profiles
