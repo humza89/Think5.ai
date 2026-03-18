@@ -8,6 +8,14 @@ import {
   type PrefillData,
 } from "@/components/onboarding/OnboardingWizard";
 
+/** Convert an ISO date string (or Date) to MM/YYYY for form display */
+function toMMYYYY(value: unknown): string {
+  if (!value) return "";
+  const d = new Date(value as string);
+  if (isNaN(d.getTime())) return "";
+  return `${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`;
+}
+
 const DEFAULT_DATA: OnboardingData = {
   personalInfo: {
     firstName: "",
@@ -97,8 +105,8 @@ export default function OnboardingPage() {
             id: (exp.id as string) || crypto.randomUUID(),
             company: (exp.company as string) || "",
             title: (exp.title as string) || "",
-            startDate: exp.startDate ? new Date(exp.startDate as string).toISOString().slice(0, 7) : "",
-            endDate: exp.endDate ? new Date(exp.endDate as string).toISOString().slice(0, 7) : "",
+            startDate: toMMYYYY(exp.startDate),
+            endDate: toMMYYYY(exp.endDate),
             isCurrent: (exp.isCurrent as boolean) || false,
             description: (exp.description as string) || "",
             location: (exp.location as string) || "",
@@ -121,8 +129,8 @@ export default function OnboardingPage() {
             institution: (edu.institution as string) || "",
             degree: (edu.degree as string) || "",
             fieldOfStudy: (edu.field as string) || "",
-            startDate: edu.startDate ? new Date(edu.startDate as string).toISOString().slice(0, 7) : "",
-            endDate: edu.endDate ? new Date(edu.endDate as string).toISOString().slice(0, 7) : "",
+            startDate: toMMYYYY(edu.startDate),
+            endDate: toMMYYYY(edu.endDate),
           }));
         }
 
@@ -132,8 +140,8 @@ export default function OnboardingPage() {
             id: (cert.id as string) || crypto.randomUUID(),
             name: (cert.name as string) || "",
             issuingOrganization: (cert.issuingOrg as string) || "",
-            issueDate: cert.issueDate ? new Date(cert.issueDate as string).toISOString().slice(0, 7) : "",
-            expiryDate: cert.expiryDate ? new Date(cert.expiryDate as string).toISOString().slice(0, 7) : "",
+            issueDate: toMMYYYY(cert.issueDate),
+            expiryDate: toMMYYYY(cert.expiryDate),
             credentialId: (cert.credentialId as string) || "",
           }));
         }
