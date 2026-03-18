@@ -118,7 +118,7 @@ async function generateHeadshot(
 
 async function enhanceWithSharp(buffer: Buffer): Promise<Buffer> {
   return sharp(buffer)
-    .resize(600, 600, { fit: "cover", position: "attention" })
+    .resize(600, 600, { fit: "contain", background: { r: 200, g: 220, b: 240, alpha: 1 } })
     .modulate({ brightness: 1.05, saturation: 1.05 })
     .sharpen({ sigma: 1 })
     .jpeg({ quality: 90, mozjpeg: true })
@@ -169,7 +169,7 @@ export async function POST(request: NextRequest) {
 
     // Save original as 600x600 JPEG to Supabase
     const originalBuffer = await sharp(buffer)
-      .resize(600, 600, { fit: "cover", position: "attention" })
+      .resize(600, 600, { fit: "contain", background: { r: 200, g: 220, b: 240, alpha: 1 } })
       .jpeg({ quality: 90, mozjpeg: true })
       .toBuffer();
 
@@ -209,7 +209,7 @@ export async function POST(request: NextRequest) {
 
         // Process through Sharp for consistent output
         const processedBuffer = await sharp(generatedBuffer)
-          .resize(600, 600, { fit: "cover", position: "attention" })
+          .resize(600, 600, { fit: "contain", background: { r: 200, g: 220, b: 240, alpha: 1 } })
           .jpeg({ quality: 92, mozjpeg: true })
           .toBuffer();
 
