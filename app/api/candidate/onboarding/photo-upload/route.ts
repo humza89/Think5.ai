@@ -17,7 +17,7 @@ const BUCKET = "photos";
 // ============================================
 
 const HEADSHOT_BASE =
-  "Place the person against a clean, solid light blue gradient background. Dress them in a sharp, well-fitted dark professional suit with a crisp white shirt. Maintain the person's EXACT face, features, skin tone, hair, and likeness — do not alter their appearance. High resolution, sharp focus on the eyes. Frame as a tight head-and-shoulders crop. IMPORTANT POSITIONING: Center the person's face exactly in the horizontal middle of the image with equal spacing on both sides. The head should be in the upper third of the frame. Use a straight-on camera angle — no tilting, no rotation. Keep the same zoom level and framing for every image.";
+  "Generate a perfectly SQUARE 1:1 aspect ratio image (same width and height). Place the person against a clean, uniform solid light blue background (hex #B8D4E8) with NO gradient, NO vignette, and NO darker edges. Dress them in a sharp, well-fitted dark professional suit with a crisp white shirt. Maintain the person's EXACT face, features, skin tone, hair, and likeness — do not alter their appearance. High resolution, sharp focus on the eyes. CRITICAL FRAMING: The person should fill most of the frame. Show from mid-chest up. The top of the head should be very close to the top edge of the image with only a small margin above. Center the person horizontally AND vertically. Minimize empty background space. Use a straight-on camera angle — no tilting, no rotation.";
 
 const HEADSHOT_STYLES = [
   {
@@ -118,7 +118,7 @@ async function generateHeadshot(
 
 async function enhanceWithSharp(buffer: Buffer): Promise<Buffer> {
   return sharp(buffer)
-    .resize(600, 600, { fit: "contain", background: { r: 200, g: 220, b: 240, alpha: 1 } })
+    .resize(800, null, { withoutEnlargement: true })
     .modulate({ brightness: 1.05, saturation: 1.05 })
     .sharpen({ sigma: 1 })
     .jpeg({ quality: 90, mozjpeg: true })
@@ -167,9 +167,9 @@ export async function POST(request: NextRequest) {
     const timestamp = Date.now();
     const safeName = file.name.replace(/[^a-zA-Z0-9.-]/g, "_");
 
-    // Save original as 600x600 JPEG to Supabase
+    // Save original as resized JPEG to Supabase
     const originalBuffer = await sharp(buffer)
-      .resize(600, 600, { fit: "contain", background: { r: 200, g: 220, b: 240, alpha: 1 } })
+      .resize(800, null, { withoutEnlargement: true })
       .jpeg({ quality: 90, mozjpeg: true })
       .toBuffer();
 
@@ -207,9 +207,9 @@ export async function POST(request: NextRequest) {
       if (result.status === "fulfilled" && result.value) {
         const generatedBuffer = Buffer.from(result.value.data, "base64");
 
-        // Process through Sharp for consistent output
+        // Convert to JPEG — no forced square crop, let frontend CSS handle display
         const processedBuffer = await sharp(generatedBuffer)
-          .resize(600, 600, { fit: "contain", background: { r: 200, g: 220, b: 240, alpha: 1 } })
+          .resize(800, null, { withoutEnlargement: true })
           .jpeg({ quality: 92, mozjpeg: true })
           .toBuffer();
 

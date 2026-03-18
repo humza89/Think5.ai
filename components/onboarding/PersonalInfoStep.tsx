@@ -373,7 +373,7 @@ export function PersonalInfoStep({
                         src={hs.url}
                         alt={hs.label}
                         fill
-                        className="object-cover transition-transform group-hover:scale-105"
+                        className="object-cover object-top transition-transform group-hover:scale-105"
                         unoptimized
                       />
                       {/* Hover overlay */}
@@ -431,7 +431,7 @@ export function PersonalInfoStep({
                     src={data.profileImage || ""}
                     alt="Selected headshot"
                     fill
-                    className="object-cover"
+                    className="object-cover object-top"
                     unoptimized
                   />
                 </div>
