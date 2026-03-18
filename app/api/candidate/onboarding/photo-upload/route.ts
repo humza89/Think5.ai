@@ -16,24 +16,24 @@ const BUCKET = "photos";
 // Headshot Style Prompts
 // ============================================
 
+const HEADSHOT_BASE =
+  "Place the person against a clean, solid light blue gradient background. Dress them in a sharp, well-fitted dark professional suit with a crisp white shirt. Maintain the person's EXACT face, features, skin tone, hair, and likeness — do not alter their appearance. High resolution, sharp focus on the eyes. Frame as a tight head-and-shoulders crop. IMPORTANT POSITIONING: Center the person's face exactly in the horizontal middle of the image with equal spacing on both sides. The head should be in the upper third of the frame. Use a straight-on camera angle — no tilting, no rotation. Keep the same zoom level and framing for every image.";
+
 const HEADSHOT_STYLES = [
   {
     key: "corporate",
     label: "Corporate Professional",
-    prompt:
-      "Transform this photo into a polished corporate professional headshot portrait. Use a clean, solid neutral gray or soft blue gradient background. Apply professional studio lighting with soft key light and subtle fill. Frame as a tight head-and-shoulders crop. Maintain the person's EXACT face, features, skin tone, hair, and likeness — do not alter their appearance. The result should look like a high-end LinkedIn or company website headshot. High resolution, sharp focus on the eyes.",
+    prompt: `Transform this photo into a polished corporate professional headshot portrait. ${HEADSHOT_BASE} Apply classic professional studio lighting with a soft key light and subtle fill light. The person should have a neutral, confident expression. The result should look like a high-end LinkedIn or company website headshot.`,
   },
   {
     key: "creative",
     label: "Creative Professional",
-    prompt:
-      "Transform this photo into a creative professional headshot portrait. Use a warm-toned, soft gradient background (subtle amber to cream). Apply modern editorial-style lighting — slightly dramatic with gentle shadows. Frame as a head-and-shoulders crop with a confident, approachable look. Maintain the person's EXACT face, features, skin tone, hair, and likeness — do not alter their appearance. The result should feel stylish and contemporary, like a tech company or startup team page photo. High resolution, sharp focus.",
+    prompt: `Transform this photo into a creative professional headshot portrait. ${HEADSHOT_BASE} Apply slightly warmer editorial-style lighting with gentle shadows for depth. The person should have an approachable, confident smile. The result should feel stylish and contemporary, like a tech company or startup team page photo.`,
   },
   {
     key: "casual",
     label: "Casual Professional",
-    prompt:
-      "Transform this photo into a casual yet professional headshot portrait. Use a clean, simple white or light background. Apply natural, soft daylight-style lighting that feels warm and approachable. Frame as a head-and-shoulders crop with a friendly, relaxed expression. Maintain the person's EXACT face, features, skin tone, hair, and likeness — do not alter their appearance. The result should feel natural and genuine, like a professional yet approachable profile photo. High resolution, sharp focus.",
+    prompt: `Transform this photo into a casual yet professional headshot portrait. ${HEADSHOT_BASE} Apply soft, natural daylight-style lighting that feels warm and inviting. The person should have a friendly, relaxed expression with a natural smile. The result should feel genuine and approachable, like a modern professional profile photo.`,
   },
 ] as const;
 

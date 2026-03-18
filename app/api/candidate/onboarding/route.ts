@@ -10,6 +10,12 @@ import { createSupabaseServerClient } from "@/lib/supabase-server";
 // Helper: safely parse date strings — returns null for invalid/unparseable dates
 function safeDate(value: string | null | undefined): Date | null {
   if (!value) return null;
+  // Handle MM/YYYY format from frontend date inputs
+  const mmYyyy = value.match(/^(\d{1,2})\/(\d{4})$/);
+  if (mmYyyy) {
+    const [, month, year] = mmYyyy;
+    return new Date(parseInt(year), parseInt(month) - 1, 1);
+  }
   const d = new Date(value);
   return isNaN(d.getTime()) ? null : d;
 }
