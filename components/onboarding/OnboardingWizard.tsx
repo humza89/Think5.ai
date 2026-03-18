@@ -37,6 +37,51 @@ import type { JobPreferences } from "./PreferencesStep";
 import ReviewSubmitStep from "./ReviewSubmitStep";
 
 // ============================================
+// Helpers
+// ============================================
+
+const MONTH_MAP: Record<string, string> = {
+  jan: "01", january: "01", feb: "02", february: "02",
+  mar: "03", march: "03", apr: "04", april: "04",
+  may: "05", jun: "06", june: "06", jul: "07", july: "07",
+  aug: "08", august: "08", sep: "09", sept: "09", september: "09",
+  oct: "10", october: "10", nov: "11", november: "11",
+  dec: "12", december: "12",
+};
+
+/** Normalize date strings to MM/YYYY for form display */
+function normalizeDate(val: string | undefined | null): string {
+  if (!val) return "";
+  const v = val.trim();
+  if (!v || v.toLowerCase() === "present" || v.toLowerCase() === "current") return "";
+  // Already MM/YYYY
+  if (/^\d{1,2}\/\d{4}$/.test(v)) {
+    const [m, y] = v.split("/");
+    return `${m.padStart(2, "0")}/${y}`;
+  }
+  // "Oct 2022", "October 2022", "Oct. 2022"
+  const monthName = v.match(/^([A-Za-z]+)[.,]?\s+(\d{4})$/);
+  if (monthName) {
+    const mm = MONTH_MAP[monthName[1].toLowerCase()];
+    if (mm) return `${mm}/${monthName[2]}`;
+  }
+  // "2022-10" or "2022-10-01"
+  const iso = v.match(/^(\d{4})-(\d{1,2})(?:-\d{1,2})?$/);
+  if (iso) return `${iso[2].padStart(2, "0")}/${iso[1]}`;
+  // "10-2022"
+  const dash = v.match(/^(\d{1,2})-(\d{4})$/);
+  if (dash) return `${dash[1].padStart(2, "0")}/${dash[2]}`;
+  // Just a year
+  if (/^\d{4}$/.test(v)) return `01/${v}`;
+  // Try Date parsing as last resort
+  const d = new Date(v);
+  if (!isNaN(d.getTime()) && d.getFullYear() > 1900) {
+    return `${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`;
+  }
+  return "";
+}
+
+// ============================================
 // Types
 // ============================================
 
@@ -238,6 +283,10 @@ export function OnboardingWizard({
                   }>;
                 };
 
+                // Debug: log what dates we received from the AI
+                console.log("[Wizard] Parsed experience dates from AI:",
+                  pd.experiences?.map(e => ({ company: e.company, startDate: e.startDate, endDate: e.endDate })));
+
                 setData((prev) => {
                   const updates: Partial<OnboardingData> = {};
 
@@ -247,12 +296,14 @@ export function OnboardingWizard({
                       id: crypto.randomUUID(),
                       company: exp.company || "",
                       title: exp.title || "",
-                      startDate: exp.startDate || "",
-                      endDate: exp.endDate || "",
+                      startDate: normalizeDate(exp.startDate),
+                      endDate: normalizeDate(exp.endDate),
                       isCurrent: exp.isCurrent || false,
                       description: exp.description || "",
                       location: exp.location || "",
                     }));
+                    console.log("[Wizard] Auto-filled experience dates:",
+                      updates.experiences.map(e => ({ company: e.company, startDate: e.startDate, endDate: e.endDate })));
                   }
 
                   if (prev.education.length === 0 && pd.education && pd.education.length > 0) {
@@ -261,8 +312,8 @@ export function OnboardingWizard({
                       institution: edu.institution || "",
                       degree: edu.degree || "",
                       fieldOfStudy: edu.fieldOfStudy || "",
-                      startDate: edu.startDate || "",
-                      endDate: edu.endDate || "",
+                      startDate: normalizeDate(edu.startDate),
+                      endDate: normalizeDate(edu.endDate),
                     }));
                   }
 
@@ -271,8 +322,8 @@ export function OnboardingWizard({
                       id: crypto.randomUUID(),
                       name: cert.name || "",
                       issuingOrganization: cert.issuingOrganization || "",
-                      issueDate: cert.issueDate || "",
-                      expiryDate: cert.expiryDate || "",
+                      issueDate: normalizeDate(cert.issueDate),
+                      expiryDate: normalizeDate(cert.expiryDate),
                       credentialId: "",
                     }));
                   }

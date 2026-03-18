@@ -11,7 +11,14 @@ import {
 /** Convert an ISO date string (or Date) to MM/YYYY for form display */
 function toMMYYYY(value: unknown): string {
   if (!value) return "";
-  const d = new Date(value as string);
+  const s = String(value).trim();
+  if (!s) return "";
+  // Already MM/YYYY — pass through
+  if (/^\d{1,2}\/\d{4}$/.test(s)) {
+    const [m, y] = s.split("/");
+    return `${m.padStart(2, "0")}/${y}`;
+  }
+  const d = new Date(s);
   if (isNaN(d.getTime())) return "";
   return `${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`;
 }

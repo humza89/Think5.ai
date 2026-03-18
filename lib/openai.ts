@@ -19,9 +19,12 @@ const MONTH_MAP: Record<string, string> = {
  * Handles: "Oct 2022", "October 2022", "2022-10", "10-2022", "10/2022", "2022", etc.
  */
 function normalizeDate(value: unknown): string {
-  if (!value || typeof value !== "string") return "";
-  const v = value.trim();
-  if (!v) return "";
+  if (value == null) return "";
+  // Handle numbers (e.g., year as number from AI)
+  const raw = typeof value === "number" ? String(value) : value;
+  if (typeof raw !== "string") return "";
+  const v = raw.trim();
+  if (!v || v.toLowerCase() === "present" || v.toLowerCase() === "current") return "";
 
   // Already MM/YYYY
   if (/^\d{1,2}\/\d{4}$/.test(v)) {
@@ -29,8 +32,8 @@ function normalizeDate(value: unknown): string {
     return `${m.padStart(2, "0")}/${y}`;
   }
 
-  // "Oct 2022" or "October 2022"
-  const monthName = v.match(/^([A-Za-z]+)\s+(\d{4})$/);
+  // "Oct 2022", "October 2022", "Oct. 2022", "Jun, 2022"
+  const monthName = v.match(/^([A-Za-z]+)[.,]?\s+(\d{4})$/);
   if (monthName) {
     const mm = MONTH_MAP[monthName[1].toLowerCase()];
     if (mm) return `${mm}/${monthName[2]}`;
@@ -207,12 +210,19 @@ Return ONLY valid JSON.`;
   const content = response.choices[0].message.content || "{}";
   const parsed = JSON.parse(content);
 
+  // Debug: log raw AI dates
+  console.log("[Resume Parser] Raw AI experience dates:",
+    JSON.stringify((parsed.experiences || []).map((e: Record<string, unknown>) => ({ company: e.company, startDate: e.startDate, endDate: e.endDate }))));
+
   // Normalize experience dates
   const experiences = (parsed.experiences || []).map((exp: Record<string, unknown>) => ({
     ...exp,
     startDate: normalizeDate(exp.startDate as string),
     endDate: normalizeDate(exp.endDate as string),
   }));
+
+  console.log("[Resume Parser] Normalized experience dates:",
+    JSON.stringify(experiences.map((e: Record<string, unknown>) => ({ company: e.company, startDate: e.startDate, endDate: e.endDate }))));
 
   // Normalize education dates
   const education = (parsed.education || []).map((edu: Record<string, unknown>) => ({
