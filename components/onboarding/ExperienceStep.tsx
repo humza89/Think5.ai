@@ -14,6 +14,7 @@ import {
   ChevronDown,
   ChevronUp,
   Briefcase,
+  Bot,
 } from "lucide-react"
 
 export interface ExperienceEntry {
@@ -104,6 +105,10 @@ export default function ExperienceStep({
         <div className="flex items-center gap-2">
           <Badge variant="secondary">
             {experiences.length} {experiences.length === 1 ? "entry" : "entries"}
+          </Badge>
+          <Badge variant="secondary" className="gap-1">
+            <Bot className="h-3 w-3" />
+            Pre-filled from resume
           </Badge>
         </div>
       )}

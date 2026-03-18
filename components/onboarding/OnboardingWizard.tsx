@@ -218,6 +218,86 @@ export function OnboardingWizard({
               updateResume(resumeData);
               if (resumeData.parsedData) {
                 updateAIProfile(resumeData.parsedData);
+
+                // Auto-fill experiences, skills, education, certifications from AI-parsed resume
+                const pd = resumeData.parsedData as AIProfileReviewData & {
+                  experiences?: Array<{
+                    company: string; title: string; startDate: string;
+                    endDate: string; isCurrent: boolean; description: string; location: string;
+                  }>;
+                  education?: Array<{
+                    institution: string; degree: string; fieldOfStudy: string;
+                    startDate: string; endDate: string;
+                  }>;
+                  certifications?: Array<{
+                    name: string; issuingOrganization: string;
+                    issueDate: string; expiryDate: string;
+                  }>;
+                  skillDetails?: Array<{
+                    name: string; proficiency: number; category: string;
+                  }>;
+                };
+
+                setData((prev) => {
+                  const updates: Partial<OnboardingData> = {};
+
+                  // Only populate if currently empty (don't overwrite manual edits)
+                  if (prev.experiences.length === 0 && pd.experiences && pd.experiences.length > 0) {
+                    updates.experiences = pd.experiences.map((exp) => ({
+                      id: crypto.randomUUID(),
+                      company: exp.company || "",
+                      title: exp.title || "",
+                      startDate: exp.startDate || "",
+                      endDate: exp.endDate || "",
+                      isCurrent: exp.isCurrent || false,
+                      description: exp.description || "",
+                      location: exp.location || "",
+                    }));
+                  }
+
+                  if (prev.education.length === 0 && pd.education && pd.education.length > 0) {
+                    updates.education = pd.education.map((edu) => ({
+                      id: crypto.randomUUID(),
+                      institution: edu.institution || "",
+                      degree: edu.degree || "",
+                      fieldOfStudy: edu.fieldOfStudy || "",
+                      startDate: edu.startDate || "",
+                      endDate: edu.endDate || "",
+                    }));
+                  }
+
+                  if (prev.certifications.length === 0 && pd.certifications && pd.certifications.length > 0) {
+                    updates.certifications = pd.certifications.map((cert) => ({
+                      id: crypto.randomUUID(),
+                      name: cert.name || "",
+                      issuingOrganization: cert.issuingOrganization || "",
+                      issueDate: cert.issueDate || "",
+                      expiryDate: cert.expiryDate || "",
+                      credentialId: "",
+                    }));
+                  }
+
+                  if (prev.skills.length === 0) {
+                    const skillNames = pd.skills || [];
+                    const detailMap = new Map(
+                      (pd.skillDetails || []).map((d) => [d.name.toLowerCase(), d])
+                    );
+                    if (skillNames.length > 0) {
+                      updates.skills = skillNames.map((name) => {
+                        const detail = detailMap.get(name.toLowerCase());
+                        return {
+                          id: crypto.randomUUID(),
+                          name,
+                          proficiency: detail?.proficiency || 3,
+                        };
+                      });
+                    }
+                  }
+
+                  return Object.keys(updates).length > 0
+                    ? { ...prev, ...updates }
+                    : prev;
+                });
               }
             }}
           />

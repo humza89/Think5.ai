@@ -71,5 +71,9 @@ export async function extractCandidateData(resumeText: string) {
     experienceYears: parsedData.experienceYears,
     industries: parsedData.industries || [],
     summary: parsedData.summary || "",
+    experiences: parsedData.experiences || [],
+    education: parsedData.education || [],
+    certifications: parsedData.certifications || [],
+    skillDetails: parsedData.skillDetails || [],
   };
 }

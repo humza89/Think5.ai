@@ -46,7 +46,7 @@ export function cosineSimilarity(a: number[], b: number[]): number {
   return dotProduct / (normA * normB);
 }
 
-export async function parseResumeWithAI(resumeText: string): Promise<{
+export interface ParsedResumeData {
   fullName: string | null;
   email: string | null;
   phone: string | null;
@@ -56,26 +56,85 @@ export async function parseResumeWithAI(resumeText: string): Promise<{
   experienceYears: number | null;
   industries: string[];
   summary: string;
-}> {
+  experiences: Array<{
+    company: string;
+    title: string;
+    startDate: string;
+    endDate: string;
+    isCurrent: boolean;
+    description: string;
+    location: string;
+  }>;
+  education: Array<{
+    institution: string;
+    degree: string;
+    fieldOfStudy: string;
+    startDate: string;
+    endDate: string;
+  }>;
+  certifications: Array<{
+    name: string;
+    issuingOrganization: string;
+    issueDate: string;
+    expiryDate: string;
+  }>;
+  skillDetails: Array<{
+    name: string;
+    proficiency: number;
+    category: string;
+  }>;
+}
+
+export async function parseResumeWithAI(resumeText: string): Promise<ParsedResumeData> {
   if (!process.env.OPENAI_API_KEY) {
     throw new Error("OPENAI_API_KEY is not set");
   }
 
-  const prompt = `Extract the following information from this resume and return it as JSON:
+  const prompt = `Extract comprehensive information from this resume and return it as JSON with these exact keys:
+
 - fullName: person's full name
 - email: email address
 - phone: phone number
 - currentTitle: most recent or current job title
 - currentCompany: most recent or current company name
-- skills: array of technical skills, tools, and technologies
-- experienceYears: approximate total years of professional experience (as a number)
+- skills: flat array of all technical skills, tools, and technologies (strings)
+- experienceYears: approximate total years of professional experience (number)
 - industries: array of industries they have experience in
 - summary: a brief 2-3 sentence professional summary
+
+- experiences: array of work experiences, ordered most recent first. Each entry:
+  - company: company name
+  - title: job title
+  - startDate: start date in MM/YYYY format (e.g. "06/2020")
+  - endDate: end date in MM/YYYY format, or "" if current
+  - isCurrent: true if this is their current position (no end date or says "Present")
+  - description: brief description of responsibilities and achievements (2-3 sentences)
+  - location: work location if mentioned, or ""
+
+- education: array of education entries, ordered most recent first. Each entry:
+  - institution: school/university name
+  - degree: degree type (e.g. "Bachelor of Science", "MBA", "Ph.D.")
+  - fieldOfStudy: major or field of study
+  - startDate: start date in MM/YYYY format, or ""
+  - endDate: end date or graduation date in MM/YYYY format, or ""
+
+- certifications: array of certifications/licenses. Each entry:
+  - name: certification name
+  - issuingOrganization: issuing body
+  - issueDate: issue date in MM/YYYY format, or ""
+  - expiryDate: expiry date in MM/YYYY format, or ""
+
+- skillDetails: array of skills with proficiency estimates. Each entry:
+  - name: skill name (must match an entry in the skills array)
+  - proficiency: estimated proficiency 1-5 (5=expert with many years/lead roles, 4=advanced, 3=intermediate, 2=familiar, 1=basic/mentioned once)
+  - category: one of "Programming Language", "Framework", "Database", "Cloud", "Tool", "Methodology", "Soft Skill", or "Other"
+
+If a field cannot be extracted, use null for scalars, "" for strings, or [] for arrays.
 
 Resume text:
 ${resumeText}
 
-Return ONLY valid JSON with these exact keys, no additional text.`;
+Return ONLY valid JSON.`;
 
   const response = await openai.chat.completions.create({
     model: "gpt-4o-mini",
@@ -83,7 +142,7 @@ Return ONLY valid JSON with these exact keys, no additional text.`;
       {
         role: "system",
         content:
-          "You are a resume parser. Extract information and return only valid JSON.",
+          "You are an expert resume parser. Extract all structured information accurately and return only valid JSON. Be thorough — extract every work experience, education entry, certification, and skill you can find.",
       },
       { role: "user", content: prompt },
     ],
@@ -92,7 +151,23 @@ Return ONLY valid JSON with these exact keys, no additional text.`;
   });
 
   const content = response.choices[0].message.content || "{}";
-  return JSON.parse(content);
+  const parsed = JSON.parse(content);
+
+  return {
+    fullName: parsed.fullName || null,
+    email: parsed.email || null,
+    phone: parsed.phone || null,
+    currentTitle: parsed.currentTitle || null,
+    currentCompany: parsed.currentCompany || null,
+    skills: parsed.skills || [],
+    experienceYears: parsed.experienceYears ?? null,
+    industries: parsed.industries || [],
+    summary: parsed.summary || "",
+    experiences: parsed.experiences || [],
+    education: parsed.education || [],
+    certifications: parsed.certifications || [],
+    skillDetails: parsed.skillDetails || [],
+  };
 }
 
 export async function generateCandidateSummary(candidate: {
