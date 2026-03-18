@@ -474,6 +474,7 @@ export default function ApprovalsPage() {
           <SheetContent side="right" className="w-full max-w-2xl overflow-y-auto">
             {previewLoading ? (
               <div className="flex items-center justify-center py-20">
+                <SheetTitle className="sr-only">Candidate Preview</SheetTitle>
                 <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
               </div>
             ) : previewData ? (
@@ -488,7 +489,9 @@ export default function ApprovalsPage() {
                 }}
                 actionLoading={actionLoading}
               />
-            ) : null}
+            ) : (
+              <SheetTitle className="sr-only">Candidate Preview</SheetTitle>
+            )}
           </SheetContent>
         </Sheet>
 
@@ -735,9 +738,12 @@ function CandidatePreview({
           <PreviewSection icon={FileText} title="Documents">
             <div className="space-y-2">
               {candidate.documents.map((doc) => (
-                <div
+                <a
                   key={doc.id}
-                  className="flex items-center gap-2 rounded-md border border-border bg-muted/30 p-2"
+                  href={doc.fileUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-2 rounded-md border border-border bg-muted/30 p-2 hover:bg-muted/60 transition-colors"
                 >
                   <FileText className="h-4 w-4 text-muted-foreground" />
                   <span className="text-sm text-foreground truncate flex-1">
@@ -746,7 +752,8 @@ function CandidatePreview({
                   <Badge variant="secondary" className="text-xs">
                     {doc.type}
                   </Badge>
-                </div>
+                  <ExternalLink className="h-3.5 w-3.5 text-muted-foreground" />
+                </a>
               ))}
             </div>
           </PreviewSection>
