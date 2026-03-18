@@ -4,6 +4,60 @@ if (!process.env.OPENAI_API_KEY) {
   console.warn("Warning: OPENAI_API_KEY is not set. AI features will not work.");
 }
 
+// Month name/abbreviation → number mapping
+const MONTH_MAP: Record<string, string> = {
+  jan: "01", january: "01", feb: "02", february: "02",
+  mar: "03", march: "03", apr: "04", april: "04",
+  may: "05", jun: "06", june: "06", jul: "07", july: "07",
+  aug: "08", august: "08", sep: "09", sept: "09", september: "09",
+  oct: "10", october: "10", nov: "11", november: "11",
+  dec: "12", december: "12",
+};
+
+/**
+ * Normalize various date formats to MM/YYYY.
+ * Handles: "Oct 2022", "October 2022", "2022-10", "10-2022", "10/2022", "2022", etc.
+ */
+function normalizeDate(value: unknown): string {
+  if (!value || typeof value !== "string") return "";
+  const v = value.trim();
+  if (!v) return "";
+
+  // Already MM/YYYY
+  if (/^\d{1,2}\/\d{4}$/.test(v)) {
+    const [m, y] = v.split("/");
+    return `${m.padStart(2, "0")}/${y}`;
+  }
+
+  // "Oct 2022" or "October 2022"
+  const monthName = v.match(/^([A-Za-z]+)\s+(\d{4})$/);
+  if (monthName) {
+    const mm = MONTH_MAP[monthName[1].toLowerCase()];
+    if (mm) return `${mm}/${monthName[2]}`;
+  }
+
+  // "2022-10" (ISO partial)
+  const isoPartial = v.match(/^(\d{4})-(\d{1,2})$/);
+  if (isoPartial) return `${isoPartial[2].padStart(2, "0")}/${isoPartial[1]}`;
+
+  // "10-2022"
+  const dashReverse = v.match(/^(\d{1,2})-(\d{4})$/);
+  if (dashReverse) return `${dashReverse[1].padStart(2, "0")}/${dashReverse[2]}`;
+
+  // "2022-10-01" (full ISO)
+  const isoFull = v.match(/^(\d{4})-(\d{2})-\d{2}$/);
+  if (isoFull) return `${isoFull[2]}/${isoFull[1]}`;
+
+  // Just a year "2022"
+  if (/^\d{4}$/.test(v)) return `01/${v}`;
+
+  // MM/DD/YYYY
+  const mdySlash = v.match(/^(\d{1,2})\/\d{1,2}\/(\d{4})$/);
+  if (mdySlash) return `${mdySlash[1].padStart(2, "0")}/${mdySlash[2]}`;
+
+  return "";
+}
+
 export const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY || "",
 });
@@ -153,6 +207,27 @@ Return ONLY valid JSON.`;
   const content = response.choices[0].message.content || "{}";
   const parsed = JSON.parse(content);
 
+  // Normalize experience dates
+  const experiences = (parsed.experiences || []).map((exp: Record<string, unknown>) => ({
+    ...exp,
+    startDate: normalizeDate(exp.startDate as string),
+    endDate: normalizeDate(exp.endDate as string),
+  }));
+
+  // Normalize education dates
+  const education = (parsed.education || []).map((edu: Record<string, unknown>) => ({
+    ...edu,
+    startDate: normalizeDate(edu.startDate as string),
+    endDate: normalizeDate(edu.endDate as string),
+  }));
+
+  // Normalize certification dates
+  const certifications = (parsed.certifications || []).map((cert: Record<string, unknown>) => ({
+    ...cert,
+    issueDate: normalizeDate(cert.issueDate as string),
+    expiryDate: normalizeDate(cert.expiryDate as string),
+  }));
+
   return {
     fullName: parsed.fullName || null,
     email: parsed.email || null,
@@ -163,9 +238,9 @@ Return ONLY valid JSON.`;
     experienceYears: parsed.experienceYears ?? null,
     industries: parsed.industries || [],
     summary: parsed.summary || "",
-    experiences: parsed.experiences || [],
-    education: parsed.education || [],
-    certifications: parsed.certifications || [],
+    experiences,
+    education,
+    certifications,
     skillDetails: parsed.skillDetails || [],
   };
 }

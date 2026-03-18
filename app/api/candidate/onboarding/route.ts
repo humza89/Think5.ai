@@ -7,16 +7,44 @@ import {
 } from "@/lib/auth";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 
+// Month name/abbreviation → number mapping
+const MONTH_MAP: Record<string, number> = {
+  jan: 1, january: 1, feb: 2, february: 2,
+  mar: 3, march: 3, apr: 4, april: 4,
+  may: 5, jun: 6, june: 6, jul: 7, july: 7,
+  aug: 8, august: 8, sep: 9, sept: 9, september: 9,
+  oct: 10, october: 10, nov: 11, november: 11,
+  dec: 12, december: 12,
+};
+
 // Helper: safely parse date strings — returns null for invalid/unparseable dates
 function safeDate(value: string | null | undefined): Date | null {
   if (!value) return null;
-  // Handle MM/YYYY format from frontend date inputs
-  const mmYyyy = value.match(/^(\d{1,2})\/(\d{4})$/);
+  const v = value.trim();
+  if (!v) return null;
+
+  // MM/YYYY format
+  const mmYyyy = v.match(/^(\d{1,2})\/(\d{4})$/);
   if (mmYyyy) {
-    const [, month, year] = mmYyyy;
-    return new Date(parseInt(year), parseInt(month) - 1, 1);
+    return new Date(parseInt(mmYyyy[2]), parseInt(mmYyyy[1]) - 1, 1);
   }
-  const d = new Date(value);
+
+  // "Oct 2022" or "October 2022"
+  const monthName = v.match(/^([A-Za-z]+)\s+(\d{4})$/);
+  if (monthName) {
+    const mm = MONTH_MAP[monthName[1].toLowerCase()];
+    if (mm) return new Date(parseInt(monthName[2]), mm - 1, 1);
+  }
+
+  // "2022-10" (ISO partial)
+  const isoPartial = v.match(/^(\d{4})-(\d{1,2})$/);
+  if (isoPartial) return new Date(parseInt(isoPartial[1]), parseInt(isoPartial[2]) - 1, 1);
+
+  // "10-2022"
+  const dashReverse = v.match(/^(\d{1,2})-(\d{4})$/);
+  if (dashReverse) return new Date(parseInt(dashReverse[2]), parseInt(dashReverse[1]) - 1, 1);
+
+  const d = new Date(v);
   return isNaN(d.getTime()) ? null : d;
 }
 
