@@ -143,8 +143,8 @@ export default function SkillsPage() {
         {/* Page Header */}
         <div className="flex items-center justify-between mb-8">
           <div>
-            <h1 className="text-3xl font-bold text-white mb-2">Skills</h1>
-            <p className="text-white/50">
+            <h1 className="text-3xl font-bold text-foreground mb-2">Skills</h1>
+            <p className="text-muted-foreground">
               Manage your skills to improve job matching accuracy.
             </p>
           </div>
@@ -159,15 +159,15 @@ export default function SkillsPage() {
 
         {/* Skills Grid */}
         {loading ? (
-          <div className="rounded-2xl border border-white/10 bg-white/5 p-12 text-center">
-            <div className="w-8 h-8 border-2 border-white/20 border-t-white rounded-full animate-spin mx-auto mb-4" />
-            <p className="text-white/40">Loading skills...</p>
+          <div className="rounded-2xl border border-border bg-card p-12 text-center">
+            <div className="w-8 h-8 border-2 border-border border-t-muted-foreground rounded-full animate-spin mx-auto mb-4" />
+            <p className="text-muted-foreground">Loading skills...</p>
           </div>
         ) : skills.length === 0 ? (
-          <div className="rounded-2xl border border-white/10 bg-white/5 p-12 text-center">
-            <Wrench className="w-12 h-12 text-white/20 mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-white mb-2">No skills added yet</h3>
-            <p className="text-white/40 text-sm mb-6">
+          <div className="rounded-2xl border border-border bg-card p-12 text-center">
+            <Wrench className="w-12 h-12 text-muted-foreground/50 mx-auto mb-4" />
+            <h3 className="text-lg font-medium text-foreground mb-2">No skills added yet</h3>
+            <p className="text-muted-foreground text-sm mb-6">
               Add your skills to improve job matching.
             </p>
             <Button
@@ -183,12 +183,12 @@ export default function SkillsPage() {
             {skills.map((skill) => (
               <Card
                 key={skill.id}
-                className="border-white/10 bg-white/5 shadow-none hover:bg-white/[0.07] transition-colors"
+                className="border-border bg-card shadow-none hover:bg-accent transition-colors"
               >
                 <CardHeader className="pb-3">
                   <div className="flex items-start justify-between">
                     <div>
-                      <CardTitle className="text-white text-base font-semibold">
+                      <CardTitle className="text-foreground text-base font-semibold">
                         {skill.name}
                       </CardTitle>
                       <Badge
@@ -203,7 +203,7 @@ export default function SkillsPage() {
                     <button
                       onClick={() => handleDeleteSkill(skill.id)}
                       disabled={deletingId === skill.id}
-                      className="text-white/30 hover:text-red-400 transition-colors disabled:opacity-50"
+                      className="text-muted-foreground hover:text-red-400 transition-colors disabled:opacity-50"
                     >
                       {deletingId === skill.id ? (
                         <Loader2 className="w-4 h-4 animate-spin" />
@@ -217,7 +217,7 @@ export default function SkillsPage() {
                   {/* Proficiency */}
                   <div className="mb-3">
                     <div className="flex items-center justify-between mb-1.5">
-                      <span className="text-xs text-white/40 uppercase tracking-wide">
+                      <span className="text-xs text-muted-foreground uppercase tracking-wide">
                         Proficiency
                       </span>
                       <div className="flex items-center gap-0.5">
@@ -228,7 +228,7 @@ export default function SkillsPage() {
                               "w-3.5 h-3.5",
                               star <= skill.proficiency
                                 ? "fill-blue-400 text-blue-400"
-                                : "text-white/20"
+                                : "text-muted-foreground/50"
                             )}
                           />
                         ))}
@@ -237,7 +237,7 @@ export default function SkillsPage() {
                     <Progress
                       value={skill.proficiency}
                       max={5}
-                      className="h-1.5 bg-white/10"
+                      className="h-1.5 bg-accent"
                       indicatorClassName="bg-blue-500"
                     />
                   </div>
@@ -245,8 +245,8 @@ export default function SkillsPage() {
                   {/* Years */}
                   {skill.yearsOfExperience > 0 && (
                     <div className="flex items-center justify-between">
-                      <span className="text-xs text-white/40">Experience</span>
-                      <span className="text-xs text-white/60">
+                      <span className="text-xs text-muted-foreground">Experience</span>
+                      <span className="text-xs text-muted-foreground">
                         {skill.yearsOfExperience} {skill.yearsOfExperience === 1 ? "year" : "years"}
                       </span>
                     </div>

@@ -76,17 +76,17 @@ export default function CandidateJobsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-background">
       <div className="max-w-[1200px] mx-auto px-6 py-8">
         <div className="mb-8">
-          <h1 className="text-2xl font-semibold text-gray-900">Browse Jobs</h1>
-          <p className="text-gray-500 mt-1">Find your next opportunity</p>
+          <h1 className="text-2xl font-semibold text-foreground">Browse Jobs</h1>
+          <p className="text-muted-foreground mt-1">Find your next opportunity</p>
         </div>
 
         {/* Search & Filters */}
         <form onSubmit={handleSearch} className="flex flex-wrap gap-3 mb-6">
           <div className="relative flex-1 min-w-[200px]">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
               placeholder="Search by title, company, keyword..."
               value={search}
@@ -95,7 +95,7 @@ export default function CandidateJobsPage() {
             />
           </div>
           <div className="relative w-48">
-            <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
               placeholder="Location"
               value={location}
@@ -124,18 +124,18 @@ export default function CandidateJobsPage() {
 
         {/* Results */}
         {loading ? (
-          <div className="text-center py-12 text-gray-500">Loading jobs...</div>
+          <div className="text-center py-12 text-muted-foreground">Loading jobs...</div>
         ) : jobs.length === 0 ? (
           <Card className="p-12 text-center">
-            <Briefcase className="h-12 w-12 text-gray-300 mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-gray-900 mb-2">No jobs found</h3>
-            <p className="text-gray-500">
+            <Briefcase className="h-12 w-12 text-muted-foreground/50 mx-auto mb-4" />
+            <h3 className="text-lg font-medium text-foreground mb-2">No jobs found</h3>
+            <p className="text-muted-foreground">
               Try adjusting your search or filters
             </p>
           </Card>
         ) : (
           <div className="space-y-3">
-            <p className="text-sm text-gray-500 mb-2">
+            <p className="text-sm text-muted-foreground mb-2">
               {pagination.total} job{pagination.total !== 1 ? "s" : ""} found
             </p>
             {jobs.map((job: any) => (
@@ -143,10 +143,10 @@ export default function CandidateJobsPage() {
                 <Card className="p-5 hover:shadow-md transition-shadow cursor-pointer">
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
-                      <h3 className="text-lg font-semibold text-gray-900 mb-1">
+                      <h3 className="text-lg font-semibold text-foreground mb-1">
                         {job.title}
                       </h3>
-                      <div className="flex flex-wrap items-center gap-3 text-sm text-gray-500 mb-3">
+                      <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground mb-3">
                         <span className="flex items-center gap-1">
                           <Building2 className="h-3.5 w-3.5" />
                           {job.company.name}
@@ -165,7 +165,7 @@ export default function CandidateJobsPage() {
                           {remoteLabels[job.remoteType] || job.remoteType}
                         </Badge>
                       </div>
-                      <p className="text-sm text-gray-600 line-clamp-2 mb-3">
+                      <p className="text-sm text-muted-foreground line-clamp-2 mb-3">
                         {job.description}
                       </p>
                       <div className="flex flex-wrap gap-1.5">
@@ -174,8 +174,8 @@ export default function CandidateJobsPage() {
                             key={i}
                             className={`text-xs px-2 py-0.5 rounded-full ${
                               s.importance === "REQUIRED"
-                                ? "bg-blue-50 text-blue-700"
-                                : "bg-gray-50 text-gray-600"
+                                ? "bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300"
+                                : "bg-muted text-muted-foreground"
                             }`}
                           >
                             {s.skillName}
@@ -185,12 +185,12 @@ export default function CandidateJobsPage() {
                     </div>
                     <div className="ml-6 text-right shrink-0">
                       {formatSalary(job.salaryMin, job.salaryMax, job.salaryCurrency) && (
-                        <p className="text-sm font-medium text-gray-900 mb-1">
+                        <p className="text-sm font-medium text-foreground mb-1">
                           {formatSalary(job.salaryMin, job.salaryMax, job.salaryCurrency)}
                         </p>
                       )}
                       {job.postedAt && (
-                        <p className="text-xs text-gray-400 flex items-center gap-1 justify-end">
+                        <p className="text-xs text-muted-foreground flex items-center gap-1 justify-end">
                           <Clock className="h-3 w-3" />
                           {new Date(job.postedAt).toLocaleDateString()}
                         </p>
@@ -204,7 +204,7 @@ export default function CandidateJobsPage() {
             {/* Pagination */}
             {pagination.totalPages > 1 && (
               <div className="flex items-center justify-between pt-4">
-                <p className="text-sm text-gray-500">
+                <p className="text-sm text-muted-foreground">
                   Page {pagination.page} of {pagination.totalPages}
                 </p>
                 <div className="flex gap-2">

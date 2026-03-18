@@ -16,14 +16,14 @@ import {
 } from "lucide-react";
 
 const statusConfig: Record<string, { label: string; className: string }> = {
-  APPLIED: { label: "Applied", className: "bg-blue-100 text-blue-700" },
-  SCREENING: { label: "Screening", className: "bg-purple-100 text-purple-700" },
-  INTERVIEWING: { label: "Interviewing", className: "bg-yellow-100 text-yellow-700" },
-  SHORTLISTED: { label: "Shortlisted", className: "bg-cyan-100 text-cyan-700" },
-  OFFERED: { label: "Offered", className: "bg-orange-100 text-orange-700" },
-  HIRED: { label: "Hired", className: "bg-green-100 text-green-700" },
-  REJECTED: { label: "Not Selected", className: "bg-red-100 text-red-700" },
-  WITHDRAWN: { label: "Withdrawn", className: "bg-gray-100 text-gray-700" },
+  APPLIED: { label: "Applied", className: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300" },
+  SCREENING: { label: "Screening", className: "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300" },
+  INTERVIEWING: { label: "Interviewing", className: "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300" },
+  SHORTLISTED: { label: "Shortlisted", className: "bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-300" },
+  OFFERED: { label: "Offered", className: "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300" },
+  HIRED: { label: "Hired", className: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300" },
+  REJECTED: { label: "Not Selected", className: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300" },
+  WITHDRAWN: { label: "Withdrawn", className: "bg-muted text-muted-foreground" },
 };
 
 export default function CandidateApplicationsPage() {
@@ -56,22 +56,22 @@ export default function CandidateApplicationsPage() {
   }, [fetchApplications]);
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-background">
       <div className="max-w-[1000px] mx-auto px-6 py-8">
         <div className="mb-8">
-          <h1 className="text-2xl font-semibold text-gray-900">My Applications</h1>
-          <p className="text-gray-500 mt-1">Track the status of your job applications</p>
+          <h1 className="text-2xl font-semibold text-foreground">My Applications</h1>
+          <p className="text-muted-foreground mt-1">Track the status of your job applications</p>
         </div>
 
         {loading ? (
-          <div className="text-center py-12 text-gray-500">Loading...</div>
+          <div className="text-center py-12 text-muted-foreground">Loading...</div>
         ) : error ? (
           <Card className="p-12 text-center">
             <AlertTriangle className="h-12 w-12 text-red-400 mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-gray-900 mb-2">
+            <h3 className="text-lg font-medium text-foreground mb-2">
               Something went wrong
             </h3>
-            <p className="text-sm text-red-600 mb-4">{error}</p>
+            <p className="text-sm text-destructive mb-4">{error}</p>
             <Button variant="outline" size="sm" onClick={fetchApplications}>
               <RefreshCw className="h-4 w-4 mr-2" />
               Retry
@@ -79,12 +79,12 @@ export default function CandidateApplicationsPage() {
           </Card>
         ) : applications.length === 0 ? (
           <Card className="p-12 text-center">
-            <FileText className="h-12 w-12 text-gray-300 mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-gray-900 mb-2">No applications yet</h3>
-            <p className="text-gray-500 mb-4">Start applying to jobs to see your applications here</p>
+            <FileText className="h-12 w-12 text-muted-foreground/50 mx-auto mb-4" />
+            <h3 className="text-lg font-medium text-foreground mb-2">No applications yet</h3>
+            <p className="text-muted-foreground mb-4">Start applying to jobs to see your applications here</p>
             <Link
               href="/candidate/jobs"
-              className="text-blue-600 hover:underline text-sm font-medium"
+              className="text-primary hover:underline text-sm font-medium"
             >
               Browse Jobs
             </Link>
@@ -98,8 +98,8 @@ export default function CandidateApplicationsPage() {
                   <Card className="p-5 hover:shadow-md transition-shadow cursor-pointer">
                     <div className="flex items-center justify-between">
                       <div className="flex-1">
-                        <h3 className="font-semibold text-gray-900 mb-1">{app.job.title}</h3>
-                        <div className="flex items-center gap-3 text-sm text-gray-500">
+                        <h3 className="font-semibold text-foreground mb-1">{app.job.title}</h3>
+                        <div className="flex items-center gap-3 text-sm text-muted-foreground">
                           <span className="flex items-center gap-1">
                             <Building2 className="h-3.5 w-3.5" />
                             {app.job.company.name}
@@ -114,7 +114,7 @@ export default function CandidateApplicationsPage() {
                       </div>
                       <div className="flex items-center gap-4">
                         <Badge className={status.className}>{status.label}</Badge>
-                        <span className="text-xs text-gray-400 flex items-center gap-1">
+                        <span className="text-xs text-muted-foreground flex items-center gap-1">
                           <Clock className="h-3 w-3" />
                           {new Date(app.appliedAt).toLocaleDateString()}
                         </span>

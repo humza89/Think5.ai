@@ -90,59 +90,59 @@ export default function CandidateProfilePage() {
         <div className="container mx-auto px-6 max-w-3xl">
           <Link
             href="/candidate/dashboard"
-            className="inline-flex items-center text-sm text-white/50 hover:text-white mb-6 transition-colors"
+            className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground mb-6 transition-colors"
           >
             <ArrowLeft className="w-4 h-4 mr-1" /> Back to Dashboard
           </Link>
 
-          <h1 className="text-4xl font-bold text-white mb-2">Your Profile</h1>
-          <p className="text-white/50 mb-10">
+          <h1 className="text-4xl font-bold text-foreground mb-2">Your Profile</h1>
+          <p className="text-muted-foreground mb-10">
             Manage your account information.
           </p>
 
           {loading ? (
-            <div className="rounded-2xl border border-white/10 bg-white/5 p-12 text-center">
-              <div className="w-8 h-8 border-2 border-white/20 border-t-white rounded-full animate-spin mx-auto mb-4" />
-              <p className="text-white/40">Loading profile...</p>
+            <div className="rounded-2xl border border-border bg-card p-12 text-center">
+              <div className="w-8 h-8 border-2 border-border border-t-muted-foreground rounded-full animate-spin mx-auto mb-4" />
+              <p className="text-muted-foreground">Loading profile...</p>
             </div>
           ) : profile ? (
             <div className="space-y-8">
               {/* Editable Fields */}
-              <div className="rounded-2xl border border-white/10 bg-white/5 p-8">
-                <h2 className="text-lg font-semibold text-white mb-6 flex items-center gap-2">
+              <div className="rounded-2xl border border-border bg-card p-8">
+                <h2 className="text-lg font-semibold text-foreground mb-6 flex items-center gap-2">
                   <User className="w-5 h-5 text-blue-400" />
                   Account Information
                 </h2>
                 <form onSubmit={handleSave} className="space-y-5">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                     <div>
-                      <Label className="text-white/80 mb-2 block">
+                      <Label className="text-foreground/80 mb-2 block">
                         First Name
                       </Label>
                       <Input
                         value={firstName}
                         onChange={(e) => setFirstName(e.target.value)}
-                        className="h-12 bg-white/5 border-white/10 text-white placeholder:text-white/40 focus:border-blue-500/50 focus:ring-blue-500/20 rounded-xl"
+                        className="h-12 bg-card border-border text-foreground placeholder:text-muted-foreground focus:border-blue-500/50 focus:ring-blue-500/20 rounded-xl"
                         required
                       />
                     </div>
                     <div>
-                      <Label className="text-white/80 mb-2 block">
+                      <Label className="text-foreground/80 mb-2 block">
                         Last Name
                       </Label>
                       <Input
                         value={lastName}
                         onChange={(e) => setLastName(e.target.value)}
-                        className="h-12 bg-white/5 border-white/10 text-white placeholder:text-white/40 focus:border-blue-500/50 focus:ring-blue-500/20 rounded-xl"
+                        className="h-12 bg-card border-border text-foreground placeholder:text-muted-foreground focus:border-blue-500/50 focus:ring-blue-500/20 rounded-xl"
                         required
                       />
                     </div>
                   </div>
                   <div>
-                    <Label className="text-white/80 mb-2 block">Email</Label>
+                    <Label className="text-foreground/80 mb-2 block">Email</Label>
                     <div className="flex items-center gap-3">
-                      <Mail className="w-4 h-4 text-white/40" />
-                      <span className="text-white/60">{profile.email}</span>
+                      <Mail className="w-4 h-4 text-muted-foreground" />
+                      <span className="text-muted-foreground">{profile.email}</span>
                       <Badge className="bg-green-400/10 text-green-400 border-green-400/20 text-xs">
                         Verified
                       </Badge>
@@ -173,38 +173,38 @@ export default function CandidateProfilePage() {
                 profile.location ||
                 profile.linkedinUrl ||
                 profile.resumeUrl) && (
-                <div className="rounded-2xl border border-white/10 bg-white/5 p-8">
-                  <h2 className="text-lg font-semibold text-white mb-1 flex items-center gap-2">
+                <div className="rounded-2xl border border-border bg-card p-8">
+                  <h2 className="text-lg font-semibold text-foreground mb-1 flex items-center gap-2">
                     <Briefcase className="w-5 h-5 text-blue-400" />
                     Professional Information
                   </h2>
-                  <p className="text-xs text-white/30 mb-6">
+                  <p className="text-xs text-muted-foreground mb-6">
                     This information is managed by your recruiter.
                   </p>
 
                   <div className="space-y-4">
                     {profile.currentTitle && (
                       <div className="flex items-center gap-3">
-                        <Briefcase className="w-4 h-4 text-white/30" />
-                        <span className="text-white/70">{profile.currentTitle}</span>
+                        <Briefcase className="w-4 h-4 text-muted-foreground" />
+                        <span className="text-muted-foreground">{profile.currentTitle}</span>
                       </div>
                     )}
                     {profile.currentCompany && (
                       <div className="flex items-center gap-3">
-                        <Building2 className="w-4 h-4 text-white/30" />
-                        <span className="text-white/70">{profile.currentCompany}</span>
+                        <Building2 className="w-4 h-4 text-muted-foreground" />
+                        <span className="text-muted-foreground">{profile.currentCompany}</span>
                       </div>
                     )}
                     {profile.location && (
                       <div className="flex items-center gap-3">
-                        <MapPin className="w-4 h-4 text-white/30" />
-                        <span className="text-white/70">{profile.location}</span>
+                        <MapPin className="w-4 h-4 text-muted-foreground" />
+                        <span className="text-muted-foreground">{profile.location}</span>
                       </div>
                     )}
                     {Array.isArray(profile.skills) &&
                       profile.skills.length > 0 && (
                         <div>
-                          <p className="text-xs text-white/40 uppercase tracking-wide mb-2">
+                          <p className="text-xs text-muted-foreground uppercase tracking-wide mb-2">
                             Skills
                           </p>
                           <div className="flex flex-wrap gap-2">
@@ -212,7 +212,7 @@ export default function CandidateProfilePage() {
                               <Badge
                                 key={i}
                                 variant="outline"
-                                className="border-white/10 text-white/60"
+                                className="border-border text-muted-foreground"
                               >
                                 {skill}
                               </Badge>
@@ -247,8 +247,8 @@ export default function CandidateProfilePage() {
               )}
             </div>
           ) : (
-            <div className="rounded-2xl border border-white/10 bg-white/5 p-12 text-center">
-              <p className="text-white/40">Failed to load profile.</p>
+            <div className="rounded-2xl border border-border bg-card p-12 text-center">
+              <p className="text-muted-foreground">Failed to load profile.</p>
             </div>
           )}
         </div>

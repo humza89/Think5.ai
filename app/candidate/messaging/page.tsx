@@ -145,23 +145,23 @@ export default function MessagingPage() {
       <div className="container mx-auto px-6">
         {/* Page Header */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-white mb-2">Messages</h1>
-          <p className="text-white/50">
+          <h1 className="text-3xl font-bold text-foreground mb-2">Messages</h1>
+          <p className="text-muted-foreground">
             Your conversations with recruiters.
           </p>
         </div>
 
-        <div className="rounded-2xl border border-white/10 bg-white/5 overflow-hidden" style={{ height: "calc(100vh - 260px)", minHeight: "500px" }}>
+        <div className="rounded-2xl border border-border bg-card overflow-hidden" style={{ height: "calc(100vh - 260px)", minHeight: "500px" }}>
           <div className="flex h-full">
             {/* Conversation List */}
             <div
               className={cn(
-                "w-full md:w-80 lg:w-96 border-r border-white/10 flex flex-col",
+                "w-full md:w-80 lg:w-96 border-r border-border flex flex-col",
                 selectedConversation && "hidden md:flex"
               )}
             >
-              <div className="p-4 border-b border-white/10">
-                <h2 className="text-sm font-semibold text-white/70 uppercase tracking-wide">
+              <div className="p-4 border-b border-border">
+                <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
                   Conversations
                 </h2>
               </div>
@@ -169,13 +169,13 @@ export default function MessagingPage() {
               <div className="flex-1 overflow-y-auto">
                 {loading ? (
                   <div className="p-8 text-center">
-                    <div className="w-6 h-6 border-2 border-white/20 border-t-white rounded-full animate-spin mx-auto mb-3" />
-                    <p className="text-white/40 text-sm">Loading...</p>
+                    <div className="w-6 h-6 border-2 border-border border-t-muted-foreground rounded-full animate-spin mx-auto mb-3" />
+                    <p className="text-muted-foreground text-sm">Loading...</p>
                   </div>
                 ) : conversations.length === 0 ? (
                   <div className="p-8 text-center">
-                    <MessageSquare className="w-10 h-10 text-white/20 mx-auto mb-3" />
-                    <p className="text-white/40 text-sm">
+                    <MessageSquare className="w-10 h-10 text-muted-foreground/50 mx-auto mb-3" />
+                    <p className="text-muted-foreground text-sm">
                       No messages yet. Recruiters will reach out when there is a match.
                     </p>
                   </div>
@@ -185,8 +185,8 @@ export default function MessagingPage() {
                       key={conv.id}
                       onClick={() => setSelectedConversation(conv)}
                       className={cn(
-                        "w-full text-left p-4 border-b border-white/5 hover:bg-white/5 transition-colors",
-                        selectedConversation?.id === conv.id && "bg-white/[0.07]"
+                        "w-full text-left p-4 border-b border-border hover:bg-card transition-colors",
+                        selectedConversation?.id === conv.id && "bg-accent"
                       )}
                     >
                       <div className="flex items-start gap-3">
@@ -195,14 +195,14 @@ export default function MessagingPage() {
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center justify-between mb-0.5">
-                            <span className="text-white font-medium text-sm truncate">
+                            <span className="text-foreground font-medium text-sm truncate">
                               {conv.participantName || `Recruiter`}
                             </span>
-                            <span className="text-white/30 text-xs flex-shrink-0 ml-2">
+                            <span className="text-muted-foreground text-xs flex-shrink-0 ml-2">
                               {formatTime(conv.lastMessageAt)}
                             </span>
                           </div>
-                          <p className="text-white/40 text-xs truncate">
+                          <p className="text-muted-foreground text-xs truncate">
                             {conv.lastMessage}
                           </p>
                         </div>
@@ -228,10 +228,10 @@ export default function MessagingPage() {
               {selectedConversation ? (
                 <>
                   {/* Thread Header */}
-                  <div className="p-4 border-b border-white/10 flex items-center gap-3">
+                  <div className="p-4 border-b border-border flex items-center gap-3">
                     <button
                       onClick={() => setSelectedConversation(null)}
-                      className="md:hidden text-white/50 hover:text-white"
+                      className="md:hidden text-muted-foreground hover:text-foreground"
                     >
                       <ArrowLeft className="w-5 h-5" />
                     </button>
@@ -239,10 +239,10 @@ export default function MessagingPage() {
                       <User className="w-4 h-4 text-blue-400" />
                     </div>
                     <div>
-                      <h3 className="text-white font-medium text-sm">
+                      <h3 className="text-foreground font-medium text-sm">
                         {selectedConversation.participantName || "Recruiter"}
                       </h3>
-                      <p className="text-white/40 text-xs">
+                      <p className="text-muted-foreground text-xs">
                         {selectedConversation.participantRole || "Recruiter"}
                       </p>
                     </div>
@@ -253,15 +253,15 @@ export default function MessagingPage() {
                     {loadingMessages ? (
                       <div className="flex items-center justify-center h-full">
                         <div className="text-center">
-                          <div className="w-6 h-6 border-2 border-white/20 border-t-white rounded-full animate-spin mx-auto mb-3" />
-                          <p className="text-white/40 text-sm">Loading messages...</p>
+                          <div className="w-6 h-6 border-2 border-border border-t-muted-foreground rounded-full animate-spin mx-auto mb-3" />
+                          <p className="text-muted-foreground text-sm">Loading messages...</p>
                         </div>
                       </div>
                     ) : messages.length === 0 ? (
                       <div className="flex items-center justify-center h-full">
                         <div className="text-center">
-                          <MessageSquare className="w-8 h-8 text-white/20 mx-auto mb-3" />
-                          <p className="text-white/40 text-sm">
+                          <MessageSquare className="w-8 h-8 text-muted-foreground/50 mx-auto mb-3" />
+                          <p className="text-muted-foreground text-sm">
                             No messages yet. Start the conversation!
                           </p>
                         </div>
@@ -282,14 +282,14 @@ export default function MessagingPage() {
                                 "max-w-[75%] rounded-2xl px-4 py-2.5",
                                 isSent
                                   ? "bg-blue-600 text-white rounded-br-md"
-                                  : "bg-white/10 text-white rounded-bl-md"
+                                  : "bg-accent text-foreground rounded-bl-md"
                               )}
                             >
                               <p className="text-sm">{msg.content}</p>
                               <p
                                 className={cn(
                                   "text-xs mt-1",
-                                  isSent ? "text-blue-200/60" : "text-white/30"
+                                  isSent ? "text-blue-200/60" : "text-muted-foreground"
                                 )}
                               >
                                 {formatTime(msg.createdAt)}
@@ -303,14 +303,14 @@ export default function MessagingPage() {
                   </div>
 
                   {/* Message Input */}
-                  <div className="p-4 border-t border-white/10">
+                  <div className="p-4 border-t border-border">
                     <div className="flex items-center gap-3">
                       <Input
                         value={newMessage}
                         onChange={(e) => setNewMessage(e.target.value)}
                         onKeyDown={handleKeyDown}
                         placeholder="Type a message..."
-                        className="flex-1 h-11 bg-white/5 border-white/10 text-white placeholder:text-white/30 focus:border-blue-500/50 focus:ring-blue-500/20 rounded-xl"
+                        className="flex-1 h-11 bg-card border-border text-foreground placeholder:text-muted-foreground focus:border-blue-500/50 focus:ring-blue-500/20 rounded-xl"
                       />
                       <Button
                         onClick={handleSendMessage}
@@ -329,11 +329,11 @@ export default function MessagingPage() {
               ) : (
                 <div className="flex-1 flex items-center justify-center">
                   <div className="text-center">
-                    <MessageSquare className="w-12 h-12 text-white/20 mx-auto mb-4" />
-                    <h3 className="text-lg font-medium text-white mb-1">
+                    <MessageSquare className="w-12 h-12 text-muted-foreground/50 mx-auto mb-4" />
+                    <h3 className="text-lg font-medium text-foreground mb-1">
                       Select a conversation
                     </h3>
-                    <p className="text-white/40 text-sm">
+                    <p className="text-muted-foreground text-sm">
                       Choose a conversation from the list to view messages.
                     </p>
                   </div>

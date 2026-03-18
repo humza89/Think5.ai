@@ -109,17 +109,17 @@ export default function SignInPage() {
         {/* Animated Grid Pattern */}
         <div className="absolute inset-0 bg-[linear-gradient(rgba(59,130,246,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(59,130,246,0.03)_1px,transparent_1px)] bg-[size:50px_50px]" />
 
-        {/* Floating Particles */}
+        {/* Floating Particles — use deterministic positions to avoid hydration mismatch */}
         <div className="absolute inset-0 overflow-hidden">
           {[...Array(15)].map((_, i) => (
             <div
               key={i}
               className="absolute w-1 h-1 bg-blue-400/40 rounded-full animate-float-particle"
               style={{
-                left: `${Math.random() * 100}%`,
-                top: `${Math.random() * 100}%`,
-                animationDelay: `${Math.random() * 5}s`,
-                animationDuration: `${5 + Math.random() * 10}s`,
+                left: `${((i * 17 + 13) % 100)}%`,
+                top: `${((i * 31 + 7) % 100)}%`,
+                animationDelay: `${(i * 0.33) % 5}s`,
+                animationDuration: `${5 + (i * 0.67) % 10}s`,
               }}
             />
           ))}

@@ -39,7 +39,7 @@ const typeIcons: Record<string, React.ElementType> = {
 };
 
 const typeColors: Record<string, string> = {
-  system: "text-white/40",
+  system: "text-muted-foreground",
   interview_invite: "text-blue-400",
   application_update: "text-purple-400",
   match: "text-green-400",
@@ -138,10 +138,10 @@ export default function NotificationsPage() {
     if (activeTab === "read") message = "No read notifications.";
 
     return (
-      <div className="rounded-2xl border border-white/10 bg-white/5 p-12 text-center">
-        <Bell className="w-12 h-12 text-white/20 mx-auto mb-4" />
-        <h3 className="text-lg font-medium text-white mb-2">All caught up</h3>
-        <p className="text-white/40 text-sm">{message}</p>
+      <div className="rounded-2xl border border-border bg-card p-12 text-center">
+        <Bell className="w-12 h-12 text-muted-foreground/50 mx-auto mb-4" />
+        <h3 className="text-lg font-medium text-foreground mb-2">All caught up</h3>
+        <p className="text-muted-foreground text-sm">{message}</p>
       </div>
     );
   };
@@ -153,14 +153,14 @@ export default function NotificationsPage() {
         <div className="flex items-center justify-between mb-8">
           <div>
             <div className="flex items-center gap-3 mb-2">
-              <h1 className="text-3xl font-bold text-white">Notifications</h1>
+              <h1 className="text-3xl font-bold text-foreground">Notifications</h1>
               {unreadCount > 0 && (
                 <Badge className="bg-blue-500 text-white">
                   {unreadCount} new
                 </Badge>
               )}
             </div>
-            <p className="text-white/50">
+            <p className="text-muted-foreground">
               Stay updated on your applications and messages.
             </p>
           </div>
@@ -169,7 +169,7 @@ export default function NotificationsPage() {
               onClick={markAllRead}
               disabled={markingAllRead}
               variant="outline"
-              className="border-white/10 text-white hover:bg-white/10 rounded-xl"
+              className="border-border text-foreground hover:bg-accent rounded-xl"
             >
               {markingAllRead ? (
                 <Loader2 className="w-4 h-4 animate-spin mr-1.5" />
@@ -183,27 +183,27 @@ export default function NotificationsPage() {
 
         {/* Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="mb-6">
-          <TabsList className="bg-white/5 border border-white/10">
+          <TabsList className="bg-card border border-border">
             <TabsTrigger
               value="all"
-              className="data-[state=active]:bg-blue-600 data-[state=active]:text-white text-white/50"
+              className="data-[state=active]:bg-blue-600 data-[state=active]:text-white text-muted-foreground"
             >
               All
             </TabsTrigger>
             <TabsTrigger
               value="unread"
-              className="data-[state=active]:bg-blue-600 data-[state=active]:text-white text-white/50"
+              className="data-[state=active]:bg-blue-600 data-[state=active]:text-white text-muted-foreground"
             >
               Unread
               {unreadCount > 0 && (
-                <span className="ml-1.5 text-xs bg-white/10 px-1.5 py-0.5 rounded-full">
+                <span className="ml-1.5 text-xs bg-accent px-1.5 py-0.5 rounded-full">
                   {unreadCount}
                 </span>
               )}
             </TabsTrigger>
             <TabsTrigger
               value="read"
-              className="data-[state=active]:bg-blue-600 data-[state=active]:text-white text-white/50"
+              className="data-[state=active]:bg-blue-600 data-[state=active]:text-white text-muted-foreground"
             >
               Read
             </TabsTrigger>
@@ -211,9 +211,9 @@ export default function NotificationsPage() {
 
           <TabsContent value={activeTab} className="mt-6">
             {loading ? (
-              <div className="rounded-2xl border border-white/10 bg-white/5 p-12 text-center">
-                <div className="w-8 h-8 border-2 border-white/20 border-t-white rounded-full animate-spin mx-auto mb-4" />
-                <p className="text-white/40">Loading notifications...</p>
+              <div className="rounded-2xl border border-border bg-card p-12 text-center">
+                <div className="w-8 h-8 border-2 border-border border-t-muted-foreground rounded-full animate-spin mx-auto mb-4" />
+                <p className="text-muted-foreground">Loading notifications...</p>
               </div>
             ) : filteredNotifications.length === 0 ? (
               renderEmptyState()
@@ -236,21 +236,21 @@ export default function NotificationsPage() {
                       className={cn(
                         "w-full text-left rounded-xl border p-4 transition-colors",
                         notification.read
-                          ? "border-white/5 bg-white/[0.02] hover:bg-white/[0.04]"
-                          : "border-white/10 bg-white/5 hover:bg-white/[0.07]"
+                          ? "border-border bg-muted hover:bg-accent"
+                          : "border-border bg-card hover:bg-accent"
                       )}
                     >
                       <div className="flex items-start gap-3">
                         <div
                           className={cn(
                             "w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5",
-                            notification.read ? "bg-white/5" : "bg-blue-500/10"
+                            notification.read ? "bg-card" : "bg-blue-500/10"
                           )}
                         >
                           <Icon
                             className={cn(
                               "w-4.5 h-4.5",
-                              notification.read ? "text-white/30" : iconColor
+                              notification.read ? "text-muted-foreground" : iconColor
                             )}
                           />
                         </div>
@@ -259,7 +259,7 @@ export default function NotificationsPage() {
                             <h4
                               className={cn(
                                 "text-sm font-medium truncate",
-                                notification.read ? "text-white/60" : "text-white"
+                                notification.read ? "text-muted-foreground" : "text-foreground"
                               )}
                             >
                               {notification.title}
@@ -271,14 +271,14 @@ export default function NotificationsPage() {
                           <p
                             className={cn(
                               "text-xs line-clamp-2",
-                              notification.read ? "text-white/30" : "text-white/50"
+                              notification.read ? "text-muted-foreground" : "text-muted-foreground"
                             )}
                           >
                             {notification.message}
                           </p>
                           <div className="flex items-center gap-1 mt-1.5">
-                            <Clock className="w-3 h-3 text-white/20" />
-                            <span className="text-xs text-white/30">
+                            <Clock className="w-3 h-3 text-muted-foreground/50" />
+                            <span className="text-xs text-muted-foreground">
                               {formatTimeAgo(notification.createdAt)}
                             </span>
                           </div>

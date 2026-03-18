@@ -75,13 +75,13 @@ export default function CareerToolsPage() {
         {/* Page Header */}
         <div className="mb-8">
           <div className="flex items-center gap-3 mb-2">
-            <h1 className="text-3xl font-bold text-white">Career Tools</h1>
+            <h1 className="text-3xl font-bold text-foreground">Career Tools</h1>
             <Badge className="bg-blue-400/10 text-blue-400 border-blue-400/20">
               <Sparkles className="w-3 h-3 mr-1" />
               New
             </Badge>
           </div>
-          <p className="text-white/50">
+          <p className="text-muted-foreground">
             Resources to advance your career and land your next role.
           </p>
         </div>
@@ -94,8 +94,8 @@ export default function CareerToolsPage() {
               <Card
                 key={tool.title}
                 className={cn(
-                  "border-white/10 bg-white/5 shadow-none transition-all duration-200",
-                  tool.href && "hover:bg-white/[0.07] hover:border-white/15"
+                  "border-border bg-card shadow-none transition-all duration-200",
+                  tool.href && "hover:bg-accent hover:border-border"
                 )}
               >
                 <CardHeader>
@@ -112,16 +112,16 @@ export default function CareerToolsPage() {
                     {tool.comingSoon && (
                       <Badge
                         variant="outline"
-                        className="border-white/10 text-white/40 text-xs"
+                        className="border-border text-muted-foreground text-xs"
                       >
                         Coming Soon
                       </Badge>
                     )}
                   </div>
-                  <CardTitle className="text-white text-lg mt-4">
+                  <CardTitle className="text-foreground text-lg mt-4">
                     {tool.title}
                   </CardTitle>
-                  <CardDescription className="text-white/50">
+                  <CardDescription className="text-muted-foreground">
                     {tool.description}
                   </CardDescription>
                 </CardHeader>
@@ -138,7 +138,7 @@ export default function CareerToolsPage() {
                   ) : (
                     <Button
                       disabled
-                      className="w-full rounded-lg bg-white/5 text-white/30 border border-white/10 cursor-not-allowed"
+                      className="w-full rounded-lg bg-card text-muted-foreground border border-border cursor-not-allowed"
                     >
                       Coming Soon
                     </Button>
@@ -150,12 +150,12 @@ export default function CareerToolsPage() {
         </div>
 
         {/* Bottom CTA */}
-        <div className="mt-10 rounded-2xl border border-white/10 bg-gradient-to-br from-blue-500/10 to-indigo-500/10 p-8 text-center">
+        <div className="mt-10 rounded-2xl border border-border bg-gradient-to-br from-blue-500/10 to-indigo-500/10 p-8 text-center">
           <Sparkles className="w-8 h-8 text-blue-400 mx-auto mb-4" />
-          <h3 className="text-xl font-semibold text-white mb-2">
+          <h3 className="text-xl font-semibold text-foreground mb-2">
             More tools are on the way
           </h3>
-          <p className="text-white/50 max-w-lg mx-auto">
+          <p className="text-muted-foreground max-w-lg mx-auto">
             We are building more career development tools to help you succeed.
             Stay tuned for interview prep, skill analysis, and more.
           </p>

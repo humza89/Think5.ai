@@ -180,12 +180,12 @@ export default function SettingsPage() {
       <div>
         <div className="container mx-auto px-6 max-w-3xl">
           <div className="mb-8">
-            <h1 className="text-3xl font-bold text-white mb-2">Settings</h1>
-            <p className="text-white/50">Manage your account preferences.</p>
+            <h1 className="text-3xl font-bold text-foreground mb-2">Settings</h1>
+            <p className="text-muted-foreground">Manage your account preferences.</p>
           </div>
-          <div className="rounded-2xl border border-white/10 bg-white/5 p-12 text-center">
-            <div className="w-8 h-8 border-2 border-white/20 border-t-white rounded-full animate-spin mx-auto mb-4" />
-            <p className="text-white/40">Loading settings...</p>
+          <div className="rounded-2xl border border-border bg-card p-12 text-center">
+            <div className="w-8 h-8 border-2 border-border border-t-muted-foreground rounded-full animate-spin mx-auto mb-4" />
+            <p className="text-muted-foreground">Loading settings...</p>
           </div>
         </div>
       </div>
@@ -197,23 +197,23 @@ export default function SettingsPage() {
       <div className="container mx-auto px-6 max-w-3xl">
         {/* Page Header */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-white mb-2">Settings</h1>
-          <p className="text-white/50">
+          <h1 className="text-3xl font-bold text-foreground mb-2">Settings</h1>
+          <p className="text-muted-foreground">
             Manage your account preferences.
           </p>
         </div>
 
         <div className="space-y-6">
           {/* Account Section */}
-          <Card className="border-white/10 bg-white/5 shadow-none">
+          <Card className="border-border bg-card shadow-none">
             <CardHeader>
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center">
                   <Settings className="w-5 h-5 text-blue-400" />
                 </div>
                 <div>
-                  <CardTitle className="text-white text-lg">Account</CardTitle>
-                  <CardDescription className="text-white/50">
+                  <CardTitle className="text-foreground text-lg">Account</CardTitle>
+                  <CardDescription className="text-muted-foreground">
                     Your account information
                   </CardDescription>
                 </div>
@@ -221,16 +221,16 @@ export default function SettingsPage() {
             </CardHeader>
             <CardContent className="space-y-5">
               <div>
-                <Label className="text-white/80 mb-2 block">Email</Label>
+                <Label className="text-foreground/80 mb-2 block">Email</Label>
                 <div className="flex items-center gap-3">
-                  <Mail className="w-4 h-4 text-white/40" />
-                  <span className="text-white/60">{settings?.email || "Not available"}</span>
+                  <Mail className="w-4 h-4 text-muted-foreground" />
+                  <span className="text-muted-foreground">{settings?.email || "Not available"}</span>
                 </div>
               </div>
               <div>
                 <Button
                   variant="outline"
-                  className="border-white/10 text-white hover:bg-white/10 rounded-xl"
+                  className="border-border text-foreground hover:bg-accent rounded-xl"
                 >
                   <Lock className="w-4 h-4 mr-2" />
                   Change Password
@@ -240,17 +240,17 @@ export default function SettingsPage() {
           </Card>
 
           {/* Notification Preferences */}
-          <Card className="border-white/10 bg-white/5 shadow-none">
+          <Card className="border-border bg-card shadow-none">
             <CardHeader>
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-lg bg-green-500/10 border border-green-500/20 flex items-center justify-center">
                   <Bell className="w-5 h-5 text-green-400" />
                 </div>
                 <div>
-                  <CardTitle className="text-white text-lg">
+                  <CardTitle className="text-foreground text-lg">
                     Notification Preferences
                   </CardTitle>
-                  <CardDescription className="text-white/50">
+                  <CardDescription className="text-muted-foreground">
                     Choose which notifications you receive
                   </CardDescription>
                 </div>
@@ -264,22 +264,22 @@ export default function SettingsPage() {
                   return (
                     <div
                       key={option.key}
-                      className="flex items-center justify-between py-3 border-b border-white/5 last:border-0"
+                      className="flex items-center justify-between py-3 border-b border-border last:border-0"
                     >
                       <div className="flex items-center gap-3">
-                        <Icon className="w-4 h-4 text-white/40" />
+                        <Icon className="w-4 h-4 text-muted-foreground" />
                         <div>
-                          <p className="text-white text-sm font-medium">
+                          <p className="text-foreground text-sm font-medium">
                             {option.label}
                           </p>
-                          <p className="text-white/40 text-xs">
+                          <p className="text-muted-foreground text-xs">
                             {option.description}
                           </p>
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
                         {isLoading && (
-                          <Loader2 className="w-3.5 h-3.5 animate-spin text-white/30" />
+                          <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground" />
                         )}
                         <Switch
                           checked={settings?.notifications?.[option.key] ?? false}
@@ -294,15 +294,15 @@ export default function SettingsPage() {
           </Card>
 
           {/* Privacy */}
-          <Card className="border-white/10 bg-white/5 shadow-none">
+          <Card className="border-border bg-card shadow-none">
             <CardHeader>
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-lg bg-purple-500/10 border border-purple-500/20 flex items-center justify-center">
                   <Eye className="w-5 h-5 text-purple-400" />
                 </div>
                 <div>
-                  <CardTitle className="text-white text-lg">Privacy</CardTitle>
-                  <CardDescription className="text-white/50">
+                  <CardTitle className="text-foreground text-lg">Privacy</CardTitle>
+                  <CardDescription className="text-muted-foreground">
                     Control who can see your profile
                   </CardDescription>
                 </div>
@@ -311,16 +311,16 @@ export default function SettingsPage() {
             <CardContent>
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-white text-sm font-medium">
+                  <p className="text-foreground text-sm font-medium">
                     Profile visible to recruiters
                   </p>
-                  <p className="text-white/40 text-xs">
+                  <p className="text-muted-foreground text-xs">
                     Allow recruiters to discover and view your profile
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
                   {savingField === "profileVisible" && (
-                    <Loader2 className="w-3.5 h-3.5 animate-spin text-white/30" />
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground" />
                   )}
                   <Switch
                     checked={settings?.profileVisible ?? false}
@@ -342,7 +342,7 @@ export default function SettingsPage() {
                   <CardTitle className="text-red-400 text-lg">
                     Danger Zone
                   </CardTitle>
-                  <CardDescription className="text-white/50">
+                  <CardDescription className="text-muted-foreground">
                     Irreversible actions
                   </CardDescription>
                 </div>
@@ -351,7 +351,7 @@ export default function SettingsPage() {
             <CardContent>
               {!showDeleteConfirm ? (
                 <div>
-                  <p className="text-white/50 text-sm mb-4">
+                  <p className="text-muted-foreground text-sm mb-4">
                     Once you delete your account, there is no going back. All your data,
                     applications, and conversations will be permanently removed.
                   </p>
@@ -365,14 +365,14 @@ export default function SettingsPage() {
                 </div>
               ) : (
                 <div className="space-y-4">
-                  <p className="text-white/50 text-sm">
+                  <p className="text-muted-foreground text-sm">
                     Type <span className="text-red-400 font-mono font-bold">DELETE</span> to confirm account deletion.
                   </p>
                   <Input
                     value={deleteConfirmText}
                     onChange={(e) => setDeleteConfirmText(e.target.value)}
                     placeholder="Type DELETE to confirm"
-                    className="bg-white/5 border-red-500/20 text-white placeholder:text-white/30 focus:border-red-500/50 rounded-xl"
+                    className="bg-card border-red-500/20 text-foreground placeholder:text-muted-foreground focus:border-red-500/50 rounded-xl"
                   />
                   <div className="flex items-center gap-3">
                     <Button
@@ -389,7 +389,7 @@ export default function SettingsPage() {
                         setShowDeleteConfirm(false);
                         setDeleteConfirmText("");
                       }}
-                      className="border-white/10 text-white hover:bg-white/10 rounded-xl"
+                      className="border-border text-foreground hover:bg-accent rounded-xl"
                     >
                       Cancel
                     </Button>

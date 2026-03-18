@@ -63,20 +63,20 @@ export default function CandidateReportPage() {
         <div className="container mx-auto px-6">
           <Link
             href="/candidate/interviews"
-            className="inline-flex items-center text-sm text-white/50 hover:text-white mb-6 transition-colors"
+            className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground mb-6 transition-colors"
           >
             <ArrowLeft className="w-4 h-4 mr-1" /> Back to Interviews
           </Link>
 
           {loading ? (
-            <div className="rounded-2xl border border-white/10 bg-white/5 p-12 text-center">
-              <div className="w-8 h-8 border-2 border-white/20 border-t-white rounded-full animate-spin mx-auto mb-4" />
-              <p className="text-white/40">Loading report...</p>
+            <div className="rounded-2xl border border-border bg-card p-12 text-center">
+              <div className="w-8 h-8 border-2 border-border border-t-muted-foreground rounded-full animate-spin mx-auto mb-4" />
+              <p className="text-muted-foreground">Loading report...</p>
             </div>
           ) : error ? (
             <div className="rounded-2xl border border-red-500/20 bg-red-500/5 p-12 text-center">
               <p className="text-red-400 mb-2">{error}</p>
-              <p className="text-sm text-white/40">
+              <p className="text-sm text-muted-foreground">
                 The report may not be ready yet. Please try again later.
               </p>
             </div>

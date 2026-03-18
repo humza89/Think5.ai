@@ -162,8 +162,8 @@ export default function DocumentsPage() {
         {/* Page Header */}
         <div className="flex items-center justify-between mb-8">
           <div>
-            <h1 className="text-3xl font-bold text-white mb-2">Documents</h1>
-            <p className="text-white/50">
+            <h1 className="text-3xl font-bold text-foreground mb-2">Documents</h1>
+            <p className="text-muted-foreground">
               Manage your resumes, cover letters, and certifications.
             </p>
           </div>
@@ -178,17 +178,17 @@ export default function DocumentsPage() {
 
         {/* Documents Grid */}
         {loading ? (
-          <div className="rounded-2xl border border-white/10 bg-white/5 p-12 text-center">
-            <div className="w-8 h-8 border-2 border-white/20 border-t-white rounded-full animate-spin mx-auto mb-4" />
-            <p className="text-white/40">Loading documents...</p>
+          <div className="rounded-2xl border border-border bg-card p-12 text-center">
+            <div className="w-8 h-8 border-2 border-border border-t-muted-foreground rounded-full animate-spin mx-auto mb-4" />
+            <p className="text-muted-foreground">Loading documents...</p>
           </div>
         ) : documents.length === 0 ? (
-          <div className="rounded-2xl border border-white/10 bg-white/5 p-12 text-center">
-            <FileText className="w-12 h-12 text-white/20 mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-white mb-2">
+          <div className="rounded-2xl border border-border bg-card p-12 text-center">
+            <FileText className="w-12 h-12 text-muted-foreground/50 mx-auto mb-4" />
+            <h3 className="text-lg font-medium text-foreground mb-2">
               No documents uploaded
             </h3>
-            <p className="text-white/40 text-sm mb-6">
+            <p className="text-muted-foreground text-sm mb-6">
               Upload your resume to get started.
             </p>
             <Button
@@ -206,7 +206,7 @@ export default function DocumentsPage() {
               return (
                 <Card
                   key={doc.id}
-                  className="border-white/10 bg-white/5 shadow-none hover:bg-white/[0.07] transition-colors"
+                  className="border-border bg-card shadow-none hover:bg-accent transition-colors"
                 >
                   <CardHeader className="pb-3">
                     <div className="flex items-start justify-between">
@@ -215,7 +215,7 @@ export default function DocumentsPage() {
                           <Icon className="w-5 h-5 text-blue-400" />
                         </div>
                         <div className="min-w-0">
-                          <CardTitle className="text-white text-sm font-semibold truncate">
+                          <CardTitle className="text-foreground text-sm font-semibold truncate">
                             {doc.filename}
                           </CardTitle>
                           <Badge
@@ -231,7 +231,7 @@ export default function DocumentsPage() {
                     </div>
                   </CardHeader>
                   <CardContent>
-                    <div className="flex items-center justify-between text-xs text-white/40 mb-4">
+                    <div className="flex items-center justify-between text-xs text-muted-foreground mb-4">
                       <span>{formatFileSize(doc.size)}</span>
                       <span className="flex items-center gap-1">
                         <Clock className="w-3 h-3" />
@@ -243,7 +243,7 @@ export default function DocumentsPage() {
                         size="sm"
                         variant="outline"
                         onClick={() => handleDownload(doc)}
-                        className="flex-1 border-white/10 text-white hover:bg-white/10 rounded-lg text-xs"
+                        className="flex-1 border-border text-foreground hover:bg-accent rounded-lg text-xs"
                       >
                         <Download className="w-3.5 h-3.5 mr-1" />
                         Download

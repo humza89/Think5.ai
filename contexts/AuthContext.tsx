@@ -1,9 +1,17 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState, useCallback, ReactNode } from 'react';
+import { createContext, useContext, useEffect, useState, useCallback, useRef, ReactNode } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import type { Profile, UserRole } from '@/types/supabase';
+
+/** Race a promise against a timeout — returns fallback if the promise doesn't resolve in time. */
+function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((resolve) => setTimeout(() => resolve(fallback), ms)),
+  ]);
+}
 
 interface AuthContextType {
   user: User | null;
@@ -26,18 +34,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const isConfigured = isSupabaseConfigured();
 
-  const fetchProfile = useCallback(async (userId: string) => {
-    if (!supabase) return null;
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', userId)
-      .single();
-    if (error) {
-      console.error('Error fetching profile:', error);
+  const fetchProfile = useCallback(async (_userId: string) => {
+    try {
+      const res = await withTimeout(
+        fetch('/api/auth/profile'),
+        5000,
+        new Response(JSON.stringify({ profile: null }), { status: 408 })
+      );
+      if (!res.ok) {
+        console.error('Profile fetch failed with status:', res.status);
+        return null;
+      }
+      const { profile } = await res.json();
+      return profile as Profile | null;
+    } catch (err) {
+      console.error('Profile fetch error:', err);
       return null;
     }
-    return data as Profile;
   }, []);
 
   useEffect(() => {
@@ -45,6 +58,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setIsLoading(false);
       return;
     }
+
+    // Safety net: force isLoading=false after 8s to prevent infinite loading
+    const safetyTimer = setTimeout(() => {
+      setIsLoading((current) => {
+        if (current) console.warn('Auth initialization timed out — forcing loading to false');
+        return false;
+      });
+    }, 8000);
 
     const initAuth = async () => {
       try {
@@ -80,7 +101,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     );
 
-    return () => subscription.unsubscribe();
+    return () => {
+      clearTimeout(safetyTimer);
+      subscription.unsubscribe();
+    };
   }, [fetchProfile]);
 
   const signUp = useCallback(async (

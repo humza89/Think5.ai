@@ -33,7 +33,7 @@ const statusColors: Record<string, string> = {
   IN_PROGRESS: "bg-blue-400/10 text-blue-400 border-blue-400/20",
   COMPLETED: "bg-green-400/10 text-green-400 border-green-400/20",
   CANCELLED: "bg-red-400/10 text-red-400 border-red-400/20",
-  EXPIRED: "bg-white/10 text-white/40 border-white/10",
+  EXPIRED: "bg-accent text-muted-foreground border-border",
 };
 
 const filters = ["all", "PENDING", "COMPLETED", "IN_PROGRESS", "CANCELLED"];
@@ -72,21 +72,21 @@ export default function CandidateInterviewsPage() {
           <div className="mb-8">
             <Link
               href="/candidate/dashboard"
-              className="inline-flex items-center text-sm text-white/50 hover:text-white mb-4 transition-colors"
+              className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground mb-4 transition-colors"
             >
               <ArrowLeft className="w-4 h-4 mr-1" /> Back to Dashboard
             </Link>
-            <h1 className="text-4xl font-bold text-white mb-2">
+            <h1 className="text-4xl font-bold text-foreground mb-2">
               Your Interviews
             </h1>
-            <p className="text-white/50">
+            <p className="text-muted-foreground">
               View all your interviews and their results.
             </p>
           </div>
 
           {/* Filters */}
           <div className="flex items-center gap-2 mb-8 flex-wrap">
-            <Filter className="w-4 h-4 text-white/40 mr-1" />
+            <Filter className="w-4 h-4 text-muted-foreground mr-1" />
             {filters.map((f) => (
               <button
                 key={f}
@@ -94,7 +94,7 @@ export default function CandidateInterviewsPage() {
                 className={`px-4 py-1.5 rounded-full text-sm transition-colors ${
                   activeFilter === f
                     ? "bg-blue-500/20 text-blue-400 border border-blue-500/30"
-                    : "bg-white/5 text-white/50 border border-white/10 hover:bg-white/10"
+                    : "bg-card text-muted-foreground border border-border hover:bg-accent"
                 }`}
               >
                 {f === "all" ? "All" : f.replace("_", " ")}
@@ -104,17 +104,17 @@ export default function CandidateInterviewsPage() {
 
           {/* Interviews List */}
           {loading ? (
-            <div className="rounded-2xl border border-white/10 bg-white/5 p-12 text-center">
-              <div className="w-8 h-8 border-2 border-white/20 border-t-white rounded-full animate-spin mx-auto mb-4" />
-              <p className="text-white/40">Loading interviews...</p>
+            <div className="rounded-2xl border border-border bg-card p-12 text-center">
+              <div className="w-8 h-8 border-2 border-border border-t-muted-foreground rounded-full animate-spin mx-auto mb-4" />
+              <p className="text-muted-foreground">Loading interviews...</p>
             </div>
           ) : interviews.length === 0 ? (
-            <div className="rounded-2xl border border-white/10 bg-white/5 p-12 text-center">
-              <ClipboardList className="w-10 h-10 text-white/20 mx-auto mb-4" />
-              <h3 className="text-lg font-medium text-white/60 mb-2">
+            <div className="rounded-2xl border border-border bg-card p-12 text-center">
+              <ClipboardList className="w-10 h-10 text-muted-foreground/50 mx-auto mb-4" />
+              <h3 className="text-lg font-medium text-muted-foreground mb-2">
                 No interviews found
               </h3>
-              <p className="text-sm text-white/40">
+              <p className="text-sm text-muted-foreground">
                 {activeFilter === "all"
                   ? "You haven't been invited to any interviews yet."
                   : `No ${activeFilter.toLowerCase().replace("_", " ")} interviews.`}
@@ -125,11 +125,11 @@ export default function CandidateInterviewsPage() {
               {interviews.map((interview) => (
                 <div
                   key={interview.id}
-                  className="rounded-xl border border-white/10 bg-white/5 p-6 flex flex-col md:flex-row md:items-center justify-between gap-4"
+                  className="rounded-xl border border-border bg-card p-6 flex flex-col md:flex-row md:items-center justify-between gap-4"
                 >
                   <div className="flex-1">
                     <div className="flex items-center gap-3 mb-2">
-                      <span className="text-white font-medium text-lg">
+                      <span className="text-foreground font-medium text-lg">
                         {interview.type.replace("_", " ")} Interview
                       </span>
                       <Badge
@@ -152,7 +152,7 @@ export default function CandidateInterviewsPage() {
                         </Badge>
                       )}
                     </div>
-                    <div className="flex items-center gap-4 text-xs text-white/40">
+                    <div className="flex items-center gap-4 text-xs text-muted-foreground">
                       <span>
                         Created{" "}
                         {new Date(interview.createdAt).toLocaleDateString()}
@@ -196,7 +196,7 @@ export default function CandidateInterviewsPage() {
                           <Button
                             size="sm"
                             variant="outline"
-                            className="border-white/10 text-white hover:bg-white/10 rounded-lg"
+                            className="border-border text-foreground hover:bg-accent rounded-lg"
                           >
                             <FileText className="w-3.5 h-3.5 mr-1.5" />
                             View Report
