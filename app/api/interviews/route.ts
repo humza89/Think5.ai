@@ -20,7 +20,14 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { candidateId, type = "TECHNICAL" } = body;
+    const {
+      candidateId,
+      type = "TECHNICAL",
+      voiceProvider = "text-sse",
+      templateId,
+      jobId,
+      isPractice = false,
+    } = body;
 
     if (!candidateId) {
       return NextResponse.json(
@@ -51,6 +58,37 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Generate interview plan for voice interviews
+    let interviewPlan = null;
+    if (voiceProvider === "gemini-live") {
+      try {
+        const { generateInterviewPlan } = await import("@/lib/interview-planner");
+        const job = jobId
+          ? await prisma.job.findUnique({ where: { id: jobId } })
+          : null;
+
+        interviewPlan = await generateInterviewPlan(
+          {
+            fullName: candidate.fullName,
+            currentTitle: candidate.currentTitle,
+            currentCompany: candidate.currentCompany,
+            skills: candidate.skills as string[],
+            experienceYears: candidate.experienceYears,
+            resumeText: candidate.resumeText,
+          },
+          {
+            title: job?.title || type,
+            skillsRequired: (job?.skillsRequired as string[]) || [],
+            description: job?.description || undefined,
+          },
+          [] // default modules — can be customized from template
+        );
+      } catch (err) {
+        console.error("Failed to generate interview plan:", err);
+        // Continue without plan — Aria will use default behavior
+      }
+    }
+
     // Create interview
     const interview = await prisma.interview.create({
       data: {
@@ -58,6 +96,11 @@ export async function POST(request: NextRequest) {
         scheduledBy: recruiter.id,
         type,
         status: "PENDING",
+        voiceProvider,
+        templateId: templateId || undefined,
+        jobId: jobId || undefined,
+        isPractice,
+        interviewPlan: interviewPlan as any,
       },
       include: {
         candidate: {

@@ -11,6 +11,7 @@ import { AriaPanel } from "@/components/interview/AriaPanel";
 import { CandidatePanel } from "@/components/interview/CandidatePanel";
 import { InterviewComplete } from "@/components/interview/InterviewComplete";
 import { ProctoringOverlay } from "@/components/interview/ProctoringOverlay";
+import { VoiceInterviewRoom } from "@/components/interview/VoiceInterviewRoom";
 
 type InterviewStage =
   | "LOADING"
@@ -28,6 +29,9 @@ interface InterviewMeta {
   candidateImage: string | null;
   hasTranscript: boolean;
   duration: number;
+  voiceProvider?: string | null;
+  jobTitle?: string | null;
+  durationMinutes?: number;
 }
 
 const MAX_DURATION_MS = 45 * 60 * 1000; // 45 minutes
@@ -205,7 +209,20 @@ export default function InterviewRoom() {
     );
   }
 
-  // Welcome screen
+  // Voice interview mode — route to VoiceInterviewRoom
+  if (meta?.voiceProvider === "gemini-live" && stage !== "COMPLETE" && stage !== "CLOSING") {
+    return (
+      <VoiceInterviewRoom
+        interviewId={interviewId}
+        candidateName={meta.candidateName}
+        jobTitle={meta.jobTitle || "Interview"}
+        accessToken={accessToken}
+        durationMinutes={meta.durationMinutes || 30}
+      />
+    );
+  }
+
+  // Welcome screen (text-based interview fallback)
   if (stage === "WELCOME" && meta) {
     return (
       <WelcomeScreen

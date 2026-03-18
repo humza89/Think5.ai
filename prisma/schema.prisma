@@ -180,6 +180,7 @@ model Recruiter {
   interviewTemplates    InterviewTemplate[]
   interviewInvitations  InterviewInvitation[]
   passiveProfiles       PassiveProfile[]
+  skillModules          SkillModule[]
 
   @@index([companyId])
   @@index([onboardingStatus])
@@ -466,6 +467,15 @@ model Interview {
   videoUrl        String?           // Future: webcam recording URL
   audioUrl        String?           // Future: audio recording URL
 
+  // Voice interview fields
+  voiceProvider     String?         @default("text-sse") // "gemini-live" | "text-sse"
+  recordingUrl      String?         // R2 signed URL for video/audio recording
+  recordingFormat   String?         @default("webm")
+  recordingSize     Int?            // bytes
+  interviewPlan     Json?           // Generated adaptive plan from interview-planner
+  skillModuleScores Json?           // Per-module scores [{module, score, details}]
+  isPractice        Boolean         @default(false)
+
   // Composite score (denormalized from report)
   overallScore    Float?
 
@@ -557,12 +567,50 @@ model InterviewTemplate {
   jobs            Job[]
   interviews      Interview[]
   invitations     InterviewInvitation[]
+  skillModules    InterviewTemplateModule[]
 
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
   @@index([recruiterId])
   @@index([companyId])
+}
+
+// ============================================
+// Skill Modules (Micro1-style reusable assessment modules)
+// ============================================
+
+model SkillModule {
+  id          String   @id @default(cuid())
+  name        String                        // e.g. "System Design", "Leadership"
+  category    String                        // "technical", "behavioral", "domain"
+  duration    Int      @default(5)          // minutes per module
+  rubric      Json     @default("{}")       // scoring criteria per level
+  prompts     Json     @default("[]")       // base question patterns
+  difficulty  String   @default("mid")      // "junior", "mid", "senior", "staff"
+  isGlobal    Boolean  @default(true)       // false = tenant-specific
+  recruiterId String?
+  recruiter   Recruiter? @relation(fields: [recruiterId], references: [id])
+  templates   InterviewTemplateModule[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([category])
+  @@index([recruiterId])
+}
+
+model InterviewTemplateModule {
+  id          String            @id @default(cuid())
+  templateId  String
+  moduleId    String
+  order       Int               @default(0)
+  template    InterviewTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  module      SkillModule       @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  createdAt   DateTime          @default(now())
+
+  @@unique([templateId, moduleId])
+  @@index([templateId])
+  @@index([moduleId])
 }
 
 model InterviewInvitation {

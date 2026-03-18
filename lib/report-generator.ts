@@ -76,9 +76,23 @@ export async function generateReportInBackground(
 
   const overallScore = reportData.overallScore || null;
 
+  // Include per-module scores and recording URL if available
+  const updateData: Record<string, unknown> = { overallScore };
+
+  // Get recording URL if one exists
+  try {
+    const { getSignedPlaybackUrl } = await import("@/lib/media-storage");
+    const recordingUrl = await getSignedPlaybackUrl(interviewId);
+    if (recordingUrl) {
+      updateData.recordingUrl = recordingUrl;
+    }
+  } catch {
+    // R2 not configured — skip recording URL
+  }
+
   await prisma.interview.update({
     where: { id: interviewId },
-    data: { overallScore },
+    data: updateData,
   });
 
   await prisma.candidate.update({

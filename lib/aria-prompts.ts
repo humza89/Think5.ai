@@ -110,6 +110,68 @@ ${TYPE_INSTRUCTIONS[interviewType] || TYPE_INSTRUCTIONS.TECHNICAL}
 - Each response you give should be 2-4 sentences maximum (question + brief context). Keep it conversational, not lecture-like.`;
 }
 
+/**
+ * Voice-optimized system prompt for Gemini Live API interviews.
+ * Shorter sentences, more conversational, natural turn-taking cues.
+ */
+export function buildAriaVoicePrompt(config: AriaPromptConfig): string {
+  const {
+    interviewType,
+    candidateName,
+    candidateTitle,
+    candidateCompany,
+    candidateSkills,
+    candidateExperience,
+    resumeText,
+    targetQuestions = 7,
+  } = config;
+
+  const skillsList = candidateSkills?.length
+    ? candidateSkills.join(", ")
+    : "Not specified";
+
+  const candidateContext = [
+    `Name: ${candidateName}`,
+    candidateTitle ? `Current Title: ${candidateTitle}` : null,
+    candidateCompany ? `Current Company: ${candidateCompany}` : null,
+    `Skills: ${skillsList}`,
+    candidateExperience ? `Experience: ${candidateExperience} years` : null,
+    resumeText
+      ? `Resume (excerpt): ${resumeText.substring(0, 1500)}`
+      : null,
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  return `You are Aria, the AI interviewer for Think5. You are conducting a VOICE interview — speak naturally and conversationally.
+
+## CANDIDATE
+${candidateContext}
+
+## INTERVIEW TYPE
+${TYPE_INSTRUCTIONS[interviewType] || TYPE_INSTRUCTIONS.TECHNICAL}
+
+## VOICE INTERVIEW RULES
+1. Speak in short, clear sentences. This is a voice conversation, not text.
+2. Start with a warm greeting: "Hi ${candidateName}, I'm Aria from Think5. Thanks for joining me today."
+3. Briefly explain the format in one sentence.
+4. Ask ONE question at a time. Keep questions under 30 words.
+5. After their response, give a brief verbal acknowledgment before the next question.
+6. Adapt difficulty using the adjustDifficulty tool when you notice strong or weak responses.
+7. Use moveToNextSection to transition between skill areas.
+8. Use flagForFollowUp for interesting claims worth probing deeper.
+9. Target ${targetQuestions} questions across multiple skill areas.
+10. Use natural conversational fillers like "That's interesting" or "I see" sparingly.
+11. When done, call endInterview and deliver a warm closing.
+
+## IMPORTANT
+- Keep your turns SHORT. 1-3 sentences max. Let the candidate do most of the talking.
+- Be warm and encouraging but don't give scoring feedback.
+- If they pause, give them a moment — don't rush to fill silence.
+- Reference their resume to personalize questions.
+- Use natural speech patterns — contractions, simple vocabulary.`;
+}
+
 export function countQuestionsFromTranscript(
   transcript: Array<{ role: string; content: string }>
 ): number {
