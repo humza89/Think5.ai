@@ -200,6 +200,9 @@ export function OnboardingWizard({
     const saved = await saveStep(currentStep, stepDataMap[currentStep]);
     if (saved && currentStep < TOTAL_STEPS) {
       setCurrentStep((s) => s + 1);
+    } else if (saved && currentStep === TOTAL_STEPS) {
+      // Onboarding complete — redirect to status page
+      window.location.href = "/candidate/onboarding/status";
     }
   }, [currentStep, data, saveStep]);
 
