@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import sharp from "sharp";
 import { GoogleGenAI } from "@google/genai";
-import { getAuthenticatedUser, handleAuthError, AuthError } from "@/lib/auth";
+import { requireRole, handleAuthError } from "@/lib/auth";
 import { createSupabaseAdminClient } from "@/lib/supabase-server";
 import { portraitCrop } from "@/lib/face-detection";
 
@@ -132,10 +132,7 @@ async function enhanceWithSharp(buffer: Buffer): Promise<Buffer> {
 
 export async function POST(request: NextRequest) {
   try {
-    const { profile } = await getAuthenticatedUser();
-    if (!profile || profile.role !== "candidate") {
-      throw new AuthError("Forbidden: candidates only", 403);
-    }
+    await requireRole(["candidate"]);
 
     const formData = await request.formData();
     const file = formData.get("file") as File | null;

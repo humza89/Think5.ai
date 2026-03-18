@@ -1,13 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { getAuthenticatedUser, handleAuthError } from '@/lib/auth';
+import { requireRole, handleAuthError } from '@/lib/auth';
 
 export async function GET() {
   try {
-    const { user, profile } = await getAuthenticatedUser();
-    if (profile?.role !== 'candidate') {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
+    const { user } = await requireRole(['candidate']);
 
     const candidate = await prisma.candidate.findFirst({
       where: { email: user.email },
@@ -31,10 +28,7 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
-    const { user, profile } = await getAuthenticatedUser();
-    if (profile?.role !== 'candidate') {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
+    const { user } = await requireRole(['candidate']);
 
     const body = await request.json();
     const { fileUrl, filename, type, mimeType, fileSize } = body;
@@ -71,10 +65,7 @@ export async function POST(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
-    const { user, profile } = await getAuthenticatedUser();
-    if (profile?.role !== 'candidate') {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
+    const { user } = await requireRole(['candidate']);
 
     const url = new URL(request.url);
     const docId = url.searchParams.get('id');

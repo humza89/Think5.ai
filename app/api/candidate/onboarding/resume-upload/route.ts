@@ -1,15 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { parseResumeFile, extractCandidateData } from "@/lib/resume-parser";
-import { getAuthenticatedUser, handleAuthError, AuthError } from "@/lib/auth";
+import { requireRole, handleAuthError } from "@/lib/auth";
 import { createSupabaseAdminClient } from "@/lib/supabase-server";
 
 export async function POST(request: NextRequest) {
   try {
-    const { user, profile } = await getAuthenticatedUser();
-    if (!profile || profile.role !== "candidate") {
-      throw new AuthError("Forbidden: candidates only", 403);
-    }
+    const { user, profile } = await requireRole(["candidate"]);
 
     const formData = await request.formData();
     const file = formData.get("file") as File | null;

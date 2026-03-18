@@ -1,13 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { getAuthenticatedUser, handleAuthError } from '@/lib/auth';
+import { requireRole, handleAuthError } from '@/lib/auth';
 
 export async function GET(request: NextRequest) {
   try {
-    const { user, profile } = await getAuthenticatedUser();
-    if (profile?.role !== 'candidate') {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
+    const { user } = await requireRole(['candidate']);
 
     const { searchParams } = new URL(request.url);
     const filter = searchParams.get('filter'); // 'unread', 'read', or null (all)
@@ -35,10 +32,7 @@ export async function GET(request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   try {
-    const { user, profile } = await getAuthenticatedUser();
-    if (profile?.role !== 'candidate') {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
+    const { user } = await requireRole(['candidate']);
 
     const body = await request.json();
     const { notificationIds, markAll } = body;

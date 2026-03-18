@@ -1068,7 +1068,7 @@ export default function CandidatesPage() {
               <div className="flex items-center gap-3">
                 <input type="checkbox" className="rounded border-gray-300" />
                 <span className="text-sm font-medium text-gray-900">
-                  All Profiles ({total.toLocaleString()})
+                  All Profiles ({(total ?? 0).toLocaleString()})
                 </span>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
@@ -1086,12 +1086,12 @@ export default function CandidatesPage() {
                 </DropdownMenu>
               </div>
               <div className="flex items-center gap-3 text-xs text-gray-600">
-                <span>{startIndex}-{endIndex} of {total.toLocaleString()}</span>
+                <span>{startIndex}-{endIndex} of {(total ?? 0).toLocaleString()}</span>
                 <div className="flex items-center gap-1">
                   <Button variant="ghost" size="sm" className="h-7 w-7 p-0" disabled={currentPage === 1}>
                     <ChevronLeft className="h-4 w-4" />
                   </Button>
-                  <Button variant="ghost" size="sm" className="h-7 w-7 p-0" disabled={endIndex >= total}>
+                  <Button variant="ghost" size="sm" className="h-7 w-7 p-0" disabled={endIndex >= (total ?? 0)}>
                     <ChevronRight className="h-4 w-4" />
                   </Button>
                 </div>

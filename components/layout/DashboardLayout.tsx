@@ -33,7 +33,8 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
       try {
         const res = await fetch("/api/recruiter/onboarding");
         if (!res.ok) {
-          setOnboardingChecked(true);
+          // Fail-closed: block access if onboarding status can't be verified
+          router.replace("/auth/signin");
           return;
         }
 
@@ -50,7 +51,9 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
           return;
         }
       } catch {
-        // On error, allow access
+        // Fail-closed: redirect to sign in if check fails
+        router.replace("/auth/signin");
+        return;
       }
 
       setOnboardingChecked(true);

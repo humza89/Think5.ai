@@ -1,6 +1,41 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireRole, handleAuthError } from "@/lib/auth";
+import { requireRole, getRecruiterForUser, AuthError, handleAuthError } from "@/lib/auth";
+
+/**
+ * Verify that the authenticated user owns the job (or is admin).
+ * Prevents IDOR — recruiters can only modify their own jobs.
+ */
+async function requireJobOwnership(jobId: string) {
+  const { user, profile } = await requireRole(["recruiter", "admin"]);
+
+  // Admins can modify any job
+  if (profile.role === "admin") {
+    return { user, profile };
+  }
+
+  // Recruiters must own the job
+  const recruiter = await getRecruiterForUser(
+    user.id,
+    profile.email,
+    `${profile.first_name} ${profile.last_name}`
+  );
+
+  const job = await prisma.job.findUnique({
+    where: { id: jobId },
+    select: { recruiterId: true },
+  });
+
+  if (!job) {
+    throw new AuthError("Job not found", 404);
+  }
+
+  if (job.recruiterId !== recruiter.id) {
+    throw new AuthError("Forbidden: you do not own this job", 403);
+  }
+
+  return { user, profile };
+}
 
 export async function GET(
   request: NextRequest,
@@ -44,8 +79,8 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireRole(["recruiter", "admin"]);
     const { id } = await params;
+    await requireJobOwnership(id);
     const body = await request.json();
 
     const {
@@ -121,8 +156,8 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireRole(["recruiter", "admin"]);
     const { id } = await params;
+    await requireJobOwnership(id);
     const body = await request.json();
     const { status: newStatus } = body;
 
@@ -185,8 +220,8 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireRole(["recruiter", "admin"]);
     const { id } = await params;
+    await requireJobOwnership(id);
 
     await prisma.job.delete({ where: { id } });
 

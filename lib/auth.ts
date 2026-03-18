@@ -15,6 +15,7 @@ export class AuthError extends Error {
 /**
  * Get the authenticated user from the current request's Supabase session.
  * Throws AuthError(401) if not authenticated.
+ * Also checks account_status — suspended/deactivated users are blocked.
  */
 export async function getAuthenticatedUser() {
   const supabase = await createSupabaseServerClient();
@@ -34,6 +35,19 @@ export async function getAuthenticatedUser() {
     .eq('id', user.id)
     .single();
 
+  if (!profile) {
+    throw new AuthError('Profile not found', 401);
+  }
+
+  // Enforce account status (deny-by-default for non-active accounts)
+  const accountStatus = (profile as Record<string, unknown>).account_status as string | undefined;
+  if (accountStatus === 'suspended') {
+    throw new AuthError('Account suspended. Contact support.', 403);
+  }
+  if (accountStatus === 'deactivated') {
+    throw new AuthError('Account deactivated.', 403);
+  }
+
   return { user, profile };
 }
 
@@ -46,6 +60,80 @@ export async function requireRole(allowedRoles: UserRole[]) {
 
   if (!profile || !allowedRoles.includes(profile.role)) {
     throw new AuthError('Forbidden: insufficient permissions', 403);
+  }
+
+  return { user, profile };
+}
+
+/**
+ * Require that the authenticated user is a candidate with role check.
+ * Returns the Prisma Candidate record linked to this user.
+ */
+export async function requireCandidateRole() {
+  const { user, profile } = await requireRole(['candidate']);
+
+  const candidate = await prisma.candidate.findFirst({
+    where: { supabaseUserId: user.id },
+  });
+
+  if (!candidate) {
+    // Fallback: try by email
+    const candidateByEmail = await prisma.candidate.findFirst({
+      where: { email: profile.email },
+    });
+    if (!candidateByEmail) {
+      throw new AuthError('Candidate record not found', 404);
+    }
+    return { user, profile, candidate: candidateByEmail };
+  }
+
+  return { user, profile, candidate };
+}
+
+/**
+ * Require that the authenticated user has completed onboarding AND been approved.
+ * - Candidates: onboardingStatus must be "APPROVED"
+ * - Recruiters: onboardingCompleted must be true
+ * - Admins/hiring_managers: no onboarding gate
+ */
+export async function requireApprovedAccess(allowedRoles: UserRole[]) {
+  const { user, profile } = await requireRole(allowedRoles);
+
+  if (profile.role === 'candidate') {
+    const candidate = await prisma.candidate.findFirst({
+      where: { supabaseUserId: user.id },
+      select: { onboardingCompleted: true, onboardingStatus: true },
+    });
+
+    if (!candidate) {
+      // Fallback by email
+      const candidateByEmail = await prisma.candidate.findFirst({
+        where: { email: profile.email },
+        select: { onboardingCompleted: true, onboardingStatus: true },
+      });
+      if (!candidateByEmail) {
+        throw new AuthError('Candidate record not found', 404);
+      }
+      if (!candidateByEmail.onboardingCompleted || candidateByEmail.onboardingStatus !== 'APPROVED') {
+        throw new AuthError('Account not yet approved. Complete onboarding and await admin approval.', 403);
+      }
+      return { user, profile };
+    }
+
+    if (!candidate.onboardingCompleted || candidate.onboardingStatus !== 'APPROVED') {
+      throw new AuthError('Account not yet approved. Complete onboarding and await admin approval.', 403);
+    }
+  }
+
+  if (profile.role === 'recruiter') {
+    const recruiter = await prisma.recruiter.findFirst({
+      where: { supabaseUserId: user.id },
+      select: { onboardingCompleted: true },
+    });
+
+    if (recruiter && !recruiter.onboardingCompleted) {
+      throw new AuthError('Please complete onboarding first.', 403);
+    }
   }
 
   return { user, profile };

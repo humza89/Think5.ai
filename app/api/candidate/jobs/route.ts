@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getAuthenticatedUser, handleAuthError } from "@/lib/auth";
+import { requireRole, handleAuthError } from "@/lib/auth";
 
 export async function GET(request: NextRequest) {
   try {
-    await getAuthenticatedUser();
+    await requireRole(["candidate"]);
 
     const searchParams = request.nextUrl.searchParams;
     const search = searchParams.get("search");

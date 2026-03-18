@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getAuthenticatedUser, handleAuthError } from "@/lib/auth";
+import { requireRole, handleAuthError } from "@/lib/auth";
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await getAuthenticatedUser();
+    await requireRole(["candidate"]);
     const { id } = await params;
 
     const job = await prisma.job.findUnique({
@@ -63,7 +63,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user } = await getAuthenticatedUser();
+    const { user } = await requireRole(["candidate"]);
     const { id: jobId } = await params;
     const body = await request.json().catch(() => ({}));
 

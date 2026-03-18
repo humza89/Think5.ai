@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getAuthenticatedUser, handleAuthError } from "@/lib/auth";
+import { requireRole, handleAuthError } from "@/lib/auth";
 
 export async function GET(request: NextRequest) {
   try {
-    const { user } = await getAuthenticatedUser();
+    const { user } = await requireRole(["candidate"]);
 
     const url = new URL(request.url);
     const page = Math.max(1, parseInt(url.searchParams.get("page") || "1"));

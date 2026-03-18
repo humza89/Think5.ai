@@ -55,7 +55,9 @@ export function CandidateLayout({ children }: { children: React.ReactNode }) {
           return;
         }
       } catch {
-        // If check fails, allow access
+        // Fail-closed: redirect to sign in if onboarding check fails
+        router.replace("/auth/signin");
+        return;
       }
       setOnboardingChecked(true);
     }
