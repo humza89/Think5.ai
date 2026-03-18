@@ -3,6 +3,7 @@ import sharp from "sharp";
 import { GoogleGenAI } from "@google/genai";
 import { getAuthenticatedUser, handleAuthError, AuthError } from "@/lib/auth";
 import { createSupabaseAdminClient } from "@/lib/supabase-server";
+import { portraitCrop } from "@/lib/face-detection";
 
 // ============================================
 // Gemini Image Generation Client
@@ -17,23 +18,23 @@ const BUCKET = "photos";
 // ============================================
 
 const HEADSHOT_BASE =
-  "Generate a perfectly SQUARE 1:1 aspect ratio image (same width and height). Place the person against a clean, uniform solid light blue background (hex #B8D4E8) with NO gradient, NO vignette, and NO darker edges. Dress them in a sharp, well-fitted dark professional suit with a crisp white shirt. Maintain the person's EXACT face, features, skin tone, hair, and likeness — do not alter their appearance. High resolution, sharp focus on the eyes. CRITICAL FRAMING: The person should fill most of the frame. Show from mid-chest up. The top of the head should be very close to the top edge of the image with only a small margin above. Center the person horizontally AND vertically. Minimize empty background space. Use a straight-on camera angle — no tilting, no rotation.";
+  "Generate a professional headshot portrait. Place the person against a clean, uniform solid light blue background (hex #B8D4E8) with NO gradient, NO vignette. Dress them in a sharp dark professional suit with a crisp white shirt and tie. Maintain the person's EXACT face, features, skin tone, hair, and likeness. High resolution, sharp focus on the eyes. Show the person from chest up with full hair visible. Straight-on camera angle.";
 
 const HEADSHOT_STYLES = [
   {
     key: "corporate",
     label: "Corporate Professional",
-    prompt: `Transform this photo into a polished corporate professional headshot portrait. ${HEADSHOT_BASE} Apply classic professional studio lighting with a soft key light and subtle fill light. The person should have a neutral, confident expression. The result should look like a high-end LinkedIn or company website headshot.`,
+    prompt: `Transform this photo into a premium corporate headshot. ${HEADSHOT_BASE} Lighting: Use "Rembrandt lighting" with a 45-degree key light to create a subtle triangle of light on the cheek. Skin: Realistic skin texture, sharp focus on the iris with clear white catchlights in the eyes. Vibe: Authoritative, executive, and polished. The suit should have a subtle wool texture.`,
   },
   {
     key: "creative",
     label: "Creative Professional",
-    prompt: `Transform this photo into a creative professional headshot portrait. ${HEADSHOT_BASE} Apply slightly warmer editorial-style lighting with gentle shadows for depth. The person should have an approachable, confident smile. The result should feel stylish and contemporary, like a tech company or startup team page photo.`,
+    prompt: `Transform this photo into a modern creative professional portrait. ${HEADSHOT_BASE} Lighting: "Butterfly lighting" (Paramount lighting) to emphasize cheekbones and a soft jawline. Skin: Warm, glowing skin tones with a natural, dewy finish. Vibe: Approachable, innovative, and stylish. The suit should look contemporary and well-tailored.`,
   },
   {
     key: "casual",
     label: "Casual Professional",
-    prompt: `Transform this photo into a casual yet professional headshot portrait. ${HEADSHOT_BASE} Apply soft, natural daylight-style lighting that feels warm and inviting. The person should have a friendly, relaxed expression with a natural smile. The result should feel genuine and approachable, like a modern professional profile photo.`,
+    prompt: `Transform this photo into a friendly, casual professional headshot. ${HEADSHOT_BASE} Lighting: Soft, wrap-around "High-key" natural window lighting. No harsh shadows. Skin: Natural matte finish, very clear and bright. Vibe: Trustworthy, authentic, and relaxed. A modern "startup" feel with a gentle, inviting smile.`,
   },
 ] as const;
 
@@ -120,7 +121,7 @@ async function enhanceWithSharp(buffer: Buffer): Promise<Buffer> {
   return sharp(buffer)
     .resize(800, null, { withoutEnlargement: true })
     .modulate({ brightness: 1.05, saturation: 1.05 })
-    .sharpen({ sigma: 1 })
+    .sharpen({ sigma: 0.5 })
     .jpeg({ quality: 90, mozjpeg: true })
     .toBuffer();
 }
@@ -207,11 +208,8 @@ export async function POST(request: NextRequest) {
       if (result.status === "fulfilled" && result.value) {
         const generatedBuffer = Buffer.from(result.value.data, "base64");
 
-        // Convert to JPEG — no forced square crop, let frontend CSS handle display
-        const processedBuffer = await sharp(generatedBuffer)
-          .resize(800, null, { withoutEnlargement: true })
-          .jpeg({ quality: 92, mozjpeg: true })
-          .toBuffer();
+        // Face-detection-based portrait crop → consistent 800x800 square
+        const processedBuffer = await portraitCrop(generatedBuffer);
 
         const filePath = `headshots/${timestamp}-${style.key}-${safeName.replace(/\.\w+$/, ".jpg")}`;
         const publicUrl = await uploadToSupabase(filePath, processedBuffer, "image/jpeg");
