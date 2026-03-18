@@ -119,10 +119,12 @@ export default function ExperienceStep({
 
           return (
             <Card key={exp.id} className="overflow-hidden">
-              <button
-                type="button"
+              <div
+                role="button"
+                tabIndex={0}
                 onClick={() => toggleExpanded(exp.id)}
-                className="flex w-full items-center justify-between p-4 text-left transition-colors hover:bg-muted/50"
+                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleExpanded(exp.id); } }}
+                className="flex w-full items-center justify-between p-4 text-left transition-colors hover:bg-muted/50 cursor-pointer"
               >
                 <div className="flex items-center gap-3">
                   <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
@@ -162,7 +164,7 @@ export default function ExperienceStep({
                     <ChevronDown className="h-4 w-4 text-muted-foreground" />
                   )}
                 </div>
-              </button>
+              </div>
 
               {isExpanded && (
                 <CardContent className="border-t border-border pt-4">

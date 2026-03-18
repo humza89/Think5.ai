@@ -16,7 +16,7 @@ export const personalInfoSchema = z.object({
     .min(1, "LinkedIn profile URL is required")
     .regex(linkedinUrlRegex, "Please enter a valid LinkedIn profile URL (e.g., https://linkedin.com/in/yourname)"),
   jobTitle: z.string().max(200).optional().or(z.literal("")),
-  profileImage: z.string().url().optional().or(z.literal("")),
+  profileImage: z.string().optional().or(z.literal("")),
 });
 
 // ============================================

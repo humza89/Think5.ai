@@ -2,7 +2,6 @@
 
 import { useState } from "react"
 import { Card, CardContent } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
@@ -14,7 +13,6 @@ import {
   Wrench,
   GraduationCap,
   Settings2,
-  Loader2,
   ShieldCheck,
 } from "lucide-react"
 
@@ -29,6 +27,7 @@ interface PersonalInfo {
   phone: string
   location: string
   linkedIn: string
+  profileImage?: string
 }
 
 interface ResumeInfo {
@@ -45,7 +44,7 @@ interface ReviewSubmitStepProps {
   education: EducationEntry[]
   certifications: CertificationEntry[]
   preferences: JobPreferences
-  onSubmit: () => Promise<void>
+  onConsentChange: (consent: { consentGdpr: boolean; consentDataProcessing: boolean }) => void
 }
 
 function SectionHeader({
@@ -97,22 +96,17 @@ export default function ReviewSubmitStep({
   education,
   certifications,
   preferences,
-  onSubmit,
+  onConsentChange,
 }: ReviewSubmitStepProps) {
   const [consentData, setConsentData] = useState(false)
   const [consentShare, setConsentShare] = useState(false)
-  const [isSubmitting, setIsSubmitting] = useState(false)
 
-  const canSubmit = consentData && consentShare && !isSubmitting
-
-  async function handleSubmit() {
-    if (!canSubmit) return
-    setIsSubmitting(true)
-    try {
-      await onSubmit()
-    } finally {
-      setIsSubmitting(false)
-    }
+  function updateConsent(field: "data" | "share", value: boolean) {
+    const newData = field === "data" ? value : consentData
+    const newShare = field === "share" ? value : consentShare
+    if (field === "data") setConsentData(value)
+    if (field === "share") setConsentShare(value)
+    onConsentChange({ consentGdpr: newData, consentDataProcessing: newShare })
   }
 
   const hasPersonalInfo = !!(
@@ -152,6 +146,15 @@ export default function ReviewSubmitStep({
             hasData={hasPersonalInfo}
           />
           <div className="mt-4 grid gap-1.5 pl-11">
+            {personalInfo.profileImage && (
+              <div className="mb-2">
+                <img
+                  src={personalInfo.profileImage}
+                  alt="Profile"
+                  className="h-16 w-16 rounded-full border border-border object-cover"
+                />
+              </div>
+            )}
             <InfoRow
               label="Name"
               value={
@@ -458,7 +461,7 @@ export default function ReviewSubmitStep({
                 id="consent-data"
                 checked={consentData}
                 onCheckedChange={(checked) =>
-                  setConsentData(checked === true)
+                  updateConsent("data", checked === true)
                 }
               />
               <Label
@@ -476,7 +479,7 @@ export default function ReviewSubmitStep({
                 id="consent-share"
                 checked={consentShare}
                 onCheckedChange={(checked) =>
-                  setConsentShare(checked === true)
+                  updateConsent("share", checked === true)
                 }
               />
               <Label
@@ -489,29 +492,11 @@ export default function ReviewSubmitStep({
               </Label>
             </div>
 
-            <div className="pt-2">
-              <Button
-                type="button"
-                size="lg"
-                disabled={!canSubmit}
-                onClick={handleSubmit}
-                className="w-full sm:w-auto"
-              >
-                {isSubmitting ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Submitting...
-                  </>
-                ) : (
-                  "Submit for Review"
-                )}
-              </Button>
-              {!consentData || !consentShare ? (
-                <p className="mt-2 text-xs text-muted-foreground">
-                  Please accept both consent checkboxes to submit your profile.
-                </p>
-              ) : null}
-            </div>
+            {!consentData || !consentShare ? (
+              <p className="text-xs text-muted-foreground">
+                Please accept both consent checkboxes to submit your profile.
+              </p>
+            ) : null}
           </div>
         </CardContent>
       </Card>

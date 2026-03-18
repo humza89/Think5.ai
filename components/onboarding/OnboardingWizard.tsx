@@ -348,6 +348,7 @@ export function OnboardingWizard({
               phone: data.personalInfo.phone ?? "",
               location: data.personalInfo.location ?? "",
               linkedIn: data.personalInfo.linkedinUrl ?? "",
+              profileImage: data.personalInfo.profileImage ?? "",
             }}
             resume={
               data.resume.fileUrl
@@ -360,13 +361,12 @@ export function OnboardingWizard({
             education={data.education}
             certifications={data.certifications}
             preferences={data.preferences}
-            onSubmit={async () => {
+            onConsentChange={(consent) => {
               setData((prev) => ({
                 ...prev,
-                consentGdpr: true,
-                consentDataProcessing: true,
+                consentGdpr: consent.consentGdpr,
+                consentDataProcessing: consent.consentDataProcessing,
               }));
-              await handleNext();
             }}
           />
         );

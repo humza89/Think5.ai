@@ -7,6 +7,13 @@ import {
 } from "@/lib/auth";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 
+// Helper: safely parse date strings — returns null for invalid/unparseable dates
+function safeDate(value: string | null | undefined): Date | null {
+  if (!value) return null;
+  const d = new Date(value);
+  return isNaN(d.getTime()) ? null : d;
+}
+
 // Helper: find or create candidate record for this user
 async function getOrCreateCandidate(userId: string, email: string, firstName: string, lastName: string) {
   let candidate = await prisma.candidate.findFirst({
@@ -232,6 +239,23 @@ export async function PATCH(req: NextRequest) {
       }
 
       case 3: {
+        // AI Profile Review — update candidate with AI-parsed + user-corrected fields
+        await prisma.candidate.update({
+          where: { id: candidate.id },
+          data: {
+            fullName: data.fullName || candidate.fullName,
+            currentTitle: data.currentTitle || candidate.currentTitle,
+            currentCompany: data.currentCompany || candidate.currentCompany,
+            skills: data.skills || candidate.skills,
+            experienceYears: data.experienceYears ?? candidate.experienceYears,
+            aiSummary: data.summary || candidate.aiSummary,
+            onboardingStep: Math.max(candidate.onboardingStep, step),
+          },
+        });
+        break;
+      }
+
+      case 4: {
         // Work Experience — upsert entries
         const experiences = data.experiences || [];
 
@@ -255,8 +279,8 @@ export async function PATCH(req: NextRequest) {
                 candidateId: candidate.id,
                 company: exp.company,
                 title: exp.title,
-                startDate: exp.startDate ? new Date(exp.startDate) : null,
-                endDate: exp.endDate ? new Date(exp.endDate) : null,
+                startDate: safeDate(exp.startDate),
+                endDate: safeDate(exp.endDate),
                 isCurrent: exp.isCurrent || false,
                 description: exp.description || null,
                 location: exp.location || null,
@@ -275,13 +299,17 @@ export async function PATCH(req: NextRequest) {
         break;
       }
 
-      case 4: {
-        // Education & Certifications
+      case 5: {
+        // Skills & Education & Certifications (combined step)
+        const skillEntries = data.skills || [];
         const educationEntries = data.education || [];
         const certEntries = data.certifications || [];
 
-        // Replace all existing
+        // Delete all existing and re-create
         await Promise.all([
+          prisma.candidateSkill.deleteMany({
+            where: { candidateId: candidate.id },
+          }),
           prisma.candidateEducation.deleteMany({
             where: { candidateId: candidate.id },
           }),
@@ -290,6 +318,27 @@ export async function PATCH(req: NextRequest) {
           }),
         ]);
 
+        if (skillEntries.length > 0) {
+          await prisma.candidateSkill.createMany({
+            data: skillEntries.map(
+              (skill: {
+                name?: string;
+                skillName?: string;
+                category?: string;
+                proficiency?: number;
+                yearsExp?: number;
+              }) => ({
+                candidateId: candidate.id,
+                skillName: skill.name || skill.skillName || "Unknown",
+                category: skill.category || null,
+                proficiency: skill.proficiency || null,
+                yearsExp: skill.yearsExp || null,
+                source: "onboarding",
+              })
+            ),
+          });
+        }
+
         if (educationEntries.length > 0) {
           await prisma.candidateEducation.createMany({
             data: educationEntries.map(
@@ -297,15 +346,16 @@ export async function PATCH(req: NextRequest) {
                 institution: string;
                 degree?: string;
                 field?: string;
+                fieldOfStudy?: string;
                 startDate?: string;
                 endDate?: string;
               }) => ({
                 candidateId: candidate.id,
                 institution: edu.institution,
                 degree: edu.degree || null,
-                field: edu.field || null,
-                startDate: edu.startDate ? new Date(edu.startDate) : null,
-                endDate: edu.endDate ? new Date(edu.endDate) : null,
+                field: edu.fieldOfStudy || edu.field || null,
+                startDate: safeDate(edu.startDate),
+                endDate: safeDate(edu.endDate),
               })
             ),
           });
@@ -317,64 +367,28 @@ export async function PATCH(req: NextRequest) {
               (cert: {
                 name: string;
                 issuingOrg?: string;
+                issuingOrganization?: string;
                 issueDate?: string;
                 expiryDate?: string;
                 credentialId?: string;
               }) => ({
                 candidateId: candidate.id,
                 name: cert.name,
-                issuingOrg: cert.issuingOrg || null,
-                issueDate: cert.issueDate ? new Date(cert.issueDate) : null,
-                expiryDate: cert.expiryDate ? new Date(cert.expiryDate) : null,
+                issuingOrg: cert.issuingOrganization || cert.issuingOrg || null,
+                issueDate: safeDate(cert.issueDate),
+                expiryDate: safeDate(cert.expiryDate),
                 credentialId: cert.credentialId || null,
               })
             ),
           });
         }
 
-        await prisma.candidate.update({
-          where: { id: candidate.id },
-          data: {
-            onboardingStep: Math.max(candidate.onboardingStep, step),
-          },
-        });
-        break;
-      }
-
-      case 5: {
-        // Skills
-        const skillEntries = data.skills || [];
-
-        await prisma.candidateSkill.deleteMany({
-          where: { candidateId: candidate.id },
-        });
-
-        if (skillEntries.length > 0) {
-          await prisma.candidateSkill.createMany({
-            data: skillEntries.map(
-              (skill: {
-                skillName: string;
-                category?: string;
-                proficiency?: number;
-                yearsExp?: number;
-              }) => ({
-                candidateId: candidate.id,
-                skillName: skill.skillName,
-                category: skill.category || null,
-                proficiency: skill.proficiency || null,
-                yearsExp: skill.yearsExp || null,
-                source: "onboarding",
-              })
-            ),
-          });
-        }
-
-        // Also store as JSON on candidate for quick access
+        // Also store skills as JSON on candidate for quick access
         await prisma.candidate.update({
           where: { id: candidate.id },
           data: {
             skills: skillEntries.map(
-              (s: { skillName: string }) => s.skillName
+              (s: { name?: string; skillName?: string }) => s.name || s.skillName || "Unknown"
             ),
             onboardingStep: Math.max(candidate.onboardingStep, step),
           },
@@ -383,38 +397,37 @@ export async function PATCH(req: NextRequest) {
       }
 
       case 6: {
-        // Job Preferences
+        // Job Preferences — map frontend field names to API field names
+        const jobTypes = data.jobTypes || data.employmentTypes || [];
+        const salaryCurrency = data.salaryCurrency || data.currency || "USD";
+        const salaryMin = data.salaryMin ? (typeof data.salaryMin === "string" ? parseInt(data.salaryMin, 10) || null : data.salaryMin) : null;
+        const salaryMax = data.salaryMax ? (typeof data.salaryMax === "string" ? parseInt(data.salaryMax, 10) || null : data.salaryMax) : null;
+        const remotePreference = (data.remotePreference || "FLEXIBLE").toUpperCase();
+        const availability = (data.availability || "IMMEDIATELY").toUpperCase()
+          .replace("2-WEEKS", "TWO_WEEKS")
+          .replace("1-MONTH", "ONE_MONTH")
+          .replace("3-MONTHS", "THREE_MONTHS")
+          .replace("NOT-LOOKING", "NOT_LOOKING");
+
+        const prefData = {
+          jobTypes,
+          preferredLocations: data.preferredLocations || [],
+          remotePreference,
+          salaryMin,
+          salaryMax,
+          salaryCurrency,
+          availability,
+          willingToRelocate: data.willingToRelocate || false,
+          noticePeriod: data.noticePeriod || null,
+          preferredCurrency: salaryCurrency,
+          preferredIndustries: data.preferredIndustries || [],
+          preferredCompanies: data.preferredCompanies || [],
+        };
+
         await prisma.jobPreference.upsert({
           where: { candidateId: candidate.id },
-          create: {
-            candidateId: candidate.id,
-            jobTypes: data.jobTypes || [],
-            preferredLocations: data.preferredLocations || [],
-            remotePreference: data.remotePreference || "FLEXIBLE",
-            salaryMin: data.salaryMin || null,
-            salaryMax: data.salaryMax || null,
-            salaryCurrency: data.salaryCurrency || "USD",
-            availability: data.availability || "IMMEDIATELY",
-            willingToRelocate: data.willingToRelocate || false,
-            noticePeriod: data.noticePeriod || null,
-            preferredCurrency: data.preferredCurrency || "USD",
-            preferredIndustries: data.preferredIndustries || [],
-            preferredCompanies: data.preferredCompanies || [],
-          },
-          update: {
-            jobTypes: data.jobTypes || [],
-            preferredLocations: data.preferredLocations || [],
-            remotePreference: data.remotePreference || "FLEXIBLE",
-            salaryMin: data.salaryMin || null,
-            salaryMax: data.salaryMax || null,
-            salaryCurrency: data.salaryCurrency || "USD",
-            availability: data.availability || "IMMEDIATELY",
-            willingToRelocate: data.willingToRelocate || false,
-            noticePeriod: data.noticePeriod || null,
-            preferredCurrency: data.preferredCurrency || "USD",
-            preferredIndustries: data.preferredIndustries || [],
-            preferredCompanies: data.preferredCompanies || [],
-          },
+          create: { candidateId: candidate.id, ...prefData },
+          update: prefData,
         });
 
         await prisma.candidate.update({
@@ -463,7 +476,14 @@ export async function PATCH(req: NextRequest) {
     }
 
     return NextResponse.json({ success: true, step });
-  } catch (error) {
+  } catch (error: unknown) {
+    console.error("Onboarding PATCH error:", error);
+    const errMsg = error instanceof Error ? error.message : String(error);
+    const errStack = error instanceof Error ? error.stack : undefined;
+    // Return detailed error in development
+    if (process.env.NODE_ENV === "development") {
+      return NextResponse.json({ error: errMsg, stack: errStack }, { status: 500 });
+    }
     const { error: message, status } = handleAuthError(error);
     return NextResponse.json({ error: message }, { status });
   }
