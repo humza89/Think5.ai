@@ -71,7 +71,7 @@ async function generateHeadshot(
 ): Promise<{ mimeType: string; data: string } | null> {
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-2.0-flash-exp",
+      model: "gemini-2.5-flash-image",
       contents: [
         {
           role: "user",
@@ -96,6 +96,15 @@ async function generateHeadshot(
       }
     }
 
+    console.warn(
+      "Gemini returned no image part. Response parts:",
+      JSON.stringify(
+        parts.map((p) => ({
+          text: p.text?.slice(0, 200),
+          hasImage: !!p.inlineData,
+        }))
+      )
+    );
     return null;
   } catch (error) {
     console.error("Headshot generation failed:", error);
