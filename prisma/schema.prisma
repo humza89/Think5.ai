@@ -141,6 +141,12 @@ enum OnboardingStatus {
   ON_HOLD
 }
 
+enum RecruiterOnboardingStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  COMPLETED
+}
+
 // ============================================
 // Core Models
 // ============================================
@@ -155,6 +161,16 @@ model Recruiter {
   department      String?
   companyId       String?
   company         Client?     @relation(fields: [companyId], references: [id])
+
+  // Onboarding tracking
+  onboardingStep        Int                        @default(0)
+  onboardingCompleted   Boolean                    @default(false)
+  onboardingStatus      RecruiterOnboardingStatus  @default(NOT_STARTED)
+  linkedinUrl           String?
+  profileImage          String?
+  bio                   String?                    @db.Text
+  hiringPreferences     Json?
+
   createdAt       DateTime    @default(now())
   updatedAt       DateTime    @updatedAt
 
@@ -166,6 +182,7 @@ model Recruiter {
   passiveProfiles       PassiveProfile[]
 
   @@index([companyId])
+  @@index([onboardingStatus])
 }
 
 model Candidate {
@@ -274,10 +291,16 @@ model Client {
   foundedYear      Int?
   headquarters     String?
   specialties      Json?
+  domain           String?
+  brandColor       String?
+  tagline          String?
+  regions          String[]  @default([])
+
   roles            Role[]
   jobs             Job[]
   recruiters       Recruiter[]
   interviewTemplates InterviewTemplate[]
+  teamInvitations  TeamInvitation[]
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 }
@@ -890,4 +913,29 @@ model ApprovalAction {
   @@index([candidateId])
   @@index([adminUserId])
   @@index([createdAt])
+}
+
+// ============================================
+// Team Invitations (Recruiter Onboarding)
+// ============================================
+
+model TeamInvitation {
+  id          String    @id @default(uuid())
+  email       String
+  name        String?
+  role        String    @default("recruiter")
+  department  String?
+  companyId   String
+  company     Client    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  invitedById String
+  token       String    @unique @default(uuid())
+  status      String    @default("pending")
+  expiresAt   DateTime
+  acceptedAt  DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([email])
+  @@index([companyId])
+  @@index([token])
+  @@index([status])
 }

@@ -368,6 +368,80 @@ export async function sendRejectionEmail(email: string, firstName: string, reaso
   });
 }
 
+// ============================================
+// Recruiter Onboarding Emails
+// ============================================
+
+export async function sendRecruiterWelcomeEmail(email: string, firstName: string) {
+  const dashboardUrl = `${process.env.NEXT_PUBLIC_APP_URL}/dashboard`;
+
+  const html = approvalEmailShell('Account Ready', `
+    <div style="text-align: center; margin-bottom: 24px;">
+      <div style="display: inline-block; width: 64px; height: 64px; border-radius: 50%; background-color: rgba(59, 130, 246, 0.15); line-height: 64px; font-size: 32px;">&#128640;</div>
+    </div>
+    <h1 style="color: #ffffff; font-size: 24px; font-weight: 600; text-align: center; margin: 0 0 16px 0;">
+      Your account is ready, ${firstName}!
+    </h1>
+    <p style="color: rgba(255,255,255,0.7); font-size: 16px; line-height: 24px; text-align: center; margin: 0 0 32px 0;">
+      Congratulations! Your recruiter account has been set up. You can now post jobs, manage candidates, and conduct AI-powered interviews on Think5.
+    </p>
+    <div style="text-align: center; margin-bottom: 32px;">
+      <a href="${dashboardUrl}" style="display: inline-block; background-color: #ffffff; color: #000000; font-size: 16px; font-weight: 600; text-decoration: none; padding: 14px 32px; border-radius: 9999px;">
+        Go to Dashboard
+      </a>
+    </div>
+    <div style="border-top: 1px solid rgba(255,255,255,0.1); margin: 32px 0;"></div>
+    <p style="color: rgba(255,255,255,0.5); font-size: 14px; text-align: center; margin: 0;">
+      Start by posting your first job or inviting candidates to interview.
+    </p>
+  `);
+
+  return sendEmail({
+    to: email,
+    subject: 'Your Think5 recruiter account is ready!',
+    html,
+  });
+}
+
+export async function sendTeamInvitationEmail(email: string, inviterName: string, companyName: string, role: string) {
+  const registerUrl = `${process.env.NEXT_PUBLIC_APP_URL}/auth/register?role=recruiter`;
+
+  const html = approvalEmailShell('Team Invitation', `
+    <div style="text-align: center; margin-bottom: 24px;">
+      <div style="display: inline-block; width: 64px; height: 64px; border-radius: 50%; background-color: rgba(59, 130, 246, 0.15); line-height: 64px; font-size: 32px;">&#128101;</div>
+    </div>
+    <h1 style="color: #ffffff; font-size: 24px; font-weight: 600; text-align: center; margin: 0 0 16px 0;">
+      You've been invited to join ${companyName}
+    </h1>
+    <p style="color: rgba(255,255,255,0.7); font-size: 16px; line-height: 24px; text-align: center; margin: 0 0 24px 0;">
+      ${inviterName} has invited you to join their team on Think5 as a <strong style="color: #ffffff;">${role.replace('_', ' ')}</strong>.
+    </p>
+    <div style="background-color: rgba(59, 130, 246, 0.1); border: 1px solid rgba(59, 130, 246, 0.2); border-radius: 12px; padding: 20px; margin-bottom: 32px;">
+      <p style="color: #3B82F6; font-size: 13px; font-weight: 600; margin: 0 0 8px 0; text-transform: uppercase; letter-spacing: 0.05em;">
+        Company
+      </p>
+      <p style="color: rgba(255,255,255,0.8); font-size: 16px; margin: 0;">
+        ${companyName}
+      </p>
+    </div>
+    <div style="text-align: center; margin-bottom: 32px;">
+      <a href="${registerUrl}" style="display: inline-block; background-color: #ffffff; color: #000000; font-size: 16px; font-weight: 600; text-decoration: none; padding: 14px 32px; border-radius: 9999px;">
+        Accept Invitation
+      </a>
+    </div>
+    <div style="border-top: 1px solid rgba(255,255,255,0.1); margin: 32px 0;"></div>
+    <p style="color: rgba(255,255,255,0.5); font-size: 14px; text-align: center; margin: 0;">
+      This invitation was sent by ${inviterName}. If you weren't expecting this, you can safely ignore it.
+    </p>
+  `);
+
+  return sendEmail({
+    to: email,
+    subject: `${inviterName} invited you to join ${companyName} on Think5`,
+    html,
+  });
+}
+
 export async function sendHoldEmail(email: string, firstName: string, note?: string) {
   const html = approvalEmailShell('Profile Under Review', `
     <div style="text-align: center; margin-bottom: 24px;">

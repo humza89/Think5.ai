@@ -83,6 +83,9 @@ export async function getRecruiterForUser(supabaseUserId: string, email: string,
       name,
       email,
       supabaseUserId,
+      onboardingStep: 0,
+      onboardingCompleted: false,
+      onboardingStatus: "NOT_STARTED",
     },
   });
 
