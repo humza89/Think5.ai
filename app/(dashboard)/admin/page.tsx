@@ -46,6 +46,7 @@ interface AdminStats {
   totalCandidates: number;
   totalInterviews: number;
   totalApplications: number;
+  pendingApprovals: number;
   usersByRole: {
     admin: number;
     recruiter: number;
@@ -105,13 +106,13 @@ function OverviewTab({
   return (
     <div className="space-y-6">
       {/* Primary Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-xs text-gray-500">Total Users</p>
-                <p className="text-2xl font-bold">{stats.totalUsers || 0}</p>
+                <p className="text-xs text-muted-foreground">Total Users</p>
+                <p className="text-2xl font-bold text-foreground">{stats.totalUsers || 0}</p>
               </div>
               <Users className="h-6 w-6 text-blue-500 opacity-50" />
             </div>
@@ -121,8 +122,8 @@ function OverviewTab({
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-xs text-gray-500">Jobs</p>
-                <p className="text-2xl font-bold">{stats.totalJobs || 0}</p>
+                <p className="text-xs text-muted-foreground">Jobs</p>
+                <p className="text-2xl font-bold text-foreground">{stats.totalJobs || 0}</p>
               </div>
               <Briefcase className="h-6 w-6 text-green-500 opacity-50" />
             </div>
@@ -132,8 +133,8 @@ function OverviewTab({
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-xs text-gray-500">Candidates</p>
-                <p className="text-2xl font-bold">{stats.totalCandidates || 0}</p>
+                <p className="text-xs text-muted-foreground">Candidates</p>
+                <p className="text-2xl font-bold text-foreground">{stats.totalCandidates || 0}</p>
               </div>
               <Users className="h-6 w-6 text-purple-500 opacity-50" />
             </div>
@@ -143,8 +144,8 @@ function OverviewTab({
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-xs text-gray-500">Interviews</p>
-                <p className="text-2xl font-bold">{stats.totalInterviews || 0}</p>
+                <p className="text-xs text-muted-foreground">Interviews</p>
+                <p className="text-2xl font-bold text-foreground">{stats.totalInterviews || 0}</p>
               </div>
               <MessageSquare className="h-6 w-6 text-orange-500 opacity-50" />
             </div>
@@ -154,13 +155,26 @@ function OverviewTab({
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-xs text-gray-500">Applications</p>
-                <p className="text-2xl font-bold">{stats.totalApplications || 0}</p>
+                <p className="text-xs text-muted-foreground">Applications</p>
+                <p className="text-2xl font-bold text-foreground">{stats.totalApplications || 0}</p>
               </div>
               <FileText className="h-6 w-6 text-cyan-500 opacity-50" />
             </div>
           </CardContent>
         </Card>
+        <Link href="/admin/approvals">
+          <Card className="border-yellow-200/50 dark:border-yellow-800/30 hover:shadow-md transition-shadow cursor-pointer h-full">
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs text-muted-foreground">Pending Approvals</p>
+                  <p className="text-2xl font-bold text-yellow-600 dark:text-yellow-400">{stats.pendingApprovals || 0}</p>
+                </div>
+                <Shield className="h-6 w-6 text-yellow-500 opacity-50" />
+              </div>
+            </CardContent>
+          </Card>
+        </Link>
       </div>
 
       {/* Users by Role */}
@@ -673,6 +687,7 @@ export default function AdminPage() {
     totalCandidates: 0,
     totalInterviews: 0,
     totalApplications: 0,
+    pendingApprovals: 0,
     usersByRole: { admin: 0, recruiter: 0, candidate: 0, hiring_manager: 0 },
   };
   const recentProfiles = data?.recentProfiles || [];

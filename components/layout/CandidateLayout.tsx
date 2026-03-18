@@ -29,13 +29,28 @@ export function CandidateLayout({ children }: { children: React.ReactNode }) {
         }
         const data = await res.json();
         const isOnboardingPage = pathname === "/candidate/onboarding";
+        const statusPage = "/candidate/onboarding/status";
+        const allowedPaths = ["/candidate/onboarding", statusPage, "/candidate/settings"];
+        const isAllowedPath = allowedPaths.some((p) => pathname.startsWith(p));
 
         if (!data.completed && !isOnboardingPage) {
           router.replace("/candidate/onboarding");
           return;
         }
 
-        if (data.completed && isOnboardingPage) {
+        // Gate unapproved candidates to status page
+        if (data.completed && data.onboardingStatus && data.onboardingStatus !== "APPROVED" && !isAllowedPath) {
+          router.replace(statusPage);
+          return;
+        }
+
+        // Redirect approved candidates away from status page
+        if (data.onboardingStatus === "APPROVED" && pathname === statusPage) {
+          router.replace("/candidate/dashboard");
+          return;
+        }
+
+        if (data.completed && data.onboardingStatus === "APPROVED" && isOnboardingPage) {
           router.replace("/candidate/dashboard");
           return;
         }

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createSupabaseAdminClient } from '@/lib/supabase-server';
+import { prisma } from '@/lib/prisma';
 import { sendVerificationEmail } from '@/lib/email/resend';
 import crypto from 'crypto';
 import type { UserRole } from '@/types/supabase';
@@ -173,6 +174,19 @@ export async function POST(request: NextRequest) {
     if (tokenError) {
       console.error('Token storage error:', tokenError);
       // Continue anyway - user can request new verification email
+    }
+
+    // Set invitationSource on candidate record if role is candidate
+    if (role === 'candidate') {
+      const candidate = await prisma.candidate.findFirst({
+        where: { email: { equals: email.toLowerCase(), mode: 'insensitive' } },
+      });
+      if (candidate) {
+        await prisma.candidate.update({
+          where: { id: candidate.id },
+          data: { invitationSource: 'self_signup' },
+        });
+      }
     }
 
     // Send verification email

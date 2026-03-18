@@ -260,3 +260,141 @@ export async function sendPasswordResetEmail(email: string, token: string) {
     html,
   });
 }
+
+// ============================================
+// Approval Status Emails
+// ============================================
+
+function approvalEmailShell(title: string, content: string): string {
+  return `<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>${title}</title>
+  </head>
+  <body style="margin: 0; padding: 0; background-color: #000000; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
+    <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #000000; padding: 40px 20px;">
+      <tr>
+        <td align="center">
+          <table width="100%" cellpadding="0" cellspacing="0" style="max-width: 600px; background-color: #111111; border-radius: 16px; border: 1px solid rgba(255,255,255,0.1);">
+            <tr>
+              <td style="padding: 48px 40px;">
+                <div style="text-align: center; margin-bottom: 32px;">
+                  <span style="font-size: 28px; font-weight: bold; color: #ffffff;">Think5</span>
+                  <span style="font-size: 28px; font-weight: bold; color: #3B82F6;">.</span>
+                </div>
+                ${content}
+              </td>
+            </tr>
+          </table>
+          <p style="color: rgba(255,255,255,0.3); font-size: 12px; text-align: center; margin-top: 24px;">
+            &copy; ${new Date().getFullYear()} Think5. All rights reserved.
+          </p>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>`;
+}
+
+export async function sendApprovalEmail(email: string, firstName: string) {
+  const dashboardUrl = `${process.env.NEXT_PUBLIC_APP_URL}/candidate/dashboard`;
+
+  const html = approvalEmailShell('Profile Approved', `
+    <div style="text-align: center; margin-bottom: 24px;">
+      <div style="display: inline-block; width: 64px; height: 64px; border-radius: 50%; background-color: rgba(34, 197, 94, 0.15); line-height: 64px; font-size: 32px;">&#10003;</div>
+    </div>
+    <h1 style="color: #ffffff; font-size: 24px; font-weight: 600; text-align: center; margin: 0 0 16px 0;">
+      You're approved, ${firstName}!
+    </h1>
+    <p style="color: rgba(255,255,255,0.7); font-size: 16px; line-height: 24px; text-align: center; margin: 0 0 8px 0;">
+      Congratulations! Your profile has been reviewed and approved by our team.
+    </p>
+    <p style="color: rgba(255,255,255,0.7); font-size: 16px; line-height: 24px; text-align: center; margin: 0 0 32px 0;">
+      You now have full access to the Think5 platform, including AI-powered interviews and curated job opportunities.
+    </p>
+    <div style="text-align: center; margin-bottom: 32px;">
+      <a href="${dashboardUrl}" style="display: inline-block; background-color: #ffffff; color: #000000; font-size: 16px; font-weight: 600; text-decoration: none; padding: 14px 32px; border-radius: 9999px;">
+        Go to Dashboard
+      </a>
+    </div>
+    <div style="border-top: 1px solid rgba(255,255,255,0.1); margin: 32px 0;"></div>
+    <p style="color: rgba(255,255,255,0.5); font-size: 14px; text-align: center; margin: 0;">
+      Your next step: Complete an AI interview to showcase your skills to top employers.
+    </p>
+  `);
+
+  return sendEmail({
+    to: email,
+    subject: "You're approved! Welcome to Think5",
+    html,
+  });
+}
+
+export async function sendRejectionEmail(email: string, firstName: string, reason: string) {
+  const profileUrl = `${process.env.NEXT_PUBLIC_APP_URL}/candidate/onboarding`;
+
+  const html = approvalEmailShell('Profile Update Needed', `
+    <h1 style="color: #ffffff; font-size: 24px; font-weight: 600; text-align: center; margin: 0 0 16px 0;">
+      Profile update needed
+    </h1>
+    <p style="color: rgba(255,255,255,0.7); font-size: 16px; line-height: 24px; text-align: center; margin: 0 0 24px 0;">
+      Hi ${firstName}, thank you for submitting your profile. After review, our team has identified some areas that need attention before we can approve your profile.
+    </p>
+    <div style="background-color: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.3); border-radius: 12px; padding: 20px; margin-bottom: 32px;">
+      <p style="color: #F59E0B; font-size: 13px; font-weight: 600; margin: 0 0 8px 0; text-transform: uppercase; letter-spacing: 0.05em;">
+        Feedback from reviewer
+      </p>
+      <p style="color: rgba(255,255,255,0.8); font-size: 14px; line-height: 22px; margin: 0;">
+        ${reason}
+      </p>
+    </div>
+    <div style="text-align: center; margin-bottom: 32px;">
+      <a href="${profileUrl}" style="display: inline-block; background-color: #ffffff; color: #000000; font-size: 16px; font-weight: 600; text-decoration: none; padding: 14px 32px; border-radius: 9999px;">
+        Update Your Profile
+      </a>
+    </div>
+    <div style="border-top: 1px solid rgba(255,255,255,0.1); margin: 32px 0;"></div>
+    <p style="color: rgba(255,255,255,0.5); font-size: 14px; text-align: center; margin: 0;">
+      Once updated, your profile will be re-submitted for review automatically.
+    </p>
+  `);
+
+  return sendEmail({
+    to: email,
+    subject: 'Profile update needed - Think5',
+    html,
+  });
+}
+
+export async function sendHoldEmail(email: string, firstName: string, note?: string) {
+  const html = approvalEmailShell('Profile Under Review', `
+    <div style="text-align: center; margin-bottom: 24px;">
+      <div style="display: inline-block; width: 64px; height: 64px; border-radius: 50%; background-color: rgba(249, 115, 22, 0.15); line-height: 64px; font-size: 32px;">&#9202;</div>
+    </div>
+    <h1 style="color: #ffffff; font-size: 24px; font-weight: 600; text-align: center; margin: 0 0 16px 0;">
+      Your profile is under additional review
+    </h1>
+    <p style="color: rgba(255,255,255,0.7); font-size: 16px; line-height: 24px; text-align: center; margin: 0 0 24px 0;">
+      Hi ${firstName}, thank you for your patience. Our team is taking a closer look at your profile and will get back to you shortly.
+    </p>
+    ${note ? `
+    <div style="background-color: rgba(59, 130, 246, 0.1); border: 1px solid rgba(59, 130, 246, 0.2); border-radius: 12px; padding: 20px; margin-bottom: 32px;">
+      <p style="color: rgba(255,255,255,0.8); font-size: 14px; line-height: 22px; margin: 0;">
+        ${note}
+      </p>
+    </div>
+    ` : ''}
+    <div style="border-top: 1px solid rgba(255,255,255,0.1); margin: 32px 0;"></div>
+    <p style="color: rgba(255,255,255,0.5); font-size: 14px; text-align: center; margin: 0;">
+      No action is needed from you at this time. We'll notify you once the review is complete.
+    </p>
+  `);
+
+  return sendEmail({
+    to: email,
+    subject: 'Your profile is under additional review - Think5',
+    html,
+  });
+}

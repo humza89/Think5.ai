@@ -13,6 +13,7 @@ import {
   UserSearch,
   Settings,
   Shield,
+  UserCheck,
   Building2,
   ChevronLeft,
   ChevronRight,
@@ -65,6 +66,7 @@ const NAV_SECTIONS: { title?: string; items: NavItem[] }[] = [
   {
     title: "Management",
     items: [
+      { label: "Approvals", href: "/admin/approvals", icon: UserCheck, roles: ["admin"] },
       { label: "Admin", href: "/admin", icon: Shield, roles: ["admin"] },
       { label: "Settings", href: "/settings", icon: Settings },
     ],

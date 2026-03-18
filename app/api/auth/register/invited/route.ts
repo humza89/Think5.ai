@@ -151,6 +151,20 @@ export async function POST(request: NextRequest) {
       },
     });
 
+    // Set invitationSource and onboardingStatus on candidate record
+    const candidate = await prisma.candidate.findFirst({
+      where: { email: { equals: email.toLowerCase(), mode: 'insensitive' } },
+    });
+    if (candidate) {
+      await prisma.candidate.update({
+        where: { id: candidate.id },
+        data: {
+          invitationSource: 'recruiter_invited',
+          onboardingStatus: 'INVITED',
+        },
+      });
+    }
+
     // Send welcome email
     try {
       await sendWelcomeEmail(email, firstName, 'candidate');

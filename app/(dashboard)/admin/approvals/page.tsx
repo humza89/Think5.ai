@@ -1,0 +1,1007 @@
+"use client";
+
+import { useState, useEffect, useCallback } from "react";
+import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
+import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import { ApprovalStatusBadge } from "@/components/approvals/ApprovalStatusBadge";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetDescription,
+} from "@/components/ui/sheet";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  ShieldCheck,
+  Search,
+  ChevronLeft,
+  ChevronRight,
+  Loader2,
+  ExternalLink,
+  CheckCircle2,
+  XCircle,
+  PauseCircle,
+  User,
+  Briefcase,
+  GraduationCap,
+  Wrench,
+  FileText,
+  Settings2,
+  Clock,
+  MapPin,
+  Phone,
+  Mail,
+} from "lucide-react";
+import { toast } from "sonner";
+import type {
+  ApprovalCandidate,
+  ApprovalCandidateDetail,
+  ApprovalsListResponse,
+  ApprovalActionType,
+} from "@/types/approvals";
+
+type StatusFilter = "PENDING_APPROVAL" | "APPROVED" | "REJECTED" | "ON_HOLD" | "all";
+
+const TABS: { value: StatusFilter; label: string; countKey: keyof ApprovalsListResponse["counts"] }[] = [
+  { value: "PENDING_APPROVAL", label: "Pending", countKey: "pending" },
+  { value: "APPROVED", label: "Approved", countKey: "approved" },
+  { value: "REJECTED", label: "Rejected", countKey: "rejected" },
+  { value: "ON_HOLD", label: "On Hold", countKey: "onHold" },
+  { value: "all", label: "All", countKey: "all" },
+];
+
+export default function ApprovalsPage() {
+  const [data, setData] = useState<ApprovalsListResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("PENDING_APPROVAL");
+  const [search, setSearch] = useState("");
+  const [searchInput, setSearchInput] = useState("");
+  const [sort, setSort] = useState("createdAt");
+  const [order, setOrder] = useState("desc");
+  const [page, setPage] = useState(1);
+
+  // Selection
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+
+  // Preview sheet
+  const [previewId, setPreviewId] = useState<string | null>(null);
+  const [previewData, setPreviewData] = useState<ApprovalCandidateDetail | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+
+  // Reject dialog
+  const [rejectDialog, setRejectDialog] = useState<{
+    open: boolean;
+    candidateId?: string;
+    candidateIds?: string[];
+    bulk?: boolean;
+  }>({ open: false });
+  const [rejectReason, setRejectReason] = useState("");
+
+  // Action loading
+  const [actionLoading, setActionLoading] = useState(false);
+
+  const fetchCandidates = useCallback(async () => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams({
+        status: statusFilter,
+        search,
+        sort,
+        order,
+        page: String(page),
+        limit: "20",
+      });
+      const res = await fetch(`/api/admin/approvals?${params}`);
+      if (!res.ok) throw new Error("Failed to fetch");
+      const json: ApprovalsListResponse = await res.json();
+      setData(json);
+    } catch {
+      toast.error("Failed to load candidates");
+    } finally {
+      setLoading(false);
+    }
+  }, [statusFilter, search, sort, order, page]);
+
+  useEffect(() => {
+    fetchCandidates();
+  }, [fetchCandidates]);
+
+  useEffect(() => {
+    setSelected(new Set());
+    setPage(1);
+  }, [statusFilter, search]);
+
+  // Preview
+  async function openPreview(id: string) {
+    setPreviewId(id);
+    setPreviewLoading(true);
+    try {
+      const res = await fetch(`/api/admin/approvals/${id}`);
+      if (!res.ok) throw new Error("Failed to fetch");
+      setPreviewData(await res.json());
+    } catch {
+      toast.error("Failed to load candidate details");
+    } finally {
+      setPreviewLoading(false);
+    }
+  }
+
+  function closePreview() {
+    setPreviewId(null);
+    setPreviewData(null);
+  }
+
+  // Actions
+  async function handleAction(candidateId: string, action: ApprovalActionType, reason?: string) {
+    setActionLoading(true);
+    try {
+      const res = await fetch(`/api/admin/approvals/${candidateId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action, reason }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || "Failed");
+      }
+      toast.success(
+        action === "approved"
+          ? "Candidate approved"
+          : action === "rejected"
+            ? "Candidate rejected"
+            : "Candidate put on hold"
+      );
+      closePreview();
+      fetchCandidates();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Action failed");
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+  async function handleBulkAction(action: ApprovalActionType, reason?: string) {
+    if (selected.size === 0) return;
+    setActionLoading(true);
+    try {
+      const res = await fetch("/api/admin/approvals/bulk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          candidateIds: Array.from(selected),
+          action,
+          reason,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || "Failed");
+      }
+      const result = await res.json();
+      toast.success(`${result.updated} candidate(s) updated`);
+      setSelected(new Set());
+      fetchCandidates();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Bulk action failed");
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+  function handleRejectConfirm() {
+    if (!rejectReason.trim()) return;
+    if (rejectDialog.bulk && rejectDialog.candidateIds) {
+      handleBulkAction("rejected", rejectReason.trim());
+    } else if (rejectDialog.candidateId) {
+      handleAction(rejectDialog.candidateId, "rejected", rejectReason.trim());
+    }
+    setRejectDialog({ open: false });
+    setRejectReason("");
+  }
+
+  function handleSearch(e: React.FormEvent) {
+    e.preventDefault();
+    setSearch(searchInput);
+  }
+
+  // Selection helpers
+  const allOnPageSelected =
+    data?.candidates.length
+      ? data.candidates.every((c) => selected.has(c.id))
+      : false;
+
+  function toggleSelectAll() {
+    if (!data) return;
+    if (allOnPageSelected) {
+      const next = new Set(selected);
+      data.candidates.forEach((c) => next.delete(c.id));
+      setSelected(next);
+    } else {
+      const next = new Set(selected);
+      data.candidates.forEach((c) => next.add(c.id));
+      setSelected(next);
+    }
+  }
+
+  function toggleSelect(id: string) {
+    const next = new Set(selected);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    setSelected(next);
+  }
+
+  return (
+    <ProtectedRoute allowedRoles={["admin"]}>
+      <div className="space-y-6">
+        {/* Header */}
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
+            <ShieldCheck className="h-5 w-5 text-primary" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold text-foreground">Candidate Approvals</h1>
+            <p className="text-sm text-muted-foreground">
+              Review and manage candidate profiles pending approval
+            </p>
+          </div>
+        </div>
+
+        {/* Status Tabs */}
+        <div className="flex flex-wrap gap-2">
+          {TABS.map((tab) => {
+            const count = data?.counts[tab.countKey] ?? 0;
+            const isActive = statusFilter === tab.value;
+            return (
+              <button
+                key={tab.value}
+                onClick={() => setStatusFilter(tab.value)}
+                className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
+                  isActive
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-muted text-muted-foreground hover:bg-muted/80"
+                }`}
+              >
+                {tab.label}
+                <Badge
+                  variant={isActive ? "secondary" : "outline"}
+                  className="ml-1 min-w-[24px] justify-center text-xs"
+                >
+                  {count}
+                </Badge>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Toolbar */}
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <form onSubmit={handleSearch} className="flex gap-2 flex-1 max-w-md">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                placeholder="Search by name, email, or title..."
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                className="pl-9"
+              />
+            </div>
+            <Button type="submit" variant="secondary" size="sm">
+              Search
+            </Button>
+          </form>
+
+          <div className="flex items-center gap-2">
+            <Select value={sort} onValueChange={(v) => { setSort(v); setPage(1); }}>
+              <SelectTrigger className="w-[140px]">
+                <SelectValue placeholder="Sort by" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="createdAt">Date</SelectItem>
+                <SelectItem value="fullName">Name</SelectItem>
+              </SelectContent>
+            </Select>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setOrder(order === "asc" ? "desc" : "asc")}
+            >
+              {order === "asc" ? "A→Z" : "Z→A"}
+            </Button>
+          </div>
+        </div>
+
+        {/* Bulk Actions */}
+        {selected.size > 0 && (
+          <div className="flex items-center gap-3 rounded-lg border border-primary/20 bg-primary/5 p-3">
+            <span className="text-sm font-medium text-foreground">
+              {selected.size} selected
+            </span>
+            <Button
+              size="sm"
+              onClick={() => handleBulkAction("approved")}
+              disabled={actionLoading}
+              className="bg-green-600 hover:bg-green-700 text-white"
+            >
+              <CheckCircle2 className="mr-1 h-3.5 w-3.5" />
+              Approve All
+            </Button>
+            <Button
+              size="sm"
+              variant="destructive"
+              onClick={() =>
+                setRejectDialog({
+                  open: true,
+                  candidateIds: Array.from(selected),
+                  bulk: true,
+                })
+              }
+              disabled={actionLoading}
+            >
+              <XCircle className="mr-1 h-3.5 w-3.5" />
+              Reject All
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => handleBulkAction("on_hold")}
+              disabled={actionLoading}
+            >
+              <PauseCircle className="mr-1 h-3.5 w-3.5" />
+              Hold All
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setSelected(new Set())}
+            >
+              Clear
+            </Button>
+          </div>
+        )}
+
+        {/* Table */}
+        <Card>
+          <CardContent className="p-0">
+            {loading ? (
+              <div className="flex items-center justify-center py-20">
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              </div>
+            ) : !data?.candidates.length ? (
+              <div className="flex flex-col items-center justify-center py-20 text-center">
+                <ShieldCheck className="h-10 w-10 text-muted-foreground/50 mb-3" />
+                <p className="text-sm font-medium text-foreground">No candidates found</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {search ? "Try adjusting your search" : "No candidates in this status"}
+                </p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-border bg-muted/30">
+                      <th className="p-3 w-10">
+                        <Checkbox
+                          checked={allOnPageSelected}
+                          onCheckedChange={toggleSelectAll}
+                        />
+                      </th>
+                      <th className="p-3 text-left font-medium text-muted-foreground">Candidate</th>
+                      <th className="p-3 text-left font-medium text-muted-foreground hidden md:table-cell">Title</th>
+                      <th className="p-3 text-left font-medium text-muted-foreground hidden lg:table-cell">LinkedIn</th>
+                      <th className="p-3 text-left font-medium text-muted-foreground hidden sm:table-cell">Submitted</th>
+                      <th className="p-3 text-left font-medium text-muted-foreground">Status</th>
+                      <th className="p-3 text-left font-medium text-muted-foreground hidden lg:table-cell">Profile</th>
+                      <th className="p-3 text-right font-medium text-muted-foreground">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.candidates.map((candidate) => (
+                      <CandidateRow
+                        key={candidate.id}
+                        candidate={candidate}
+                        isSelected={selected.has(candidate.id)}
+                        onSelect={() => toggleSelect(candidate.id)}
+                        onPreview={() => openPreview(candidate.id)}
+                        onAction={(action) => {
+                          if (action === "rejected") {
+                            setRejectDialog({ open: true, candidateId: candidate.id });
+                          } else {
+                            handleAction(candidate.id, action);
+                          }
+                        }}
+                        actionLoading={actionLoading}
+                      />
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Pagination */}
+        {data && data.totalPages > 1 && (
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-muted-foreground">
+              Page {data.page} of {data.totalPages} ({data.total} total)
+            </p>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={page <= 1}
+                onClick={() => setPage(page - 1)}
+              >
+                <ChevronLeft className="h-4 w-4" />
+                Previous
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={page >= data.totalPages}
+                onClick={() => setPage(page + 1)}
+              >
+                Next
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* Preview Sheet */}
+        <Sheet open={!!previewId} onOpenChange={(open) => !open && closePreview()}>
+          <SheetContent side="right" className="w-full max-w-2xl overflow-y-auto">
+            {previewLoading ? (
+              <div className="flex items-center justify-center py-20">
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              </div>
+            ) : previewData ? (
+              <CandidatePreview
+                candidate={previewData}
+                onAction={(action) => {
+                  if (action === "rejected") {
+                    setRejectDialog({ open: true, candidateId: previewData.id });
+                  } else {
+                    handleAction(previewData.id, action);
+                  }
+                }}
+                actionLoading={actionLoading}
+              />
+            ) : null}
+          </SheetContent>
+        </Sheet>
+
+        {/* Reject Dialog */}
+        <Dialog
+          open={rejectDialog.open}
+          onOpenChange={(open) => {
+            if (!open) {
+              setRejectDialog({ open: false });
+              setRejectReason("");
+            }
+          }}
+        >
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Reject Candidate{rejectDialog.bulk ? "s" : ""}</DialogTitle>
+              <DialogDescription>
+                Please provide a reason for rejection. This will be shared with the candidate via email so they can update their profile.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-2">
+              <Label htmlFor="reject-reason">Reason for rejection</Label>
+              <Textarea
+                id="reject-reason"
+                placeholder="e.g. Incomplete work experience, missing LinkedIn profile details..."
+                value={rejectReason}
+                onChange={(e) => setRejectReason(e.target.value)}
+                rows={4}
+              />
+            </div>
+            <DialogFooter>
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  setRejectDialog({ open: false });
+                  setRejectReason("");
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                disabled={!rejectReason.trim() || actionLoading}
+                onClick={handleRejectConfirm}
+              >
+                {actionLoading ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <XCircle className="mr-2 h-4 w-4" />
+                )}
+                Confirm Rejection
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </div>
+    </ProtectedRoute>
+  );
+}
+
+// ============================================
+// Candidate Row Component
+// ============================================
+
+function CandidateRow({
+  candidate,
+  isSelected,
+  onSelect,
+  onPreview,
+  onAction,
+  actionLoading,
+}: {
+  candidate: ApprovalCandidate;
+  isSelected: boolean;
+  onSelect: () => void;
+  onPreview: () => void;
+  onAction: (action: ApprovalActionType) => void;
+  actionLoading: boolean;
+}) {
+  const submitted = candidate.createdAt
+    ? new Date(candidate.createdAt).toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      })
+    : "N/A";
+
+  return (
+    <tr
+      className="border-b border-border transition-colors hover:bg-muted/30 cursor-pointer"
+      onClick={onPreview}
+    >
+      <td className="p-3" onClick={(e) => e.stopPropagation()}>
+        <Checkbox checked={isSelected} onCheckedChange={onSelect} />
+      </td>
+      <td className="p-3">
+        <div className="flex items-center gap-3">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary">
+            {candidate.fullName?.charAt(0)?.toUpperCase() || "?"}
+          </div>
+          <div className="min-w-0">
+            <p className="font-medium text-foreground truncate">{candidate.fullName}</p>
+            <p className="text-xs text-muted-foreground truncate">{candidate.email}</p>
+          </div>
+        </div>
+      </td>
+      <td className="p-3 hidden md:table-cell">
+        <span className="text-foreground">{candidate.currentTitle || "—"}</span>
+      </td>
+      <td className="p-3 hidden lg:table-cell" onClick={(e) => e.stopPropagation()}>
+        {candidate.linkedinUrl ? (
+          <a
+            href={candidate.linkedinUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 text-primary hover:underline text-xs"
+          >
+            LinkedIn <ExternalLink className="h-3 w-3" />
+          </a>
+        ) : (
+          <span className="text-muted-foreground text-xs">—</span>
+        )}
+      </td>
+      <td className="p-3 hidden sm:table-cell">
+        <span className="text-xs text-muted-foreground">{submitted}</span>
+      </td>
+      <td className="p-3">
+        <ApprovalStatusBadge status={candidate.onboardingStatus} />
+      </td>
+      <td className="p-3 hidden lg:table-cell">
+        <div className="flex gap-2 text-xs text-muted-foreground">
+          <span>{candidate._count.candidateSkills} skills</span>
+          <span>&middot;</span>
+          <span>{candidate._count.candidateExperiences} exp</span>
+        </div>
+      </td>
+      <td className="p-3 text-right" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-end gap-1">
+          {candidate.onboardingStatus !== "APPROVED" && (
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-7 text-green-600 hover:text-green-700 hover:bg-green-50 dark:hover:bg-green-950/30"
+              onClick={() => onAction("approved")}
+              disabled={actionLoading}
+              title="Approve"
+            >
+              <CheckCircle2 className="h-4 w-4" />
+            </Button>
+          )}
+          {candidate.onboardingStatus !== "REJECTED" && (
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-7 text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/30"
+              onClick={() => onAction("rejected")}
+              disabled={actionLoading}
+              title="Reject"
+            >
+              <XCircle className="h-4 w-4" />
+            </Button>
+          )}
+          {candidate.onboardingStatus !== "ON_HOLD" && (
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-7 text-orange-600 hover:text-orange-700 hover:bg-orange-50 dark:hover:bg-orange-950/30"
+              onClick={() => onAction("on_hold")}
+              disabled={actionLoading}
+              title="Put on hold"
+            >
+              <PauseCircle className="h-4 w-4" />
+            </Button>
+          )}
+        </div>
+      </td>
+    </tr>
+  );
+}
+
+// ============================================
+// Candidate Preview (Sheet Content)
+// ============================================
+
+function CandidatePreview({
+  candidate,
+  onAction,
+  actionLoading,
+}: {
+  candidate: ApprovalCandidateDetail;
+  onAction: (action: ApprovalActionType) => void;
+  actionLoading: boolean;
+}) {
+  return (
+    <div className="flex flex-col h-full">
+      <SheetHeader className="pb-4 border-b border-border">
+        <div className="flex items-center gap-3">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-primary/10 text-lg font-bold text-primary">
+            {candidate.fullName?.charAt(0)?.toUpperCase() || "?"}
+          </div>
+          <div className="min-w-0 flex-1">
+            <SheetTitle className="text-lg">{candidate.fullName}</SheetTitle>
+            <SheetDescription className="flex items-center gap-2">
+              {candidate.email}
+              <ApprovalStatusBadge status={candidate.onboardingStatus} />
+            </SheetDescription>
+          </div>
+        </div>
+      </SheetHeader>
+
+      <div className="flex-1 overflow-y-auto py-6 space-y-6">
+        {/* Personal Info */}
+        <PreviewSection icon={User} title="Personal Information">
+          <div className="grid gap-2">
+            {candidate.currentTitle && (
+              <InfoItem icon={Briefcase} value={candidate.currentTitle} />
+            )}
+            {candidate.location && (
+              <InfoItem icon={MapPin} value={candidate.location} />
+            )}
+            {candidate.phone && <InfoItem icon={Phone} value={candidate.phone} />}
+            {candidate.email && <InfoItem icon={Mail} value={candidate.email} />}
+            {candidate.linkedinUrl && (
+              <a
+                href={candidate.linkedinUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline"
+              >
+                <ExternalLink className="h-3.5 w-3.5" />
+                LinkedIn Profile
+              </a>
+            )}
+            {candidate.invitationSource && (
+              <p className="text-xs text-muted-foreground">
+                Source: {candidate.invitationSource === "recruiter_invited" ? "Recruiter Invited" : "Self Signup"}
+              </p>
+            )}
+          </div>
+        </PreviewSection>
+
+        {/* Resume */}
+        {candidate.documents?.length > 0 && (
+          <PreviewSection icon={FileText} title="Documents">
+            <div className="space-y-2">
+              {candidate.documents.map((doc) => (
+                <div
+                  key={doc.id}
+                  className="flex items-center gap-2 rounded-md border border-border bg-muted/30 p-2"
+                >
+                  <FileText className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-sm text-foreground truncate flex-1">
+                    {doc.filename}
+                  </span>
+                  <Badge variant="secondary" className="text-xs">
+                    {doc.type}
+                  </Badge>
+                </div>
+              ))}
+            </div>
+          </PreviewSection>
+        )}
+
+        {/* Experience */}
+        {candidate.experiences?.length > 0 && (
+          <PreviewSection icon={Briefcase} title={`Experience (${candidate.experiences.length})`}>
+            <div className="space-y-3">
+              {candidate.experiences.map((exp) => (
+                <div
+                  key={exp.id}
+                  className="rounded-md border border-border bg-muted/30 p-3"
+                >
+                  <p className="font-medium text-foreground text-sm">{exp.title}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {exp.company}
+                    {exp.location && ` \u00b7 ${exp.location}`}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {exp.startDate
+                      ? new Date(exp.startDate).toLocaleDateString("en-US", {
+                          month: "short",
+                          year: "numeric",
+                        })
+                      : "N/A"}{" "}
+                    \u2013{" "}
+                    {exp.isCurrent
+                      ? "Present"
+                      : exp.endDate
+                        ? new Date(exp.endDate).toLocaleDateString("en-US", {
+                            month: "short",
+                            year: "numeric",
+                          })
+                        : "N/A"}
+                  </p>
+                  {exp.description && (
+                    <p className="text-xs text-muted-foreground mt-2 line-clamp-3">
+                      {exp.description}
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+          </PreviewSection>
+        )}
+
+        {/* Skills */}
+        {candidate.skills?.length > 0 && (
+          <PreviewSection icon={Wrench} title={`Skills (${candidate.skills.length})`}>
+            <div className="flex flex-wrap gap-1.5">
+              {candidate.skills.map((skill) => (
+                <Badge key={skill.id} variant="secondary" className="text-xs">
+                  {skill.skillName}
+                </Badge>
+              ))}
+            </div>
+          </PreviewSection>
+        )}
+
+        {/* Education */}
+        {candidate.education?.length > 0 && (
+          <PreviewSection icon={GraduationCap} title={`Education (${candidate.education.length})`}>
+            <div className="space-y-2">
+              {candidate.education.map((edu) => (
+                <div key={edu.id} className="rounded-md border border-border bg-muted/30 p-3">
+                  <p className="font-medium text-foreground text-sm">
+                    {edu.degree}{edu.field && ` in ${edu.field}`}
+                  </p>
+                  <p className="text-xs text-muted-foreground">{edu.institution}</p>
+                </div>
+              ))}
+            </div>
+          </PreviewSection>
+        )}
+
+        {/* Certifications */}
+        {candidate.certifications?.length > 0 && (
+          <PreviewSection icon={GraduationCap} title="Certifications">
+            <div className="space-y-2">
+              {candidate.certifications.map((cert) => (
+                <div key={cert.id} className="rounded-md border border-border bg-muted/30 p-3">
+                  <p className="font-medium text-foreground text-sm">{cert.name}</p>
+                  <p className="text-xs text-muted-foreground">{cert.issuingOrg}</p>
+                </div>
+              ))}
+            </div>
+          </PreviewSection>
+        )}
+
+        {/* Preferences */}
+        {candidate.jobPreferences && (
+          <PreviewSection icon={Settings2} title="Job Preferences">
+            <div className="grid gap-1.5 text-sm">
+              {candidate.jobPreferences.preferredLocations?.length > 0 && (
+                <div className="flex flex-wrap gap-1">
+                  <span className="text-muted-foreground">Locations:</span>
+                  {candidate.jobPreferences.preferredLocations.map((l) => (
+                    <Badge key={l} variant="secondary" className="text-xs">{l}</Badge>
+                  ))}
+                </div>
+              )}
+              {candidate.jobPreferences.remotePreference && (
+                <p>
+                  <span className="text-muted-foreground">Remote:</span>{" "}
+                  <span className="text-foreground capitalize">
+                    {candidate.jobPreferences.remotePreference.toLowerCase()}
+                  </span>
+                </p>
+              )}
+              {candidate.jobPreferences.availability && (
+                <p>
+                  <span className="text-muted-foreground">Availability:</span>{" "}
+                  <span className="text-foreground">
+                    {candidate.jobPreferences.availability.replace(/_/g, " ")}
+                  </span>
+                </p>
+              )}
+              {(candidate.jobPreferences.salaryMin || candidate.jobPreferences.salaryMax) && (
+                <p>
+                  <span className="text-muted-foreground">Salary:</span>{" "}
+                  <span className="text-foreground">
+                    {candidate.jobPreferences.salaryCurrency || "USD"}{" "}
+                    {candidate.jobPreferences.salaryMin?.toLocaleString() || "?"} \u2013{" "}
+                    {candidate.jobPreferences.salaryMax?.toLocaleString() || "?"}
+                  </span>
+                </p>
+              )}
+            </div>
+          </PreviewSection>
+        )}
+
+        {/* Approval History */}
+        {candidate.approvalHistory?.length > 0 && (
+          <PreviewSection icon={Clock} title="Approval History">
+            <div className="space-y-3">
+              {candidate.approvalHistory.map((ah) => (
+                <div
+                  key={ah.id}
+                  className="flex items-start gap-3 text-sm"
+                >
+                  <div className="mt-0.5">
+                    {ah.action === "approved" && (
+                      <CheckCircle2 className="h-4 w-4 text-green-500" />
+                    )}
+                    {ah.action === "rejected" && (
+                      <XCircle className="h-4 w-4 text-red-500" />
+                    )}
+                    {ah.action === "on_hold" && (
+                      <PauseCircle className="h-4 w-4 text-orange-500" />
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-foreground capitalize">
+                      {ah.action.replace("_", " ")}
+                      {ah.adminEmail && (
+                        <span className="text-muted-foreground font-normal">
+                          {" "}by {ah.adminEmail}
+                        </span>
+                      )}
+                    </p>
+                    {ah.reason && (
+                      <p className="text-xs text-muted-foreground mt-0.5">{ah.reason}</p>
+                    )}
+                    <p className="text-xs text-muted-foreground">
+                      {new Date(ah.createdAt).toLocaleDateString("en-US", {
+                        month: "short",
+                        day: "numeric",
+                        year: "numeric",
+                        hour: "numeric",
+                        minute: "2-digit",
+                      })}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </PreviewSection>
+        )}
+      </div>
+
+      {/* Action Footer */}
+      <div className="border-t border-border pt-4 mt-auto flex gap-2">
+        {candidate.onboardingStatus !== "APPROVED" && (
+          <Button
+            onClick={() => onAction("approved")}
+            disabled={actionLoading}
+            className="bg-green-600 hover:bg-green-700 text-white flex-1"
+          >
+            {actionLoading ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <CheckCircle2 className="mr-2 h-4 w-4" />
+            )}
+            Approve
+          </Button>
+        )}
+        {candidate.onboardingStatus !== "REJECTED" && (
+          <Button
+            variant="destructive"
+            onClick={() => onAction("rejected")}
+            disabled={actionLoading}
+            className="flex-1"
+          >
+            <XCircle className="mr-2 h-4 w-4" />
+            Reject
+          </Button>
+        )}
+        {candidate.onboardingStatus !== "ON_HOLD" && (
+          <Button
+            variant="outline"
+            onClick={() => onAction("on_hold")}
+            disabled={actionLoading}
+            className="flex-1"
+          >
+            <PauseCircle className="mr-2 h-4 w-4" />
+            Hold
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ============================================
+// Helper Components
+// ============================================
+
+function PreviewSection({
+  icon: Icon,
+  title,
+  children,
+}: {
+  icon: React.ElementType;
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div>
+      <div className="flex items-center gap-2 mb-3">
+        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary/10">
+          <Icon className="h-3.5 w-3.5 text-primary" />
+        </div>
+        <h3 className="font-semibold text-sm text-foreground">{title}</h3>
+      </div>
+      <div className="pl-9">{children}</div>
+    </div>
+  );
+}
+
+function InfoItem({ icon: Icon, value }: { icon: React.ElementType; value: string }) {
+  return (
+    <div className="flex items-center gap-2 text-sm">
+      <Icon className="h-3.5 w-3.5 text-muted-foreground" />
+      <span className="text-foreground">{value}</span>
+    </div>
+  );
+}

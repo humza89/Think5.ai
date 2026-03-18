@@ -15,6 +15,7 @@ export async function GET(request: NextRequest) {
       totalCandidates,
       totalInterviews,
       totalApplications,
+      pendingApprovals,
       profilesResult,
       roleCounts,
     ] = await Promise.all([
@@ -22,6 +23,9 @@ export async function GET(request: NextRequest) {
       prisma.candidate.count(),
       prisma.interview.count(),
       prisma.application.count(),
+      prisma.candidate.count({
+        where: { onboardingCompleted: true, onboardingStatus: "PENDING_APPROVAL" },
+      }),
       // Get recent user profiles from Supabase
       (async () => {
         try {
@@ -65,6 +69,7 @@ export async function GET(request: NextRequest) {
         totalCandidates,
         totalInterviews,
         totalApplications,
+        pendingApprovals,
         usersByRole: {
           admin: roleCounts.admin,
           recruiter: roleCounts.recruiter,

@@ -131,6 +131,16 @@ enum CandidateAvailability {
   NOT_LOOKING
 }
 
+enum OnboardingStatus {
+  INVITED
+  PROFILE_STARTED
+  PROFILE_COMPLETED
+  PENDING_APPROVAL
+  APPROVED
+  REJECTED
+  ON_HOLD
+}
+
 // ============================================
 // Core Models
 // ============================================
@@ -190,8 +200,21 @@ model Candidate {
   ariaOverallScore Float?
 
   // Onboarding tracking
-  onboardingCompleted Boolean       @default(false)
-  onboardingStep      Int           @default(0)
+  onboardingCompleted   Boolean          @default(false)
+  onboardingStep        Int              @default(0)
+  onboardingStatus      OnboardingStatus @default(PROFILE_STARTED)
+  approvedAt            DateTime?
+  approvedBy            String?
+  rejectionReason       String?
+  invitationSource      String?          // "self_signup" | "recruiter_invited"
+  profileCompleteness   Float?
+
+  // Candidate preferences & compliance
+  visaStatus            String?
+  preferredTitles       String[]         @default([])
+  consentGdpr           Boolean          @default(false)
+  consentDataProcessing Boolean          @default(false)
+  consentedAt           DateTime?
 
   // New relations
   applications          Application[]
@@ -203,6 +226,7 @@ model Candidate {
   certifications        CandidateCertification[]
   notifications         Notification[]
   jobPreferences        JobPreference?
+  approvalActions       ApprovalAction[]
 
   createdAt        DateTime        @default(now())
   updatedAt        DateTime        @updatedAt
@@ -211,6 +235,7 @@ model Candidate {
   @@index([status])
   @@index([ariaInterviewed])
   @@index([email])
+  @@index([onboardingStatus])
 }
 
 model Note {
@@ -837,9 +862,32 @@ model JobPreference {
   salaryCurrency      String               @default("USD")
   availability        CandidateAvailability @default(IMMEDIATELY)
   willingToRelocate   Boolean              @default(false)
+  noticePeriod        String?
+  preferredCurrency   String?              @default("USD")
+  preferredIndustries String[]             @default([])
+  preferredCompanies  String[]             @default([])
 
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
 
   @@index([candidateId])
+}
+
+// ============================================
+// Approval Actions (Admin Approval Queue)
+// ============================================
+
+model ApprovalAction {
+  id           String    @id @default(uuid())
+  candidateId  String
+  candidate    Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  action       String    // "approved" | "rejected" | "on_hold"
+  reason       String?   @db.Text
+  adminUserId  String
+  adminEmail   String?
+  createdAt    DateTime  @default(now())
+
+  @@index([candidateId])
+  @@index([adminUserId])
+  @@index([createdAt])
 }

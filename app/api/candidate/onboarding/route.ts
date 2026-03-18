@@ -99,6 +99,8 @@ export async function GET() {
     return NextResponse.json({
       step: candidate.onboardingStep,
       completed: candidate.onboardingCompleted,
+      onboardingStatus: candidate.onboardingStatus,
+      rejectionReason: candidate.rejectionReason,
       personalInfo: {
         firstName: profile.first_name,
         lastName: profile.last_name,
@@ -394,6 +396,10 @@ export async function PATCH(req: NextRequest) {
             salaryCurrency: data.salaryCurrency || "USD",
             availability: data.availability || "IMMEDIATELY",
             willingToRelocate: data.willingToRelocate || false,
+            noticePeriod: data.noticePeriod || null,
+            preferredCurrency: data.preferredCurrency || "USD",
+            preferredIndustries: data.preferredIndustries || [],
+            preferredCompanies: data.preferredCompanies || [],
           },
           update: {
             jobTypes: data.jobTypes || [],
@@ -404,6 +410,10 @@ export async function PATCH(req: NextRequest) {
             salaryCurrency: data.salaryCurrency || "USD",
             availability: data.availability || "IMMEDIATELY",
             willingToRelocate: data.willingToRelocate || false,
+            noticePeriod: data.noticePeriod || null,
+            preferredCurrency: data.preferredCurrency || "USD",
+            preferredIndustries: data.preferredIndustries || [],
+            preferredCompanies: data.preferredCompanies || [],
           },
         });
 
@@ -417,12 +427,17 @@ export async function PATCH(req: NextRequest) {
       }
 
       case 7: {
-        // Review & Submit — mark onboarding complete
+        // Review & Submit — mark onboarding complete, set pending approval
         await prisma.candidate.update({
           where: { id: candidate.id },
           data: {
             onboardingCompleted: true,
             onboardingStep: 7,
+            onboardingStatus: "PENDING_APPROVAL",
+            rejectionReason: null,
+            consentGdpr: data.consentGdpr || false,
+            consentDataProcessing: data.consentDataProcessing || false,
+            consentedAt: data.consentGdpr || data.consentDataProcessing ? new Date() : undefined,
           },
         });
 
