@@ -1,16 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
-import { writeFile, mkdir } from "fs/promises";
-import path from "path";
-import { existsSync } from "fs";
 import sharp from "sharp";
 import { GoogleGenAI } from "@google/genai";
 import { getAuthenticatedUser, handleAuthError, AuthError } from "@/lib/auth";
+import { createSupabaseAdminClient } from "@/lib/supabase-server";
 
 // ============================================
 // Gemini Image Generation Client
 // ============================================
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
+
+const BUCKET = "photos";
 
 // ============================================
 // Headshot Style Prompts
@@ -38,6 +38,29 @@ const HEADSHOT_STYLES = [
 ] as const;
 
 // ============================================
+// Upload buffer to Supabase Storage
+// ============================================
+
+async function uploadToSupabase(
+  filePath: string,
+  buffer: Buffer,
+  contentType: string
+): Promise<string> {
+  const supabase = await createSupabaseAdminClient();
+
+  const { error } = await supabase.storage
+    .from(BUCKET)
+    .upload(filePath, buffer, { contentType, upsert: true });
+
+  if (error) {
+    throw new Error(`Supabase upload failed: ${error.message}`);
+  }
+
+  const { data } = supabase.storage.from(BUCKET).getPublicUrl(filePath);
+  return data.publicUrl;
+}
+
+// ============================================
 // Generate a single headshot variant via Gemini
 // ============================================
 
@@ -53,12 +76,7 @@ async function generateHeadshot(
         {
           role: "user",
           parts: [
-            {
-              inlineData: {
-                mimeType,
-                data: imageBase64,
-              },
-            },
+            { inlineData: { mimeType, data: imageBase64 } },
             { text: prompt },
           ],
         },
@@ -68,7 +86,6 @@ async function generateHeadshot(
       },
     });
 
-    // Find the image part in the response
     const parts = response.candidates?.[0]?.content?.parts ?? [];
     for (const part of parts) {
       if (part.inlineData?.data) {
@@ -138,41 +155,28 @@ export async function POST(request: NextRequest) {
     const buffer = Buffer.from(bytes);
     const imageBase64 = buffer.toString("base64");
 
-    // Ensure upload directory exists
-    const uploadDir = path.join(process.cwd(), "uploads", "photos");
-    if (!existsSync(uploadDir)) {
-      await mkdir(uploadDir, { recursive: true });
-    }
-
     const timestamp = Date.now();
     const safeName = file.name.replace(/[^a-zA-Z0-9.-]/g, "_");
 
-    // Save original as 600x600 JPEG
+    // Save original as 600x600 JPEG to Supabase
     const originalBuffer = await sharp(buffer)
       .resize(600, 600, { fit: "cover", position: "attention" })
       .jpeg({ quality: 90, mozjpeg: true })
       .toBuffer();
 
-    const originalFilename = `${timestamp}-original-${safeName.replace(/\.\w+$/, ".jpg")}`;
-    await writeFile(path.join(uploadDir, originalFilename), originalBuffer);
-    const originalUrl = `/uploads/photos/${originalFilename}`;
+    const originalPath = `headshots/${timestamp}-original-${safeName.replace(/\.\w+$/, ".jpg")}`;
+    const originalUrl = await uploadToSupabase(originalPath, originalBuffer, "image/jpeg");
 
     // If no Gemini API key, fall back to Sharp enhancement only
     if (!process.env.GEMINI_API_KEY) {
       const enhancedBuffer = await enhanceWithSharp(buffer);
-      const enhancedFilename = `${timestamp}-enhanced-${safeName.replace(/\.\w+$/, ".jpg")}`;
-      await writeFile(path.join(uploadDir, enhancedFilename), enhancedBuffer);
+      const enhancedPath = `headshots/${timestamp}-enhanced-${safeName.replace(/\.\w+$/, ".jpg")}`;
+      const enhancedUrl = await uploadToSupabase(enhancedPath, enhancedBuffer, "image/jpeg");
 
       return NextResponse.json({
         success: true,
         original: { url: originalUrl, label: "Original" },
-        variants: [
-          {
-            url: `/uploads/photos/${enhancedFilename}`,
-            label: "Enhanced",
-            key: "enhanced",
-          },
-        ],
+        variants: [{ url: enhancedUrl, label: "Enhanced", key: "enhanced" }],
         message: "AI generation unavailable. Basic enhancement applied.",
       });
     }
@@ -184,7 +188,7 @@ export async function POST(request: NextRequest) {
       )
     );
 
-    // Process results — save successful generations
+    // Process results — upload successful generations to Supabase
     const variants: Array<{ url: string; label: string; key: string }> = [];
 
     for (let i = 0; i < results.length; i++) {
@@ -192,20 +196,19 @@ export async function POST(request: NextRequest) {
       const style = HEADSHOT_STYLES[i];
 
       if (result.status === "fulfilled" && result.value) {
-        // Decode and save the generated image
         const generatedBuffer = Buffer.from(result.value.data, "base64");
 
-        // Process through Sharp for consistent output (resize + JPEG)
+        // Process through Sharp for consistent output
         const processedBuffer = await sharp(generatedBuffer)
           .resize(600, 600, { fit: "cover", position: "attention" })
           .jpeg({ quality: 92, mozjpeg: true })
           .toBuffer();
 
-        const filename = `${timestamp}-${style.key}-${safeName.replace(/\.\w+$/, ".jpg")}`;
-        await writeFile(path.join(uploadDir, filename), processedBuffer);
+        const filePath = `headshots/${timestamp}-${style.key}-${safeName.replace(/\.\w+$/, ".jpg")}`;
+        const publicUrl = await uploadToSupabase(filePath, processedBuffer, "image/jpeg");
 
         variants.push({
-          url: `/uploads/photos/${filename}`,
+          url: publicUrl,
           label: style.label,
           key: style.key,
         });
@@ -220,21 +223,14 @@ export async function POST(request: NextRequest) {
     // If all generations failed, fall back to Sharp enhancement
     if (variants.length === 0) {
       const enhancedBuffer = await enhanceWithSharp(buffer);
-      const enhancedFilename = `${timestamp}-enhanced-${safeName.replace(/\.\w+$/, ".jpg")}`;
-      await writeFile(path.join(uploadDir, enhancedFilename), enhancedBuffer);
+      const enhancedPath = `headshots/${timestamp}-enhanced-${safeName.replace(/\.\w+$/, ".jpg")}`;
+      const enhancedUrl = await uploadToSupabase(enhancedPath, enhancedBuffer, "image/jpeg");
 
       return NextResponse.json({
         success: true,
         original: { url: originalUrl, label: "Original" },
-        variants: [
-          {
-            url: `/uploads/photos/${enhancedFilename}`,
-            label: "Enhanced",
-            key: "enhanced",
-          },
-        ],
-        message:
-          "AI headshot generation was unavailable. A basic enhancement has been applied instead.",
+        variants: [{ url: enhancedUrl, label: "Enhanced", key: "enhanced" }],
+        message: "AI headshot generation was unavailable. A basic enhancement has been applied instead.",
       });
     }
 
@@ -246,17 +242,11 @@ export async function POST(request: NextRequest) {
   } catch (error: unknown) {
     const authResult = handleAuthError(error);
     if (authResult.status !== 500) {
-      return NextResponse.json(
-        { error: authResult.error },
-        { status: authResult.status }
-      );
+      return NextResponse.json({ error: authResult.error }, { status: authResult.status });
     }
     console.error("Photo upload error:", error);
     return NextResponse.json(
-      {
-        error:
-          error instanceof Error ? error.message : "Failed to upload photo",
-      },
+      { error: error instanceof Error ? error.message : "Failed to upload photo" },
       { status: 500 }
     );
   }

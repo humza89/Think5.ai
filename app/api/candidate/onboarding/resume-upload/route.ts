@@ -1,10 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { parseResumeFile, extractCandidateData } from "@/lib/resume-parser";
-import { writeFile, mkdir } from "fs/promises";
-import path from "path";
-import { existsSync } from "fs";
 import { getAuthenticatedUser, handleAuthError, AuthError } from "@/lib/auth";
+import { createSupabaseAdminClient } from "@/lib/supabase-server";
 
 export async function POST(request: NextRequest) {
   try {
@@ -62,17 +60,27 @@ export async function POST(request: NextRequest) {
     // Extract structured data with AI
     const candidateData = await extractCandidateData(resumeText);
 
-    // Save file to disk
-    const uploadDir = path.join(process.cwd(), "uploads");
-    if (!existsSync(uploadDir)) {
-      await mkdir(uploadDir, { recursive: true });
+    // Upload file to Supabase Storage
+    const supabase = await createSupabaseAdminClient();
+    const timestamp = Date.now();
+    const safeName = file.name.replace(/[^a-zA-Z0-9.-]/g, "_");
+    const storagePath = `onboarding/${timestamp}-${safeName}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from("resumes")
+      .upload(storagePath, buffer, {
+        contentType: file.type,
+        upsert: true,
+      });
+
+    if (uploadError) {
+      throw new Error(`Supabase upload failed: ${uploadError.message}`);
     }
 
-    const filename = `${Date.now()}-${file.name.replace(/[^a-zA-Z0-9.-]/g, "_")}`;
-    const filepath = path.join(uploadDir, filename);
-    await writeFile(filepath, buffer);
-
-    const fileUrl = `/uploads/${filename}`;
+    const { data: urlData } = supabase.storage
+      .from("resumes")
+      .getPublicUrl(storagePath);
+    const fileUrl = urlData.publicUrl;
 
     // Remove old resume document if exists
     await prisma.document.deleteMany({
