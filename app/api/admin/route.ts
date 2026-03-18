@@ -80,7 +80,8 @@ export async function GET(request: NextRequest) {
       recentProfiles: profilesResult,
     });
   } catch (error) {
+    console.error("[Admin API] Error:", error);
     const { error: message, status } = handleAuthError(error);
-    return NextResponse.json({ error: message }, { status });
+    return NextResponse.json({ error: message, detail: error instanceof Error ? error.message : String(error) }, { status });
   }
 }
