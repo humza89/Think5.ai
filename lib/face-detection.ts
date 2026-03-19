@@ -1,32 +1,5 @@
 import sharp from "sharp";
-import path from "path";
-
-// ============================================
-// UltraFace ONNX Face Detection (optional — unavailable on Vercel serverless)
-// ============================================
-
-let ort: typeof import("onnxruntime-node") | null = null;
-try {
-  ort = require("onnxruntime-node");
-} catch {
-  // onnxruntime-node not available (e.g. Vercel serverless) — face detection disabled
-}
-
-const MODEL_PATH = path.join(process.cwd(), "lib", "models", "ultraface-320.onnx");
-const INPUT_WIDTH = 320;
-const INPUT_HEIGHT = 240;
-const CONFIDENCE_THRESHOLD = 0.7;
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let session: any = null;
-
-async function getSession() {
-  if (!ort) return null;
-  if (!session) {
-    session = await ort.InferenceSession.create(MODEL_PATH);
-  }
-  return session;
-}
+import { GoogleGenAI } from "@google/genai";
 
 // ============================================
 // Types
@@ -41,69 +14,80 @@ interface FaceBox {
 }
 
 // ============================================
-// Face Detection
+// Face Detection using Gemini Flash
 // ============================================
 
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
+
+/**
+ * Uses Gemini 2.5 Flash to rapidly detect the main face bounding box.
+ * This completely bypasses native binary limitations on Vercel Serverless.
+ */
 export async function detectFace(imageBuffer: Buffer): Promise<FaceBox | null> {
-  if (!ort) return null; // ONNX runtime not available
-
-  const metadata = await sharp(imageBuffer).metadata();
-  const imgW = metadata.width ?? 800;
-  const imgH = metadata.height ?? 800;
-
-  // Preprocess: resize to 320x240, get raw RGB pixels
-  const rawPixels = await sharp(imageBuffer)
-    .resize(INPUT_WIDTH, INPUT_HEIGHT, { fit: "fill" })
-    .removeAlpha()
-    .raw()
-    .toBuffer();
-
-  // Convert to float32 NCHW format, normalize to [-1, 1]
-  const float32Data = new Float32Array(3 * INPUT_HEIGHT * INPUT_WIDTH);
-  for (let c = 0; c < 3; c++) {
-    for (let h = 0; h < INPUT_HEIGHT; h++) {
-      for (let w = 0; w < INPUT_WIDTH; w++) {
-        const srcIdx = (h * INPUT_WIDTH + w) * 3 + c;
-        const dstIdx = c * INPUT_HEIGHT * INPUT_WIDTH + h * INPUT_WIDTH + w;
-        float32Data[dstIdx] = (rawPixels[srcIdx] - 127) / 128;
-      }
-    }
+  if (!process.env.GEMINI_API_KEY) {
+    console.warn("No GEMINI_API_KEY. Skipping face detection.");
+    return null;
   }
 
-  const inputTensor = new ort.Tensor("float32", float32Data, [1, 3, INPUT_HEIGHT, INPUT_WIDTH]);
+  try {
+    const metadata = await sharp(imageBuffer).metadata();
+    const imgW = metadata.width ?? 800;
+    const imgH = metadata.height ?? 800;
 
-  const sess = await getSession();
-  if (!sess) return null;
-  const results = await sess.run({ input: inputTensor });
+    // Convert to a compressed internal JPEG to save bandwidth & latency mapping bounding boxes
+    const optimizedBuffer = await sharp(imageBuffer)
+      .resize({ width: 512, height: 512, fit: "inside" })
+      .jpeg({ quality: 80 })
+      .toBuffer();
 
-  // UltraFace outputs: scores [1, 4420, 2], boxes [1, 4420, 4]
-  const scores = results["scores"].data as Float32Array;
-  const boxes = results["boxes"].data as Float32Array;
-  const numBoxes = scores.length / 2;
+    const base64 = optimizedBuffer.toString("base64");
+    const prompt = `Return exclusively a JSON object with a single key "face" representing the person's face bounding box (chin to forehead, ear to ear). The value MUST be an array [ymin, xmin, ymax, xmax] using normalized coordinates 0-1000. Do not include markdown formatting or extra text.`;
 
-  let bestFace: FaceBox | null = null;
-  let bestScore = 0;
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: [
+        {
+          role: "user",
+          parts: [
+            { inlineData: { mimeType: "image/jpeg", data: base64 } },
+            { text: prompt },
+          ],
+        },
+      ],
+      config: {
+        temperature: 0.1,
+      },
+    });
 
-  for (let i = 0; i < numBoxes; i++) {
-    const confidence = scores[i * 2 + 1]; // face score
-    if (confidence > CONFIDENCE_THRESHOLD && confidence > bestScore) {
-      bestScore = confidence;
-      // Boxes are normalized [0, 1] in x1, y1, x2, y2 format
-      const x1 = boxes[i * 4] * imgW;
-      const y1 = boxes[i * 4 + 1] * imgH;
-      const x2 = boxes[i * 4 + 2] * imgW;
-      const y2 = boxes[i * 4 + 3] * imgH;
-      bestFace = {
-        x: Math.round(x1),
-        y: Math.round(y1),
-        width: Math.round(x2 - x1),
-        height: Math.round(y2 - y1),
-        confidence,
+    const text = response.text || "";
+    // Clean potential markdown blocks
+    const cleanText = text.replace(/```(?:json)?/g, "").trim();
+    const parsed = JSON.parse(cleanText);
+
+    if (parsed && Array.isArray(parsed.face) && parsed.face.length === 4) {
+      const [yminRaw, xminRaw, ymaxRaw, xmaxRaw] = parsed.face;
+
+      // Convert normalized [0, 1000] coords to actual image dimensions
+      const ymin = (yminRaw / 1000) * imgH;
+      const xmin = (xminRaw / 1000) * imgW;
+      const ymax = (ymaxRaw / 1000) * imgH;
+      const xmax = (xmaxRaw / 1000) * imgW;
+
+      return {
+        x: Math.round(xmin),
+        y: Math.round(ymin),
+        width: Math.round(xmax - xmin),
+        height: Math.round(ymax - ymin),
+        confidence: 0.99,
       };
     }
-  }
 
-  return bestFace;
+    console.warn("Unexpected Gemini bounding box format:", text);
+    return null;
+  } catch (err) {
+    console.error("Gemini face detection failed:", err);
+    return null;
+  }
 }
 
 // ============================================
@@ -120,27 +104,27 @@ export async function portraitCrop(
 
   const face = await detectFace(buffer);
 
-  if (face) {
-    // Compute square crop from face box
-    // cropSize ~2.5x face height for a chest-up portrait
+  if (face && face.width > 0 && face.height > 0) {
+    // A good starting heuristic for deterministic LinkedIn-style chest-up framing:
+    // cropSize = max(faceWidth, faceHeight) * 2.5
     const cropSize = Math.round(
       Math.min(
         Math.max(face.width, face.height) * 2.5,
-        Math.min(imgW, imgH)
+        Math.min(imgW, imgH) // don't exceed image bounds
       )
     );
 
-    // Center horizontally on face
+    // Center horizontally on the face
     const cx = face.x + face.width / 2;
-    // Eyes are ~35% down from top of face box
-    const eyeY = face.y + face.height * 0.35;
-    // Place eyes slightly above center of crop (~8% above)
-    const cy = eyeY + cropSize * 0.08;
+    // Shift vertically a bit upward so the eyes sit slightly above center
+    // Anchor center Y slightly below the actual face center
+    const faceCenterY = face.y + face.height / 2;
+    const cy = faceCenterY + face.height * 0.15;
 
     let left = Math.round(cx - cropSize / 2);
     let top = Math.round(cy - cropSize / 2);
 
-    // Clamp to image bounds
+    // Clamp to image bounds to prevent sharp extraction errors
     left = Math.max(0, Math.min(left, imgW - cropSize));
     top = Math.max(0, Math.min(top, imgH - cropSize));
 
@@ -151,7 +135,7 @@ export async function portraitCrop(
       .toBuffer();
   }
 
-  // Fallback 1: sharp attention-based crop
+  // Fallback 1: sharp attention-based crop (heuristic)
   try {
     return await sharp(buffer)
       .resize({
@@ -163,7 +147,7 @@ export async function portraitCrop(
       .jpeg({ quality: 92, mozjpeg: true })
       .toBuffer();
   } catch {
-    // Fallback 2: center crop
+    // Fallback 2: simple center crop
     const size = Math.min(imgW, imgH);
     const left = Math.round((imgW - size) / 2);
     const top = Math.round((imgH - size) / 2);

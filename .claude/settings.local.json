@@ -128,7 +128,10 @@
       "Bash(grep -r \"readinessVerified\\\\|readinessRequired\" /Users/humzarafiq/Downloads/Paraform --include=*.ts --include=*.tsx -B2 -A2)",
       "Bash(grep -r \"CSP\\\\|Content-Security\" /Users/humzarafiq/Downloads/Paraform --include=*.ts --include=*.tsx --include=*.json)",
       "Bash(grep -n mediaOffsetMs /Users/humzarafiq/Downloads/Paraform/app/api/interviews/[id]/stream/route.ts)",
-      "Bash(grep -A5 -B5 \"integrityScore\\\\|integrityFlags\\\\|reviewStatus\" /Users/humzarafiq/Downloads/Paraform/app/api/candidate/interviews/[id]/report/route.ts)"
+      "Bash(grep -A5 -B5 \"integrityScore\\\\|integrityFlags\\\\|reviewStatus\" /Users/humzarafiq/Downloads/Paraform/app/api/candidate/interviews/[id]/report/route.ts)",
+      "Bash(PGPASSWORD='Rayyan&musa1' psql \"postgresql://postgres.ennaypfwhfkjewhgdcpp@aws-1-us-east-1.pooler.supabase.com:5432/postgres\" -c \"ALTER TABLE public.profiles DROP CONSTRAINT IF EXISTS profiles_id_fkey;\")",
+      "Bash(npx vercel:*)",
+      "Bash(npm list:*)"
     ],
     "deny": [],
     "ask": []
