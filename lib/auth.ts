@@ -73,18 +73,11 @@ export async function requireCandidateRole() {
   const { user, profile } = await requireRole(['candidate']);
 
   const candidate = await prisma.candidate.findFirst({
-    where: { supabaseUserId: user.id },
+    where: { email: profile.email },
   });
 
   if (!candidate) {
-    // Fallback: try by email
-    const candidateByEmail = await prisma.candidate.findFirst({
-      where: { email: profile.email },
-    });
-    if (!candidateByEmail) {
-      throw new AuthError('Candidate record not found', 404);
-    }
-    return { user, profile, candidate: candidateByEmail };
+    throw new AuthError('Candidate record not found', 404);
   }
 
   return { user, profile, candidate };
@@ -101,23 +94,12 @@ export async function requireApprovedAccess(allowedRoles: UserRole[]) {
 
   if (profile.role === 'candidate') {
     const candidate = await prisma.candidate.findFirst({
-      where: { supabaseUserId: user.id },
+      where: { email: profile.email },
       select: { onboardingCompleted: true, onboardingStatus: true },
     });
 
     if (!candidate) {
-      // Fallback by email
-      const candidateByEmail = await prisma.candidate.findFirst({
-        where: { email: profile.email },
-        select: { onboardingCompleted: true, onboardingStatus: true },
-      });
-      if (!candidateByEmail) {
-        throw new AuthError('Candidate record not found', 404);
-      }
-      if (!candidateByEmail.onboardingCompleted || candidateByEmail.onboardingStatus !== 'APPROVED') {
-        throw new AuthError('Account not yet approved. Complete onboarding and await admin approval.', 403);
-      }
-      return { user, profile };
+      throw new AuthError('Candidate record not found', 404);
     }
 
     if (!candidate.onboardingCompleted || candidate.onboardingStatus !== 'APPROVED') {
