@@ -94,19 +94,19 @@ export const skillsEducationStepSchema = z.object({
 // Step 6: Preferences
 // ============================================
 export const preferencesStepSchema = z.object({
-  preferredTitles: z.array(z.string()).default([]),
-  preferredLocations: z.array(z.string()).default([]),
-  remotePreference: z.enum(["REMOTE", "HYBRID", "ONSITE", "FLEXIBLE"]).default("FLEXIBLE"),
-  salaryMin: z.number().int().min(0).optional().nullable(),
-  salaryMax: z.number().int().min(0).optional().nullable(),
-  salaryCurrency: z.string().max(10).default("USD"),
-  availability: z.enum(["IMMEDIATELY", "TWO_WEEKS", "ONE_MONTH", "THREE_MONTHS", "NOT_LOOKING"]).default("IMMEDIATELY"),
+  preferredTitles: z.array(z.string()).min(1, "At least one preferred job title is required"),
+  preferredLocations: z.array(z.string()).min(1, "At least one preferred location is required"),
+  remotePreference: z.enum(["REMOTE", "HYBRID", "ONSITE", "FLEXIBLE"], { message: "Remote preference is required" }),
+  salaryMin: z.number({ message: "Minimum salary is required" }).int().min(0, "Salary must be positive"),
+  salaryMax: z.number({ message: "Maximum salary is required" }).int().min(0, "Salary must be positive"),
+  salaryCurrency: z.string().min(1).max(10).default("USD"),
+  availability: z.enum(["IMMEDIATELY", "TWO_WEEKS", "ONE_MONTH", "THREE_MONTHS", "NOT_LOOKING"], { message: "Availability is required" }),
   willingToRelocate: z.boolean().default(false),
-  noticePeriod: z.string().max(100).optional().or(z.literal("")),
-  visaStatus: z.string().max(200).optional().or(z.literal("")),
-  preferredIndustries: z.array(z.string()).default([]),
-  preferredCompanies: z.array(z.string()).default([]),
-  jobTypes: z.array(z.string()).default([]),
+  noticePeriod: z.string().min(1, "Notice period is required").max(100),
+  visaStatus: z.string().min(1, "Visa / work authorization status is required").max(200),
+  preferredIndustries: z.array(z.string()).min(1, "At least one preferred industry is required"),
+  preferredCompanies: z.array(z.string()).min(1, "At least one preferred company is required"),
+  jobTypes: z.array(z.string()).min(1, "At least one employment type is required"),
 });
 
 // ============================================

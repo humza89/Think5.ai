@@ -38,9 +38,41 @@ export interface JobPreferences {
   preferredCompanies: string[]
 }
 
+export interface PreferencesErrors {
+  preferredTitles?: string
+  preferredLocations?: string
+  remotePreference?: string
+  employmentTypes?: string
+  salaryMin?: string
+  salaryMax?: string
+  availability?: string
+  noticePeriod?: string
+  workAuthorization?: string
+  preferredIndustries?: string
+  preferredCompanies?: string
+}
+
+export function validatePreferences(prefs: JobPreferences): PreferencesErrors {
+  const errors: PreferencesErrors = {}
+  if (!prefs.preferredTitles.length) errors.preferredTitles = "At least one preferred job title is required"
+  if (!prefs.preferredLocations.length) errors.preferredLocations = "At least one preferred location is required"
+  if (!prefs.remotePreference) errors.remotePreference = "Remote preference is required"
+  if (!prefs.employmentTypes.length) errors.employmentTypes = "At least one employment type is required"
+  if (!prefs.salaryMin || isNaN(Number(prefs.salaryMin))) errors.salaryMin = "Minimum salary is required"
+  if (!prefs.salaryMax || isNaN(Number(prefs.salaryMax))) errors.salaryMax = "Maximum salary is required"
+  if (prefs.salaryMin && prefs.salaryMax && Number(prefs.salaryMax) < Number(prefs.salaryMin)) errors.salaryMax = "Maximum salary must be greater than minimum"
+  if (!prefs.availability) errors.availability = "Availability is required"
+  if (!prefs.noticePeriod.trim()) errors.noticePeriod = "Notice period is required"
+  if (!prefs.workAuthorization.trim()) errors.workAuthorization = "Visa / work authorization status is required"
+  if (!prefs.preferredIndustries.length) errors.preferredIndustries = "At least one preferred industry is required"
+  if (!prefs.preferredCompanies.length) errors.preferredCompanies = "At least one preferred company is required"
+  return errors
+}
+
 interface PreferencesStepProps {
   preferences: JobPreferences
   onChange: (preferences: JobPreferences) => void
+  errors?: PreferencesErrors
 }
 
 const EMPLOYMENT_TYPES = ["Full-time", "Part-time", "Contract", "Temp-to-Hire"]
@@ -108,9 +140,19 @@ function TagInput({
   )
 }
 
+function FieldError({ message }: { message?: string }) {
+  if (!message) return null
+  return <p className="text-sm text-destructive">{message}</p>
+}
+
+function RequiredStar() {
+  return <span className="text-destructive">*</span>
+}
+
 export default function PreferencesStep({
   preferences,
   onChange,
+  errors = {},
 }: PreferencesStepProps) {
   function update(updates: Partial<JobPreferences>) {
     onChange({ ...preferences, ...updates })
@@ -144,7 +186,7 @@ export default function PreferencesStep({
           Job Preferences
         </h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          Tell us what you are looking for. All fields are optional but help us
+          Tell us what you are looking for. All fields are required to help us
           match you with the right opportunities.
         </p>
       </div>
@@ -162,7 +204,7 @@ export default function PreferencesStep({
         <CardContent className="pt-4">
           <div className="grid gap-4">
             <div className="space-y-1.5">
-              <Label htmlFor="preferred-titles">Preferred Job Titles</Label>
+              <Label htmlFor="preferred-titles">Preferred Job Titles <RequiredStar /></Label>
               <TagInput
                 id="preferred-titles"
                 tags={preferences.preferredTitles}
@@ -170,10 +212,11 @@ export default function PreferencesStep({
                 onRemove={(tag) => removeTag("preferredTitles", tag)}
                 placeholder="e.g. Software Engineer, Frontend Developer"
               />
+              <FieldError message={errors.preferredTitles} />
             </div>
 
             <div className="space-y-1.5">
-              <Label htmlFor="preferred-locations">Preferred Locations</Label>
+              <Label htmlFor="preferred-locations">Preferred Locations <RequiredStar /></Label>
               <TagInput
                 id="preferred-locations"
                 tags={preferences.preferredLocations}
@@ -181,11 +224,12 @@ export default function PreferencesStep({
                 onRemove={(tag) => removeTag("preferredLocations", tag)}
                 placeholder="e.g. San Francisco, New York, Remote"
               />
+              <FieldError message={errors.preferredLocations} />
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-1.5">
-                <Label>Remote Preference</Label>
+                <Label>Remote Preference <RequiredStar /></Label>
                 <Select
                   value={preferences.remotePreference}
                   onValueChange={(value) =>
@@ -202,10 +246,11 @@ export default function PreferencesStep({
                     <SelectItem value="flexible">Flexible</SelectItem>
                   </SelectContent>
                 </Select>
+                <FieldError message={errors.remotePreference} />
               </div>
 
               <div className="space-y-1.5">
-                <Label>Employment Type</Label>
+                <Label>Employment Type <RequiredStar /></Label>
                 <div className="flex flex-wrap gap-2 pt-1">
                   {EMPLOYMENT_TYPES.map((type) => {
                     const isSelected =
@@ -226,6 +271,7 @@ export default function PreferencesStep({
                     )
                   })}
                 </div>
+                <FieldError message={errors.employmentTypes} />
               </div>
             </div>
           </div>
@@ -243,7 +289,7 @@ export default function PreferencesStep({
         <CardContent className="pt-4">
           <div className="grid gap-4 sm:grid-cols-3">
             <div className="space-y-1.5">
-              <Label htmlFor="salary-min">Salary Range Min</Label>
+              <Label htmlFor="salary-min">Salary Range Min <RequiredStar /></Label>
               <Input
                 id="salary-min"
                 type="number"
@@ -251,9 +297,10 @@ export default function PreferencesStep({
                 value={preferences.salaryMin}
                 onChange={(e) => update({ salaryMin: e.target.value })}
               />
+              <FieldError message={errors.salaryMin} />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="salary-max">Salary Range Max</Label>
+              <Label htmlFor="salary-max">Salary Range Max <RequiredStar /></Label>
               <Input
                 id="salary-max"
                 type="number"
@@ -261,6 +308,7 @@ export default function PreferencesStep({
                 value={preferences.salaryMax}
                 onChange={(e) => update({ salaryMax: e.target.value })}
               />
+              <FieldError message={errors.salaryMax} />
             </div>
             <div className="space-y-1.5">
               <Label>Currency</Label>
@@ -296,7 +344,7 @@ export default function PreferencesStep({
           <div className="grid gap-4">
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-1.5">
-                <Label>Availability</Label>
+                <Label>Availability <RequiredStar /></Label>
                 <Select
                   value={preferences.availability}
                   onValueChange={(value) => update({ availability: value })}
@@ -312,15 +360,17 @@ export default function PreferencesStep({
                     <SelectItem value="not-looking">Not Looking</SelectItem>
                   </SelectContent>
                 </Select>
+                <FieldError message={errors.availability} />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="notice-period">Notice Period</Label>
+                <Label htmlFor="notice-period">Notice Period <RequiredStar /></Label>
                 <Input
                   id="notice-period"
                   placeholder="e.g. 2 weeks, 30 days"
                   value={preferences.noticePeriod}
                   onChange={(e) => update({ noticePeriod: e.target.value })}
                 />
+                <FieldError message={errors.noticePeriod} />
               </div>
             </div>
 
@@ -355,7 +405,7 @@ export default function PreferencesStep({
           <div className="grid gap-4">
             <div className="space-y-1.5">
               <Label htmlFor="work-auth">
-                Visa / Work Authorization Status
+                Visa / Work Authorization Status <RequiredStar />
               </Label>
               <Input
                 id="work-auth"
@@ -365,11 +415,12 @@ export default function PreferencesStep({
                   update({ workAuthorization: e.target.value })
                 }
               />
+              <FieldError message={errors.workAuthorization} />
             </div>
 
             <div className="space-y-1.5">
               <Label htmlFor="preferred-industries">
-                Preferred Industries
+                Preferred Industries <RequiredStar />
               </Label>
               <TagInput
                 id="preferred-industries"
@@ -378,10 +429,11 @@ export default function PreferencesStep({
                 onRemove={(tag) => removeTag("preferredIndustries", tag)}
                 placeholder="e.g. FinTech, Healthcare, SaaS"
               />
+              <FieldError message={errors.preferredIndustries} />
             </div>
 
             <div className="space-y-1.5">
-              <Label htmlFor="preferred-companies">Preferred Companies</Label>
+              <Label htmlFor="preferred-companies">Preferred Companies <RequiredStar /></Label>
               <TagInput
                 id="preferred-companies"
                 tags={preferences.preferredCompanies}
@@ -389,6 +441,7 @@ export default function PreferencesStep({
                 onRemove={(tag) => removeTag("preferredCompanies", tag)}
                 placeholder="e.g. Google, Stripe, Airbnb"
               />
+              <FieldError message={errors.preferredCompanies} />
             </div>
           </div>
         </CardContent>

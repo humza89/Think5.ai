@@ -33,7 +33,8 @@ import type { ExperienceEntry } from "./ExperienceStep";
 import SkillsEducationStep from "./SkillsEducationStep";
 import type { Skill, EducationEntry, CertificationEntry } from "./SkillsEducationStep";
 import PreferencesStep from "./PreferencesStep";
-import type { JobPreferences } from "./PreferencesStep";
+import type { JobPreferences, PreferencesErrors } from "./PreferencesStep";
+import { validatePreferences } from "./PreferencesStep";
 import ReviewSubmitStep from "./ReviewSubmitStep";
 
 // ============================================
@@ -144,6 +145,7 @@ export function OnboardingWizard({
   );
   const [data, setData] = useState<OnboardingData>(initialData);
   const [isSaving, setIsSaving] = useState(false);
+  const [preferencesErrors, setPreferencesErrors] = useState<PreferencesErrors>({});
 
   const progressValue = (currentStep / TOTAL_STEPS) * 100;
   const currentStepMeta = STEPS[currentStep - 1];
@@ -196,6 +198,17 @@ export function OnboardingWizard({
       6: data.preferences as unknown as Record<string, unknown>,
       7: { consentGdpr: data.consentGdpr, consentDataProcessing: data.consentDataProcessing },
     };
+
+    // Client-side validation for step 6 (Preferences)
+    if (currentStep === 6) {
+      const errors = validatePreferences(data.preferences);
+      if (Object.keys(errors).length > 0) {
+        setPreferencesErrors(errors);
+        toast.error("Please fill in all required fields");
+        return;
+      }
+      setPreferencesErrors({});
+    }
 
     const saved = await saveStep(currentStep, stepDataMap[currentStep]);
     if (saved && currentStep < TOTAL_STEPS) {
@@ -390,6 +403,7 @@ export function OnboardingWizard({
             onChange={(preferences) =>
               setData((prev) => ({ ...prev, preferences }))
             }
+            errors={preferencesErrors}
           />
         );
       case 7:
