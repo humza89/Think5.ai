@@ -265,5 +265,6 @@ export function handleAuthError(error: unknown) {
   if (error instanceof AuthError) {
     return { error: error.message, status: error.statusCode };
   }
-  return { error: 'Internal server error', status: 500 };
+  const errorMessage = error instanceof Error ? error.message : String(error);
+  return { error: `Internal server error: ${errorMessage}`, status: 500 };
 }
