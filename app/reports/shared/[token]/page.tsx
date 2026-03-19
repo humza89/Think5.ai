@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { InterviewReportViewer } from "@/components/interview/InterviewReportViewer";
 
@@ -70,6 +71,17 @@ export default async function SharedReportPage({
       </div>
     );
   }
+
+  // Log share view (fire-and-forget)
+  const headersList = await headers();
+  prisma.reportShareView.create({
+    data: {
+      reportId: report.id,
+      shareToken: token,
+      viewerIp: headersList.get("x-forwarded-for")?.split(",")[0] || "unknown",
+      userAgent: headersList.get("user-agent") || "unknown",
+    },
+  }).catch(() => {});
 
   return (
     <div className="min-h-screen bg-gray-50">

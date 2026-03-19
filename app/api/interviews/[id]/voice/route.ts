@@ -456,6 +456,15 @@ async function endVoiceInterview(interviewId: string) {
     },
   });
 
+  // Persist structured proctoring events (fire-and-forget)
+  const interview = await prisma.interview.findUnique({
+    where: { id: interviewId },
+    select: { integrityEvents: true },
+  });
+  if (interview?.integrityEvents && Array.isArray(interview.integrityEvents)) {
+    persistProctoringEvents(interviewId, interview.integrityEvents as any[]).catch(console.error);
+  }
+
   // Generate report in background
   generateReportInBackground(interviewId).catch(console.error);
 
