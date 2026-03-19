@@ -184,6 +184,23 @@ export async function getRecruiterForUser(supabaseUserId: string, email: string,
 }
 
 /**
+ * Require that the authenticated user is a recruiter.
+ * Returns the Prisma Recruiter record and the recruiter's companyId (tenant).
+ * companyId may be null for recruiters not yet associated with a company.
+ */
+export async function requireRecruiterRole() {
+  const { user, profile } = await requireRole(['recruiter']);
+
+  const recruiter = await getRecruiterForUser(
+    user.id,
+    profile.email,
+    `${profile.first_name} ${profile.last_name}`
+  );
+
+  return { user, profile, recruiter, companyId: recruiter.companyId ?? null };
+}
+
+/**
  * Verify that the authenticated user owns the candidate (via recruiterId).
  * Admins bypass ownership checks.
  */

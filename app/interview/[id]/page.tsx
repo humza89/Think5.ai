@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import { useInterviewSession } from "@/hooks/useInterviewSession";
-import { useProctoring } from "@/hooks/useProctoring";
+import { useProctoring, type ProctoringConfig } from "@/hooks/useProctoring";
 import { useVoiceInput } from "@/hooks/useVoiceInput";
 import { InterviewHeader } from "@/components/interview/InterviewHeader";
 import { WelcomeScreen } from "@/components/interview/WelcomeScreen";
@@ -32,6 +32,9 @@ interface InterviewMeta {
   voiceProvider?: string | null;
   jobTitle?: string | null;
   durationMinutes?: number;
+  proctoringLevel?: "none" | "light" | "strict";
+  pastePolicy?: "allow" | "warn" | "block";
+  maxPasteWarnings?: number;
 }
 
 const MAX_DURATION_MS = 45 * 60 * 1000; // 45 minutes
@@ -46,10 +49,11 @@ export default function InterviewRoom() {
   const [meta, setMeta] = useState<InterviewMeta | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showEndConfirm, setShowEndConfirm] = useState(false);
+  const [proctoringConfig, setProctoringConfig] = useState<ProctoringConfig>({ tier: "strict" });
   const autoEndTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const session = useInterviewSession({ interviewId, accessToken });
-  const proctoring = useProctoring();
+  const proctoring = useProctoring(proctoringConfig);
   const voice = useVoiceInput();
   const webcamVideoRef = useRef<HTMLVideoElement>(null);
 
@@ -71,6 +75,15 @@ export default function InterviewRoom() {
 
         const data = await res.json();
         setMeta(data);
+
+        // Configure proctoring from template settings
+        if (data.proctoringLevel || data.pastePolicy) {
+          setProctoringConfig({
+            tier: data.proctoringLevel || "strict",
+            pastePolicy: data.pastePolicy || "block",
+            maxPasteWarnings: data.maxPasteWarnings || 3,
+          });
+        }
 
         // Resume in-progress interview
         if (data.status === "IN_PROGRESS" && data.hasTranscript) {
@@ -97,13 +110,28 @@ export default function InterviewRoom() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [interviewId, accessToken]);
 
-  // Handle start — request fullscreen + start monitoring
-  const handleStart = useCallback(async () => {
+  // Handle start — save consent, request fullscreen + start monitoring
+  const handleStart = useCallback(async (consent: { consentRecording: boolean; consentProctoring: boolean }) => {
+    // Persist consent to the backend before starting
+    try {
+      await fetch(`/api/interviews/${interviewId}/validate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          accessToken,
+          consentRecording: consent.consentRecording,
+          consentProctoring: consent.consentProctoring,
+        }),
+      });
+    } catch {
+      // Non-blocking: consent is recorded best-effort
+    }
+
     setStage("ACTIVE");
     proctoring.startMonitoring();
     await proctoring.requestFullscreen();
     await session.startInterview();
-  }, [session, proctoring]);
+  }, [session, proctoring, interviewId, accessToken]);
 
   // Handle end with confirmation
   const handleEndRequest = useCallback(() => {
@@ -305,7 +333,10 @@ export default function InterviewRoom() {
         webcamActive={proctoring.webcamActive}
         isMonitoring={proctoring.isMonitoring}
         pasteBlocked={proctoring.pasteBlocked}
+        pasteWarningCount={proctoring.pasteWarningCount}
+        maxPasteWarnings={proctoringConfig.maxPasteWarnings}
         isFullscreen={proctoring.isFullscreen}
+        tier={proctoring.tier}
       />
 
       {/* C2: Confirmation dialog */}

@@ -9,12 +9,17 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 
+import type { ProctoringTier } from "@/hooks/useProctoring";
+
 interface ProctoringOverlayProps {
   tabSwitches: number;
   webcamActive: boolean;
   isMonitoring: boolean;
   pasteBlocked: boolean;
+  pasteWarningCount?: number;
+  maxPasteWarnings?: number;
   isFullscreen: boolean;
+  tier?: ProctoringTier;
 }
 
 export function ProctoringOverlay({
@@ -22,7 +27,10 @@ export function ProctoringOverlay({
   webcamActive,
   isMonitoring,
   pasteBlocked,
+  pasteWarningCount = 0,
+  maxPasteWarnings = 3,
   isFullscreen,
+  tier = "strict",
 }: ProctoringOverlayProps) {
   const [showTabWarning, setShowTabWarning] = useState(false);
   const [showFullscreenWarning, setShowFullscreenWarning] = useState(false);
@@ -65,13 +73,15 @@ export function ProctoringOverlay({
         </div>
       )}
 
-      {/* Paste blocked warning */}
+      {/* Paste blocked/warned */}
       {pasteBlocked && (
         <div className="fixed top-16 left-0 right-0 z-50 flex justify-center animate-in slide-in-from-top duration-300">
-          <div className="bg-red-500/90 backdrop-blur-sm text-white px-6 py-3 rounded-b-xl flex items-center gap-3 shadow-lg">
+          <div className={`${pasteWarningCount > 0 && pasteWarningCount < maxPasteWarnings ? "bg-amber-500/90 text-black" : "bg-red-500/90 text-white"} backdrop-blur-sm px-6 py-3 rounded-b-xl flex items-center gap-3 shadow-lg`}>
             <ClipboardX className="w-5 h-5" />
             <span className="font-medium text-sm">
-              Paste is not allowed during the interview
+              {pasteWarningCount > 0 && pasteWarningCount < maxPasteWarnings
+                ? `Paste detected — warning ${pasteWarningCount}/${maxPasteWarnings}`
+                : "Paste is not allowed during the interview"}
             </span>
           </div>
         </div>
@@ -103,7 +113,9 @@ export function ProctoringOverlay({
       <div className="fixed bottom-4 left-4 z-40">
         <div className="flex items-center gap-2 bg-zinc-900/80 backdrop-blur-sm border border-zinc-800 px-3 py-1.5 rounded-full">
           <ShieldAlert className="w-3.5 h-3.5 text-zinc-500" />
-          <span className="text-xs text-zinc-500">Proctored Session</span>
+          <span className="text-xs text-zinc-500">
+            {tier === "strict" ? "Proctored Session" : "Monitored Session"}
+          </span>
         </div>
       </div>
     </>

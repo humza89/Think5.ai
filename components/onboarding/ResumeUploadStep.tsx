@@ -380,10 +380,12 @@ export function ResumeUploadStep({
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-xl text-foreground">Resume Upload</CardTitle>
+        <CardTitle className="text-xl text-foreground">
+          Resume Upload <span className="text-sm font-medium text-destructive">*Required</span>
+        </CardTitle>
         <CardDescription>
           Upload your resume so our AI can pre-fill your profile. We accept PDF
-          and DOCX files up to 10 MB.
+          and DOCX files up to 10 MB. A resume is required to proceed.
         </CardDescription>
       </CardHeader>
 

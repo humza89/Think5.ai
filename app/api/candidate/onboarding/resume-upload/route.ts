@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { parseResumeFile, extractCandidateData } from "@/lib/resume-parser";
 import { requireRole, handleAuthError } from "@/lib/auth";
 import { createSupabaseAdminClient } from "@/lib/supabase-server";
+import { checkLinkedInConsistency } from "@/lib/linkedin-verification";
 
 export async function POST(request: NextRequest) {
   try {
@@ -106,6 +107,28 @@ export async function POST(request: NextRequest) {
         onboardingStep: Math.max(candidate.onboardingStep, 2),
       },
     });
+
+    // Fire-and-forget LinkedIn consistency check (non-blocking)
+    if (candidate.linkedinUrl) {
+      const candidateId = candidate.id;
+      const linkedinUrl = candidate.linkedinUrl;
+      checkLinkedInConsistency(candidateData, linkedinUrl)
+        .then(async (result) => {
+          await prisma.candidate.update({
+            where: { id: candidateId },
+            data: {
+              linkedinConsistencyScore: result.score,
+              linkedinConsistencyFlags: result.flags,
+            },
+          });
+          console.log(
+            `[LinkedIn Check] Candidate ${candidateId}: score=${result.score}, flags=${result.flags.join(", ")}`
+          );
+        })
+        .catch((err) => {
+          console.error(`[LinkedIn Check] Failed for candidate ${candidateId}:`, err);
+        });
+    }
 
     return NextResponse.json({
       success: true,

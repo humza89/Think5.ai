@@ -1,6 +1,9 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { computeContentHash } from "./versioning";
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
+
+export const SCORER_MODEL_VERSION = "gemini-1.5-pro";
 
 interface TranscriptEntry {
   role: "interviewer" | "candidate";
@@ -103,6 +106,13 @@ IMPORTANT:
 - The summary and hiringAdvice should be actionable and written for a busy recruiter.
 - Return ONLY valid JSON. No markdown, no code blocks, no extra text.`;
 
+/**
+ * Returns the SHA-256 hash of the scoring prompt template.
+ */
+export function getScorerPromptHash(): string {
+  return computeContentHash(REPORT_GENERATION_PROMPT);
+}
+
 interface IntegrityEvent {
   type: string;
   description: string;
@@ -118,7 +128,7 @@ export async function generateInterviewReport(
     throw new Error("GEMINI_API_KEY is not configured");
   }
 
-  const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
+  const model = genAI.getGenerativeModel({ model: SCORER_MODEL_VERSION });
 
   // Format transcript for the prompt
   const formattedTranscript = transcript

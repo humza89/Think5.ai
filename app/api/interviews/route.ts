@@ -4,8 +4,11 @@ import {
   getAuthenticatedUser,
   getRecruiterForUser,
   requireCandidateAccess,
+  requireRecruiterRole,
   handleAuthError,
 } from "@/lib/auth";
+import { scopeQuery } from "@/lib/tenant-context";
+import { computeJsonHash } from "@/lib/versioning";
 
 // POST - Schedule an interview for a candidate
 export async function POST(request: NextRequest) {
@@ -89,7 +92,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Create interview
+    // Create interview with tenant scoping
     const interview = await prisma.interview.create({
       data: {
         candidateId,
@@ -101,6 +104,8 @@ export async function POST(request: NextRequest) {
         jobId: jobId || undefined,
         isPractice,
         interviewPlan: interviewPlan as any,
+        interviewPlanVersion: interviewPlan ? computeJsonHash(interviewPlan) : undefined,
+        companyId: recruiter.companyId || undefined,
       },
       include: {
         candidate: {
@@ -154,7 +159,7 @@ export async function GET(request: NextRequest) {
 
     const where: any = {};
 
-    // Recruiters: only see interviews they scheduled
+    // Recruiters: only see interviews they scheduled, scoped by tenant
     if (profile.role === "recruiter") {
       const recruiter = await getRecruiterForUser(
         user.id,
@@ -162,6 +167,11 @@ export async function GET(request: NextRequest) {
         `${profile.first_name} ${profile.last_name}`
       );
       where.scheduledBy = recruiter.id;
+
+      // Apply tenant isolation — only see interviews belonging to their company
+      if (recruiter.companyId) {
+        where.companyId = recruiter.companyId;
+      }
     }
 
     if (status) {

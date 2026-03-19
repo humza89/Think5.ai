@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
-import { generateInterviewReport } from "@/lib/gemini";
+import { generateInterviewReport, SCORER_MODEL_VERSION, getScorerPromptHash } from "@/lib/gemini";
+import { getSkillModulesHash } from "@/lib/skill-modules";
 import { sendReportReadyEmail } from "@/lib/email/report-ready";
 import { sendCandidateFeedbackEmail } from "@/lib/email/candidate-feedback";
 
@@ -71,6 +72,9 @@ export async function generateReportInBackground(
       overallScore: reportData.overallScore,
       integrityScore: reportData.integrityScore,
       integrityFlags: reportData.integrityFlags,
+      scorerModelVersion: SCORER_MODEL_VERSION,
+      scorerPromptVersion: getScorerPromptHash(),
+      rubricVersion: getSkillModulesHash(),
     },
   });
 

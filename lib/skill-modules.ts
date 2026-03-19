@@ -6,6 +6,8 @@
  * Recruiters can customize module selection per job template.
  */
 
+import { computeJsonHash } from "./versioning";
+
 // ── Types ──────────────────────────────────────────────────────────────
 
 export interface SkillModuleDefinition {
@@ -429,6 +431,13 @@ export const DEFAULT_SKILL_MODULES: SkillModuleDefinition[] = [
 ];
 
 // ── Helpers ────────────────────────────────────────────────────────────
+
+/**
+ * Returns the SHA-256 hash of the DEFAULT_SKILL_MODULES array.
+ */
+export function getSkillModulesHash(): string {
+  return computeJsonHash(DEFAULT_SKILL_MODULES);
+}
 
 /**
  * Get modules by category for template composition.

@@ -2,6 +2,17 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 
+export type ProctoringTier = "none" | "light" | "strict";
+export type PastePolicy = "allow" | "warn" | "block";
+export type CopyPolicy = "allow" | "warn" | "block";
+
+export interface ProctoringConfig {
+  tier: ProctoringTier;
+  pastePolicy?: PastePolicy;
+  copyPolicy?: CopyPolicy;
+  maxPasteWarnings?: number;
+}
+
 interface IntegrityEvent {
   type:
     | "tab_switch"
@@ -25,24 +36,39 @@ interface UseProctoringReturn {
   tabSwitches: number;
   focusLostCount: number;
   pasteBlocked: boolean;
+  pasteWarningCount: number;
   isFullscreen: boolean;
   requestWebcam: () => Promise<boolean>;
   stopWebcam: () => void;
   isMonitoring: boolean;
   startMonitoring: () => void;
   requestFullscreen: () => Promise<void>;
+  tier: ProctoringTier;
 }
 
-export function useProctoring(): UseProctoringReturn {
+const DEFAULT_CONFIG: ProctoringConfig = {
+  tier: "strict",
+  pastePolicy: "block",
+  copyPolicy: "warn",
+  maxPasteWarnings: 3,
+};
+
+export function useProctoring(
+  config: ProctoringConfig = DEFAULT_CONFIG
+): UseProctoringReturn {
+  const { tier, pastePolicy = "block", copyPolicy = "warn", maxPasteWarnings = 3 } = config;
+
   const [integrityEvents, setIntegrityEvents] = useState<IntegrityEvent[]>([]);
   const [webcamActive, setWebcamActive] = useState(false);
   const [webcamStream, setWebcamStream] = useState<MediaStream | null>(null);
   const [tabSwitches, setTabSwitches] = useState(0);
   const [focusLostCount, setFocusLostCount] = useState(0);
   const [pasteBlocked, setPasteBlocked] = useState(false);
+  const [pasteWarningCount, setPasteWarningCount] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isMonitoring, setIsMonitoring] = useState(false);
   const streamRef = useRef<MediaStream | null>(null);
+  const pasteWarningCountRef = useRef(0);
 
   const addEvent = useCallback(
     (type: IntegrityEvent["type"], description: string) => {
@@ -56,9 +82,17 @@ export function useProctoring(): UseProctoringReturn {
     []
   );
 
-  // B1: Page Visibility API — tab switch detection
+  // Determine effective paste policy (escalate after max warnings)
+  const getEffectivePastePolicy = useCallback((): PastePolicy => {
+    if (pastePolicy === "warn" && pasteWarningCountRef.current >= maxPasteWarnings) {
+      return "block";
+    }
+    return pastePolicy;
+  }, [pastePolicy, maxPasteWarnings]);
+
+  // Tab switch detection — available in light + strict tiers
   useEffect(() => {
-    if (!isMonitoring) return;
+    if (!isMonitoring || tier === "none") return;
 
     const handleVisibilityChange = () => {
       if (document.hidden) {
@@ -71,11 +105,11 @@ export function useProctoring(): UseProctoringReturn {
     return () => {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [isMonitoring, addEvent]);
+  }, [isMonitoring, tier, addEvent]);
 
-  // Window blur — focus lost tracking
+  // Window blur — available in light + strict tiers
   useEffect(() => {
-    if (!isMonitoring) return;
+    if (!isMonitoring || tier === "none") return;
 
     const handleBlur = () => {
       setFocusLostCount((prev) => prev + 1);
@@ -86,21 +120,43 @@ export function useProctoring(): UseProctoringReturn {
     return () => {
       window.removeEventListener("blur", handleBlur);
     };
-  }, [isMonitoring, addEvent]);
+  }, [isMonitoring, tier, addEvent]);
 
-  // B1: Copy-paste detection — block paste, log both
+  // Copy-paste detection — strict tier only (configurable policy)
   useEffect(() => {
-    if (!isMonitoring) return;
+    if (!isMonitoring || tier !== "strict") return;
 
     const handlePaste = (e: ClipboardEvent) => {
-      e.preventDefault();
-      setPasteBlocked(true);
-      addEvent("paste_detected", "Paste attempt blocked during interview");
-      setTimeout(() => setPasteBlocked(false), 3000);
+      const effectivePolicy = getEffectivePastePolicy();
+
+      if (effectivePolicy === "allow") return;
+
+      if (effectivePolicy === "block") {
+        e.preventDefault();
+        setPasteBlocked(true);
+        addEvent("paste_detected", "Paste attempt blocked during interview");
+        setTimeout(() => setPasteBlocked(false), 3000);
+      } else if (effectivePolicy === "warn") {
+        // Allow the paste but log and warn
+        pasteWarningCountRef.current += 1;
+        setPasteWarningCount(pasteWarningCountRef.current);
+        setPasteBlocked(true);
+        addEvent(
+          "paste_detected",
+          `Paste detected (warning ${pasteWarningCountRef.current}/${maxPasteWarnings})`
+        );
+        setTimeout(() => setPasteBlocked(false), 3000);
+      }
     };
 
     const handleCopy = () => {
-      addEvent("copy_detected", "Candidate copied text during interview");
+      if (copyPolicy === "allow") return;
+      if (copyPolicy === "block") {
+        // Log but don't prevent — blocking copy is too aggressive
+        addEvent("copy_detected", "Candidate copied text during interview");
+      } else {
+        addEvent("copy_detected", "Candidate copied text during interview");
+      }
     };
 
     document.addEventListener("paste", handlePaste);
@@ -109,11 +165,11 @@ export function useProctoring(): UseProctoringReturn {
       document.removeEventListener("paste", handlePaste);
       document.removeEventListener("copy", handleCopy);
     };
-  }, [isMonitoring, addEvent]);
+  }, [isMonitoring, tier, getEffectivePastePolicy, copyPolicy, maxPasteWarnings, addEvent]);
 
-  // B2: Right-click blocking
+  // Right-click blocking — strict tier only
   useEffect(() => {
-    if (!isMonitoring) return;
+    if (!isMonitoring || tier !== "strict") return;
 
     const handleContextMenu = (e: MouseEvent) => {
       e.preventDefault();
@@ -124,11 +180,11 @@ export function useProctoring(): UseProctoringReturn {
     return () => {
       document.removeEventListener("contextmenu", handleContextMenu);
     };
-  }, [isMonitoring, addEvent]);
+  }, [isMonitoring, tier, addEvent]);
 
-  // B3: Keyboard shortcut monitoring
+  // Keyboard shortcut monitoring — strict tier only
   useEffect(() => {
-    if (!isMonitoring) return;
+    if (!isMonitoring || tier !== "strict") return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
       const ctrl = e.ctrlKey || e.metaKey;
@@ -139,19 +195,28 @@ export function useProctoring(): UseProctoringReturn {
         e.key === "F12"
       ) {
         e.preventDefault();
-        addEvent(
-          "devtools_attempt",
-          `DevTools shortcut detected: ${e.key}`
-        );
+        addEvent("devtools_attempt", `DevTools shortcut detected: ${e.key}`);
         return;
       }
 
       // Detect Ctrl+V (paste via keyboard)
       if (ctrl && (e.key === "v" || e.key === "V")) {
-        e.preventDefault();
-        setPasteBlocked(true);
-        addEvent("keyboard_shortcut", "Ctrl+V paste shortcut blocked");
-        setTimeout(() => setPasteBlocked(false), 3000);
+        const effectivePolicy = getEffectivePastePolicy();
+        if (effectivePolicy === "block") {
+          e.preventDefault();
+          setPasteBlocked(true);
+          addEvent("keyboard_shortcut", "Ctrl+V paste shortcut blocked");
+          setTimeout(() => setPasteBlocked(false), 3000);
+        } else if (effectivePolicy === "warn") {
+          pasteWarningCountRef.current += 1;
+          setPasteWarningCount(pasteWarningCountRef.current);
+          setPasteBlocked(true);
+          addEvent(
+            "keyboard_shortcut",
+            `Ctrl+V paste detected (warning ${pasteWarningCountRef.current}/${maxPasteWarnings})`
+          );
+          setTimeout(() => setPasteBlocked(false), 3000);
+        }
         return;
       }
 
@@ -165,11 +230,11 @@ export function useProctoring(): UseProctoringReturn {
     return () => {
       document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [isMonitoring, addEvent]);
+  }, [isMonitoring, tier, getEffectivePastePolicy, maxPasteWarnings, addEvent]);
 
-  // B4: Fullscreen tracking
+  // Fullscreen tracking — strict tier only
   useEffect(() => {
-    if (!isMonitoring) return;
+    if (!isMonitoring || tier !== "strict") return;
 
     const handleFullscreenChange = () => {
       const isNowFullscreen = !!document.fullscreenElement;
@@ -183,18 +248,20 @@ export function useProctoring(): UseProctoringReturn {
     return () => {
       document.removeEventListener("fullscreenchange", handleFullscreenChange);
     };
-  }, [isMonitoring, addEvent]);
+  }, [isMonitoring, tier, addEvent]);
 
   const requestFullscreen = useCallback(async () => {
+    if (tier !== "strict") return;
     try {
       await document.documentElement.requestFullscreen();
       setIsFullscreen(true);
     } catch {
       // Fullscreen not supported or denied — non-blocking
     }
-  }, []);
+  }, [tier]);
 
   const requestWebcam = useCallback(async (): Promise<boolean> => {
+    if (tier === "none") return true; // No webcam needed
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: true });
       streamRef.current = stream;
@@ -215,7 +282,7 @@ export function useProctoring(): UseProctoringReturn {
       addEvent("webcam_denied", "Candidate denied webcam access");
       return false;
     }
-  }, [addEvent]);
+  }, [tier, addEvent]);
 
   const stopWebcam = useCallback(() => {
     if (streamRef.current) {
@@ -227,8 +294,9 @@ export function useProctoring(): UseProctoringReturn {
   }, []);
 
   const startMonitoring = useCallback(() => {
+    if (tier === "none") return;
     setIsMonitoring(true);
-  }, []);
+  }, [tier]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -246,11 +314,13 @@ export function useProctoring(): UseProctoringReturn {
     tabSwitches,
     focusLostCount,
     pasteBlocked,
+    pasteWarningCount,
     isFullscreen,
     requestWebcam,
     stopWebcam,
     isMonitoring,
     startMonitoring,
     requestFullscreen,
+    tier,
   };
 }

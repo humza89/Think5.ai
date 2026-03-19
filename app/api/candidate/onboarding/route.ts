@@ -6,6 +6,7 @@ import {
   AuthError,
 } from "@/lib/auth";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
+import { computeCandidateRiskSignals } from "@/lib/admin-risk-scoring";
 
 // Month name/abbreviation → number mapping
 const MONTH_MAP: Record<string, number> = {
@@ -505,6 +506,17 @@ export async function PATCH(req: NextRequest) {
             },
           });
         }
+
+        // Compute risk signals and persist on candidate
+        const riskSignals = await computeCandidateRiskSignals(candidate.id);
+        await prisma.candidate.update({
+          where: { id: candidate.id },
+          data: {
+            riskScore: riskSignals.riskScore,
+            riskFlags: riskSignals.riskFlags,
+            profileCompleteness: riskSignals.profileCompleteness,
+          },
+        });
 
         // Sync onboarding_status to Supabase profiles for proxy-level gating
         const adminSupabase = (await import("@/lib/supabase-server")).createSupabaseAdminClient;

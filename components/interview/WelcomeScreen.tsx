@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Video,
@@ -18,7 +19,7 @@ interface WelcomeScreenProps {
   interviewType: string;
   webcamActive: boolean;
   onRequestWebcam: () => void;
-  onStart: () => void;
+  onStart: (consent: { consentRecording: boolean; consentProctoring: boolean }) => void;
   isStarting: boolean;
 }
 
@@ -30,6 +31,11 @@ export function WelcomeScreen({
   onStart,
   isStarting,
 }: WelcomeScreenProps) {
+  const [consentRecording, setConsentRecording] = useState<boolean>(false);
+  const [consentProctoring, setConsentProctoring] = useState<boolean>(false);
+  const [consentPrivacy, setConsentPrivacy] = useState<boolean>(false);
+
+  const allConsented = consentRecording && consentProctoring && consentPrivacy;
   const typeLabel = interviewType
     .replace(/_/g, " ")
     .replace(/\b\w/g, (c) => c.toUpperCase());
@@ -163,11 +169,52 @@ export function WelcomeScreen({
           </div>
         </div>
 
+        {/* Recording Consent */}
+        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 mb-6 space-y-4">
+          <h3 className="text-zinc-200 font-medium mb-1 flex items-center gap-2">
+            <ShieldCheck className="w-4 h-4 text-violet-400" />
+            Consent &amp; Acknowledgements
+          </h3>
+          <label className="flex items-start gap-3 cursor-pointer group">
+            <input
+              type="checkbox"
+              checked={consentRecording}
+              onChange={(e) => setConsentRecording(e.target.checked)}
+              className="mt-0.5 h-4 w-4 rounded border-zinc-600 bg-zinc-800 text-violet-600 focus:ring-violet-500 focus:ring-offset-0 accent-violet-600"
+            />
+            <span className="text-sm text-zinc-400 group-hover:text-zinc-300 transition-colors">
+              I consent to being recorded (video and audio) during this interview
+            </span>
+          </label>
+          <label className="flex items-start gap-3 cursor-pointer group">
+            <input
+              type="checkbox"
+              checked={consentProctoring}
+              onChange={(e) => setConsentProctoring(e.target.checked)}
+              className="mt-0.5 h-4 w-4 rounded border-zinc-600 bg-zinc-800 text-violet-600 focus:ring-violet-500 focus:ring-offset-0 accent-violet-600"
+            />
+            <span className="text-sm text-zinc-400 group-hover:text-zinc-300 transition-colors">
+              I consent to webcam and screen activity monitoring for integrity purposes
+            </span>
+          </label>
+          <label className="flex items-start gap-3 cursor-pointer group">
+            <input
+              type="checkbox"
+              checked={consentPrivacy}
+              onChange={(e) => setConsentPrivacy(e.target.checked)}
+              className="mt-0.5 h-4 w-4 rounded border-zinc-600 bg-zinc-800 text-violet-600 focus:ring-violet-500 focus:ring-offset-0 accent-violet-600"
+            />
+            <span className="text-sm text-zinc-400 group-hover:text-zinc-300 transition-colors">
+              I have read and agree to the Privacy Policy
+            </span>
+          </label>
+        </div>
+
         {/* Start button */}
         <Button
-          onClick={onStart}
-          disabled={isStarting}
-          className="w-full h-12 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 text-white font-semibold text-base"
+          onClick={() => onStart({ consentRecording, consentProctoring })}
+          disabled={isStarting || !allConsented}
+          className="w-full h-12 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 text-white font-semibold text-base disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {isStarting ? (
             <span className="flex items-center gap-2">

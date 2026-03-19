@@ -498,7 +498,10 @@ export function OnboardingWizard({
           Back
         </Button>
 
-        <Button onClick={handleNext} disabled={isSaving}>
+        <Button
+          onClick={handleNext}
+          disabled={isSaving || (currentStep === 2 && !data.resume.fileUrl)}
+        >
           {isSaving ? (
             <>
               <Loader2 className="mr-1 h-4 w-4 animate-spin" />

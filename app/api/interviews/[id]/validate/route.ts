@@ -8,7 +8,7 @@ export async function POST(
   try {
     const { id } = await params;
     const body = await request.json();
-    const { accessToken } = body;
+    const { accessToken, consentRecording, consentProctoring } = body;
 
     if (!accessToken) {
       return NextResponse.json(
@@ -27,6 +27,15 @@ export async function POST(
             currentTitle: true,
             profileImage: true,
           },
+        },
+        template: {
+          select: {
+            aiConfig: true,
+            durationMinutes: true,
+          },
+        },
+        job: {
+          select: { title: true },
         },
       },
     });
@@ -70,6 +79,21 @@ export async function POST(
       );
     }
 
+    // Persist recording consent if provided
+    if (consentRecording !== undefined || consentProctoring !== undefined) {
+      await prisma.interview.update({
+        where: { id },
+        data: {
+          ...(consentRecording !== undefined && { consentRecording }),
+          ...(consentProctoring !== undefined && { consentProctoring }),
+          consentedAt: new Date(),
+        },
+      });
+    }
+
+    // Extract proctoring config from template aiConfig
+    const aiConfig = (interview.template?.aiConfig as Record<string, unknown>) || {};
+
     return NextResponse.json({
       id: interview.id,
       type: interview.type,
@@ -78,7 +102,15 @@ export async function POST(
       candidateTitle: interview.candidate.currentTitle,
       candidateImage: interview.candidate.profileImage,
       hasTranscript: !!interview.transcript,
-      duration: 30, // estimated minutes
+      duration: interview.template?.durationMinutes || 30,
+      voiceProvider: interview.voiceProvider,
+      jobTitle: interview.job?.title || null,
+      durationMinutes: interview.template?.durationMinutes || 30,
+      isPractice: interview.isPractice,
+      // Proctoring config from template
+      proctoringLevel: aiConfig.proctoringLevel || "strict",
+      pastePolicy: aiConfig.pastePolicy || "block",
+      maxPasteWarnings: aiConfig.maxPasteWarnings || 3,
       // Include transcript for message restoration on resume
       ...(interview.status === "IN_PROGRESS" && interview.transcript
         ? { transcript: interview.transcript }

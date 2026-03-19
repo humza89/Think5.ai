@@ -83,6 +83,11 @@ export async function GET(request: NextRequest) {
             rejectionReason: true,
             approvedAt: true,
             approvedBy: true,
+            riskScore: true,
+            riskFlags: true,
+            linkedinConsistencyScore: true,
+            linkedinConsistencyFlags: true,
+            profileCompleteness: true,
             createdAt: true,
             updatedAt: true,
             _count: {

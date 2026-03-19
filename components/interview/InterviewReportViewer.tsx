@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -71,6 +71,7 @@ interface InterviewReportViewerProps {
   transcript: TranscriptEntry[] | null;
   integrityEvents: IntegrityEvent[] | null;
   interviewId?: string; // Optional — only needed for share functionality
+  recordingUrl?: string;
 }
 
 export function InterviewReportViewer({
@@ -82,9 +83,28 @@ export function InterviewReportViewer({
   transcript,
   integrityEvents,
   interviewId,
+  recordingUrl,
 }: InterviewReportViewerProps) {
   const [shareLoading, setShareLoading] = useState(false);
   const [shareUrl, setShareUrl] = useState<string | null>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [currentTime, setCurrentTime] = useState(0);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    const handleTimeUpdate = () => setCurrentTime(video.currentTime);
+    video.addEventListener("timeupdate", handleTimeUpdate);
+    return () => video.removeEventListener("timeupdate", handleTimeUpdate);
+  }, [recordingUrl]);
+
+  const seekToTimestamp = useCallback((seconds: number) => {
+    const video = videoRef.current;
+    if (video) {
+      video.currentTime = seconds;
+      video.play();
+    }
+  }, []);
 
   const handleShare = async () => {
     if (!interviewId) return;
@@ -362,9 +382,31 @@ export function InterviewReportViewer({
         </Card>
       )}
 
-      {/* Transcript */}
+      {/* Video + Transcript */}
       {transcript && transcript.length > 0 && (
-        <TranscriptSection transcript={transcript} />
+        recordingUrl ? (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="lg:sticky lg:top-6 lg:self-start">
+              <Card>
+                <CardContent className="p-4">
+                  <video
+                    ref={videoRef}
+                    src={recordingUrl}
+                    controls
+                    className="w-full rounded-lg"
+                  />
+                </CardContent>
+              </Card>
+            </div>
+            <TranscriptSection
+              transcript={transcript}
+              currentTime={currentTime}
+              onTimestampClick={seekToTimestamp}
+            />
+          </div>
+        ) : (
+          <TranscriptSection transcript={transcript} />
+        )
       )}
     </div>
   );
@@ -434,12 +476,71 @@ function SkillCard({ skill }: { skill: SkillRating }) {
   );
 }
 
+/**
+ * Parse a timestamp string into total seconds.
+ * Supports "MM:SS", "HH:MM:SS", or ISO date strings (extracts time-of-day offset from first entry).
+ */
+function parseTimestampToSeconds(timestamp: string): number {
+  // Handle "MM:SS" or "HH:MM:SS" format
+  const colonParts = timestamp.match(/^(\d+):(\d+)(?::(\d+))?$/);
+  if (colonParts) {
+    if (colonParts[3] !== undefined) {
+      // HH:MM:SS
+      return (
+        parseInt(colonParts[1], 10) * 3600 +
+        parseInt(colonParts[2], 10) * 60 +
+        parseInt(colonParts[3], 10)
+      );
+    }
+    // MM:SS
+    return parseInt(colonParts[1], 10) * 60 + parseInt(colonParts[2], 10);
+  }
+
+  // Try parsing as a date and extract seconds from midnight
+  const date = new Date(timestamp);
+  if (!isNaN(date.getTime())) {
+    return date.getHours() * 3600 + date.getMinutes() * 60 + date.getSeconds();
+  }
+
+  return 0;
+}
+
 function TranscriptSection({
   transcript,
+  currentTime,
+  onTimestampClick,
 }: {
   transcript: TranscriptEntry[];
+  currentTime?: number;
+  onTimestampClick?: (seconds: number) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const activeRef = useRef<HTMLDivElement>(null);
+
+  // Determine which entry is currently active based on video time
+  const activeIndex =
+    currentTime != null
+      ? (() => {
+          let active = -1;
+          for (let i = 0; i < transcript.length; i++) {
+            const ts = transcript[i].timestamp;
+            if (!ts) continue;
+            const sec = parseTimestampToSeconds(ts);
+            if (sec <= currentTime) active = i;
+            else break;
+          }
+          return active;
+        })()
+      : -1;
+
+  // Auto-scroll to active entry
+  useEffect(() => {
+    if (activeRef.current) {
+      activeRef.current.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+  }, [activeIndex]);
+
+  const hasVideo = onTimestampClick != null;
 
   return (
     <Card>
@@ -469,46 +570,66 @@ function TranscriptSection({
       {expanded && (
         <CardContent>
           <div className="space-y-4 max-h-[600px] overflow-y-auto">
-            {transcript.map((entry, i) => (
-              <div
-                key={i}
-                className={`flex gap-3 ${
-                  entry.role === "interviewer" ? "" : "justify-end"
-                }`}
-              >
-                {entry.role === "interviewer" && (
-                  <div className="w-8 h-8 rounded-full bg-violet-100 flex-shrink-0 flex items-center justify-center">
-                    <span className="text-violet-600 font-bold text-xs">
-                      A
-                    </span>
-                  </div>
-                )}
+            {transcript.map((entry, i) => {
+              const isActive = i === activeIndex;
+              return (
                 <div
-                  className={`max-w-[75%] ${
-                    entry.role === "interviewer"
-                      ? "bg-gray-50 border"
-                      : "bg-blue-50 border border-blue-100"
-                  } rounded-lg px-4 py-3`}
+                  key={i}
+                  ref={isActive ? activeRef : undefined}
+                  className={`flex gap-3 ${
+                    entry.role === "interviewer" ? "" : "justify-end"
+                  }`}
                 >
-                  <p className="text-sm text-gray-700 whitespace-pre-wrap">
-                    {entry.content}
-                  </p>
-                  {entry.timestamp && (
-                    <span className="text-xs text-gray-400 mt-1 block">
-                      {new Date(entry.timestamp).toLocaleTimeString([], {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
-                    </span>
+                  {entry.role === "interviewer" && (
+                    <div className="w-8 h-8 rounded-full bg-violet-100 flex-shrink-0 flex items-center justify-center">
+                      <span className="text-violet-600 font-bold text-xs">
+                        A
+                      </span>
+                    </div>
+                  )}
+                  <div
+                    className={`max-w-[75%] rounded-lg px-4 py-3 transition-colors duration-200 ${
+                      isActive
+                        ? "bg-blue-50 border-2 border-blue-300 shadow-sm"
+                        : entry.role === "interviewer"
+                          ? "bg-gray-50 border"
+                          : "bg-blue-50 border border-blue-100"
+                    }`}
+                  >
+                    <p className="text-sm text-gray-700 whitespace-pre-wrap">
+                      {entry.content}
+                    </p>
+                    {entry.timestamp && (
+                      <span
+                        className={`text-xs mt-1 block ${
+                          hasVideo
+                            ? "text-blue-500 hover:text-blue-700 cursor-pointer hover:underline"
+                            : "text-gray-400"
+                        }`}
+                        onClick={
+                          hasVideo && entry.timestamp
+                            ? () =>
+                                onTimestampClick(
+                                  parseTimestampToSeconds(entry.timestamp!)
+                                )
+                            : undefined
+                        }
+                      >
+                        {new Date(entry.timestamp).toLocaleTimeString([], {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </span>
+                    )}
+                  </div>
+                  {entry.role === "candidate" && (
+                    <div className="w-8 h-8 rounded-full bg-blue-100 flex-shrink-0 flex items-center justify-center">
+                      <span className="text-blue-600 font-bold text-xs">C</span>
+                    </div>
                   )}
                 </div>
-                {entry.role === "candidate" && (
-                  <div className="w-8 h-8 rounded-full bg-blue-100 flex-shrink-0 flex items-center justify-center">
-                    <span className="text-blue-600 font-bold text-xs">C</span>
-                  </div>
-                )}
-              </div>
-            ))}
+              );
+            })}
           </div>
         </CardContent>
       )}

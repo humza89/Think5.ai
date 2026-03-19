@@ -27,6 +27,7 @@ import {
   WifiOff,
   AlertTriangle,
   Maximize2,
+  Monitor,
   Volume2,
   VolumeX,
 } from "lucide-react";
@@ -68,6 +69,13 @@ export function VoiceInterviewRoom({
   // Recording
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recordedChunksRef = useRef<number>(0);
+
+  // Screen share
+  const [screenShareActive, setScreenShareActive] = useState(false);
+  const [screenStream, setScreenStream] = useState<MediaStream | null>(null);
+  const screenRecorderRef = useRef<MediaRecorder | null>(null);
+  const screenChunksRef = useRef<number>(0);
+  const screenVideoRef = useRef<HTMLVideoElement>(null);
 
   // UI states
   const [textInput, setTextInput] = useState("");
@@ -195,12 +203,15 @@ export function VoiceInterviewRoom({
 
   // ── Recording Upload ─────────────────────────────────────────────
 
-  const uploadChunk = async (blob: Blob, index: number) => {
+  const uploadChunk = async (blob: Blob, index: number, type?: string) => {
     try {
       const formData = new FormData();
       formData.append("chunk", blob);
       formData.append("chunkIndex", String(index));
       formData.append("accessToken", accessToken);
+      if (type) {
+        formData.append("type", type);
+      }
 
       await fetch(`/api/interviews/${interviewId}/recording`, {
         method: "POST",
@@ -216,7 +227,18 @@ export function VoiceInterviewRoom({
       mediaRecorderRef.current.stop();
     }
 
+    // Also stop screen recording if active
+    if (screenRecorderRef.current?.state === "recording") {
+      screenRecorderRef.current.stop();
+    }
+    if (screenStream) {
+      screenStream.getTracks().forEach((track) => track.stop());
+      setScreenStream(null);
+      setScreenShareActive(false);
+    }
+
     try {
+      // Finalize webcam recording
       await fetch(`/api/interviews/${interviewId}/recording`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -227,10 +249,84 @@ export function VoiceInterviewRoom({
           durationSeconds: durationMinutes * 60 - timeLeft,
         }),
       });
+
+      // Finalize screen recording if there were chunks
+      if (screenChunksRef.current > 0) {
+        await fetch(`/api/interviews/${interviewId}/recording`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "finalize",
+            type: "screen",
+            totalChunks: screenChunksRef.current,
+            format: "webm",
+            durationSeconds: durationMinutes * 60 - timeLeft,
+          }),
+        });
+      }
     } catch {
       // Silent fail
     }
   };
+
+  // ── Screen Share ─────────────────────────────────────────────────
+
+  const startScreenShare = async () => {
+    try {
+      const displayStream = await navigator.mediaDevices.getDisplayMedia({
+        video: true,
+        audio: true,
+      });
+
+      setScreenStream(displayStream);
+      setScreenShareActive(true);
+
+      if (screenVideoRef.current) {
+        screenVideoRef.current.srcObject = displayStream;
+      }
+
+      // Start recording the screen stream
+      let recorder: MediaRecorder;
+      try {
+        recorder = new MediaRecorder(displayStream, {
+          mimeType: "video/webm;codecs=vp9",
+        });
+      } catch {
+        recorder = new MediaRecorder(displayStream);
+      }
+
+      screenRecorderRef.current = recorder;
+      screenChunksRef.current = 0;
+
+      recorder.ondataavailable = async (event) => {
+        if (event.data.size > 0) {
+          await uploadChunk(event.data, screenChunksRef.current, "screen");
+          screenChunksRef.current++;
+        }
+      };
+
+      recorder.start(2000); // 2-second chunks
+
+      // Handle user stopping share via browser UI
+      displayStream.getVideoTracks()[0].addEventListener("ended", () => {
+        stopScreenShare();
+      });
+    } catch {
+      toast.error("Could not start screen share. Please check permissions.");
+    }
+  };
+
+  const stopScreenShare = useCallback(() => {
+    if (screenRecorderRef.current?.state === "recording") {
+      screenRecorderRef.current.stop();
+    }
+    if (screenStream) {
+      screenStream.getTracks().forEach((track) => track.stop());
+    }
+    setScreenStream(null);
+    setScreenShareActive(false);
+    screenRecorderRef.current = null;
+  }, [screenStream]);
 
   // ── Camera Toggle ────────────────────────────────────────────────
 
@@ -462,6 +558,26 @@ export function VoiceInterviewRoom({
                   {candidateName}
                 </Badge>
               </div>
+
+              {/* Screen share preview */}
+              {screenShareActive && (
+                <div className="absolute bottom-2 right-2 w-48 overflow-hidden rounded-lg border border-primary/50 shadow-lg">
+                  <video
+                    ref={screenVideoRef}
+                    autoPlay
+                    playsInline
+                    muted
+                    className="h-full w-full object-contain bg-black"
+                  />
+                  <Badge
+                    variant="secondary"
+                    className="absolute top-1 left-1 text-[10px] gap-1"
+                  >
+                    <Monitor className="h-2.5 w-2.5" />
+                    Screen
+                  </Badge>
+                </div>
+              )}
             </div>
           </div>
 
@@ -491,6 +607,16 @@ export function VoiceInterviewRoom({
               ) : (
                 <VideoOff className="h-5 w-5" />
               )}
+            </Button>
+
+            <Button
+              variant={screenShareActive ? "default" : "secondary"}
+              size="icon"
+              className="h-12 w-12 rounded-full"
+              onClick={screenShareActive ? stopScreenShare : startScreenShare}
+              title={screenShareActive ? "Stop screen share" : "Share screen"}
+            >
+              <Monitor className="h-5 w-5" />
             </Button>
 
             <Button

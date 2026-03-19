@@ -230,6 +230,16 @@ model Candidate {
   invitationSource      String?          // "self_signup" | "recruiter_invited"
   profileCompleteness   Float?
 
+  // Quality signals (admin approval intelligence)
+  riskScore               Float?
+  riskFlags               Json?           // [{type, severity, message}]
+  linkedinConsistencyScore Float?         // 0-100
+  linkedinConsistencyFlags Json?          // [{field, resumeValue, linkedinValue, severity}]
+
+  // Bias audit (AEDT compliance)
+  demographicData         Json?           // Self-reported, optional
+  demographicConsentGiven Boolean         @default(false)
+
   // Candidate preferences & compliance
   visaStatus            String?
   preferredTitles       String[]         @default([])
@@ -305,6 +315,8 @@ model Client {
   recruiters       Recruiter[]
   interviewTemplates InterviewTemplate[]
   teamInvitations  TeamInvitation[]
+  interviews       Interview[]
+  ssoConfig        SSOConfig?
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 }
@@ -490,6 +502,22 @@ model Interview {
   // Proctoring events collected during interview
   integrityEvents Json?             // [{type, description, timestamp}]
 
+  // Recording consent (compliance)
+  consentRecording    Boolean       @default(false)
+  consentProctoring   Boolean       @default(false)
+  consentedAt         DateTime?
+
+  // Versioning (audit trail)
+  interviewPlanVersion String?      // SHA-256 hash of the generated plan
+
+  // Screen share recording
+  screenRecordingUrl  String?
+  screenRecordingSize Int?
+
+  // Multi-tenant
+  companyId           String?
+  company             Client?       @relation(fields: [companyId], references: [id], onDelete: SetNull)
+
   // Detailed report (1:1)
   report          InterviewReport?
 
@@ -540,6 +568,11 @@ model InterviewReport {
   // Integrity / proctoring
   integrityScore  Float?
   integrityFlags  Json?               // [{type, description, timestamp}]
+
+  // Model/rubric versioning (audit trail)
+  scorerModelVersion  String?   // e.g. "gemini-1.5-pro-001"
+  scorerPromptVersion String?   // SHA-256 hash of scoring prompt
+  rubricVersion       String?   // SHA-256 hash of rubric JSON used
 
   // Shareable report link (F2)
   shareToken      String?   @unique
@@ -989,4 +1022,35 @@ model TeamInvitation {
   @@index([companyId])
   @@index([token])
   @@index([status])
+}
+
+// ============================================
+// Enterprise: Data Retention & SSO
+// ============================================
+
+model RetentionPolicy {
+  id                String   @id @default(uuid())
+  name              String
+  recordingDays     Int      @default(90)
+  transcriptDays    Int      @default(365)
+  candidateDataDays Int      @default(730)
+  isDefault         Boolean  @default(false)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+model SSOConfig {
+  id          String   @id @default(uuid())
+  companyId   String   @unique
+  company     Client   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  provider    String   // "saml" | "oidc"
+  metadataUrl String?
+  entityId    String?
+  certificate String?  @db.Text
+  domain      String   // email domain for auto-routing
+  enabled     Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([domain])
 }
