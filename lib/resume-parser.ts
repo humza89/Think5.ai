@@ -5,8 +5,9 @@ export async function parseResumeFile(
   mimeType: string
 ): Promise<string> {
   if (mimeType === "application/pdf") {
-    // Use pdf-parse (pure Node.js — works on Vercel serverless)
-    const pdfParseModule = await import("pdf-parse");
+    // Import pdf-parse internals directly to skip index.js test-file guard
+    // (index.js tries to read ./test/data/05-versions-space.pdf on import)
+    const pdfParseModule = await import("pdf-parse/lib/pdf-parse.js");
     const pdfParse = (pdfParseModule as Record<string, unknown>).default || pdfParseModule;
     const result = await (pdfParse as (buf: Buffer) => Promise<{ text: string }>)(buffer);
     return result.text;
