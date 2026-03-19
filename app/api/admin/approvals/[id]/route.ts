@@ -9,6 +9,7 @@ import {
   sendHoldEmail,
 } from "@/lib/email/resend";
 import type { OnboardingStatus, RecruiterOnboardingStatus } from "@prisma/client";
+import type { OnboardingStatusValue } from "@/types/supabase";
 
 const ACTION_TO_CANDIDATE_STATUS: Record<string, OnboardingStatus> = {
   approved: "APPROVED",
@@ -131,14 +132,15 @@ export async function PATCH(
     // Sync onboarding_status to Supabase profiles for proxy-level gating
     if (candidate.email) {
       const supabaseAdmin = await createSupabaseAdminClient();
-      const statusMap: Record<string, string> = {
+      const statusMap: Record<string, OnboardingStatusValue> = {
         APPROVED: "approved",
         REJECTED: "rejected",
         ON_HOLD: "on_hold",
       };
+      const mappedStatus = statusMap[newStatus] ?? (newStatus.toLowerCase() as OnboardingStatusValue);
       await supabaseAdmin
         .from("profiles")
-        .update({ onboarding_status: statusMap[newStatus] || newStatus.toLowerCase() })
+        .update({ onboarding_status: mappedStatus })
         .eq("email", candidate.email);
     }
 

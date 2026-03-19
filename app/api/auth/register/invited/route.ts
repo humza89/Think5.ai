@@ -124,6 +124,8 @@ export async function POST(request: NextRequest) {
           role: 'candidate',
           avatar_url: null,
           email_verified: true,
+          onboarding_status: 'not_started',
+          account_status: 'active',
         });
     }
 

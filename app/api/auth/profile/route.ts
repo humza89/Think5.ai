@@ -38,6 +38,8 @@ export async function GET() {
           role: meta.role || "candidate",
           email_verified: !!user.email_confirmed_at,
           avatar_url: meta.avatar_url || null,
+          onboarding_status: "not_started",
+          account_status: "active",
         })
         .select("*")
         .single();

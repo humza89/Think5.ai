@@ -146,6 +146,8 @@ export async function POST(request: NextRequest) {
           role,
           avatar_url: null,
           email_verified: false,
+          onboarding_status: 'not_started',
+          account_status: 'active',
         });
       profileError = insertError;
       if (insertError) console.error('Profile insert failed:', insertError);
