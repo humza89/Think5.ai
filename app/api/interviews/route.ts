@@ -9,6 +9,7 @@ import {
 } from "@/lib/auth";
 import { scopeQuery } from "@/lib/tenant-context";
 import { computeJsonHash } from "@/lib/versioning";
+import { captureTemplateSnapshot } from "@/lib/template-snapshot";
 
 // POST - Schedule an interview for a candidate
 export async function POST(request: NextRequest) {
@@ -92,6 +93,90 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Capture immutable template snapshot for audit trail
+    let templateSnapshot = undefined;
+    let templateSnapshotHash = undefined;
+    if (templateId) {
+      try {
+        const snapshotResult = await captureTemplateSnapshot(templateId);
+        templateSnapshot = snapshotResult.snapshot;
+        templateSnapshotHash = snapshotResult.hash;
+      } catch (err) {
+        console.error("Failed to capture template snapshot:", err);
+      }
+    }
+
+    // Accept accommodations from request body
+    const accommodations = body.accommodations || null;
+
+    // Text-only accommodation check
+    if (accommodations?.textOnly && voiceProvider === "gemini-live") {
+      return NextResponse.json(
+        { error: "Voice interviews are not available with text-only accommodation. Use text-sse provider." },
+        { status: 400 }
+      );
+    }
+
+    // Retake governance check
+    if (templateId) {
+      const template = await prisma.interviewTemplate.findUnique({
+        where: { id: templateId },
+        select: { retakePolicy: true },
+      });
+      const retakePolicy = template?.retakePolicy as { allowed?: boolean; cooldownDays?: number; maxRetakes?: number } | null;
+
+      if (retakePolicy && retakePolicy.allowed === false) {
+        const existingInterview = await prisma.interview.findFirst({
+          where: {
+            candidateId,
+            templateId,
+            status: "COMPLETED",
+          },
+        });
+        if (existingInterview) {
+          return NextResponse.json(
+            { error: "Retakes are not allowed for this interview template" },
+            { status: 400 }
+          );
+        }
+      }
+
+      if (retakePolicy?.cooldownDays) {
+        const cooldownDate = new Date();
+        cooldownDate.setDate(cooldownDate.getDate() - retakePolicy.cooldownDays);
+        const recentInterview = await prisma.interview.findFirst({
+          where: {
+            candidateId,
+            templateId,
+            status: "COMPLETED",
+            completedAt: { gte: cooldownDate },
+          },
+        });
+        if (recentInterview) {
+          return NextResponse.json(
+            { error: `Retake cooldown not elapsed. Please wait ${retakePolicy.cooldownDays} days between attempts.` },
+            { status: 400 }
+          );
+        }
+      }
+
+      if (retakePolicy?.maxRetakes) {
+        const completedCount = await prisma.interview.count({
+          where: {
+            candidateId,
+            templateId,
+            status: "COMPLETED",
+          },
+        });
+        if (completedCount >= retakePolicy.maxRetakes) {
+          return NextResponse.json(
+            { error: `Maximum retake limit (${retakePolicy.maxRetakes}) reached for this template` },
+            { status: 400 }
+          );
+        }
+      }
+    }
+
     // Create interview with tenant scoping
     const interview = await prisma.interview.create({
       data: {
@@ -105,6 +190,10 @@ export async function POST(request: NextRequest) {
         isPractice,
         interviewPlan: interviewPlan as any,
         interviewPlanVersion: interviewPlan ? computeJsonHash(interviewPlan) : undefined,
+        templateSnapshot: templateSnapshot as any,
+        templateSnapshotHash,
+        accommodations: accommodations as any,
+        retakeOfInterviewId: body.retakeOfInterviewId || null,
         companyId: recruiter.companyId || undefined,
       },
       include: {

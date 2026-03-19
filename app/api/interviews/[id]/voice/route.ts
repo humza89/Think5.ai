@@ -29,6 +29,10 @@ import {
 import { buildAriaVoicePrompt } from "@/lib/aria-prompts";
 import { planToSystemContext } from "@/lib/interview-planner";
 import { generateReportInBackground } from "@/lib/report-generator";
+import { checkCandidateEligibility } from "@/lib/interview-eligibility";
+import { logInterviewActivity, getClientIp } from "@/lib/interview-audit";
+import { saveSessionState, deleteSessionState, generateReconnectToken, validateReconnectToken, type SessionState } from "@/lib/session-store";
+import { persistProctoringEvents } from "@/lib/proctoring-normalizer";
 
 // ── Active Sessions (in-memory for prototype; use Redis in production) ──
 
@@ -60,6 +64,7 @@ async function validateAccess(interviewId: string, accessToken: string | null) {
           skills: true,
           experienceYears: true,
           resumeText: true,
+          onboardingStatus: true,
         },
       },
       template: true,
@@ -99,14 +104,56 @@ export async function POST(
       return Response.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    // Check candidate eligibility for official interviews
+    const eligibility = checkCandidateEligibility(interview);
+    if (!eligibility.eligible) {
+      return Response.json({ error: eligibility.reason }, { status: 403 });
+    }
+
     // ── Start Interview ──
     if (action === "begin_interview") {
+      // Audit log: voice started
+      logInterviewActivity({
+        interviewId: id,
+        action: "interview.voice_started",
+        userId: interview.candidate.id,
+        userRole: "candidate",
+        ipAddress: getClientIp(request.headers),
+      }).catch(() => {});
       return await startVoiceInterview(id, interview);
     }
 
     // ── End Interview ──
     if (action === "end_interview") {
+      // Audit log: voice ended
+      logInterviewActivity({
+        interviewId: id,
+        action: "interview.voice_ended",
+        userId: interview.candidate.id,
+        userRole: "candidate",
+        ipAddress: getClientIp(request.headers),
+      }).catch(() => {});
       return await endVoiceInterview(id);
+    }
+
+    // ── Reconnect Session ──
+    if (action === "reconnect") {
+      const { reconnectToken: token } = body;
+      if (!token) {
+        return Response.json({ error: "Reconnect token required" }, { status: 400 });
+      }
+      const savedState = await validateReconnectToken(id, token);
+      if (!savedState) {
+        return Response.json({ error: "Invalid or expired reconnect token" }, { status: 401 });
+      }
+      // Return saved state for client-side session restoration
+      return Response.json({
+        ok: true,
+        reconnected: true,
+        transcript: savedState.transcript,
+        questionCount: savedState.questionCount,
+        moduleScores: savedState.moduleScores,
+      });
     }
 
     // ── Send Audio ──
@@ -255,6 +302,16 @@ function maybeCheckpointTranscript(session: ActiveVoiceSession) {
           err
         )
       );
+
+    // Also persist to Redis for durability
+    saveSessionState(session.interviewId, {
+      interviewId: session.interviewId,
+      transcript: transcript as any,
+      moduleScores: session.moduleScores,
+      questionCount: session.questionCount,
+      reconnectToken: "", // Will be set on start
+      lastActiveAt: new Date().toISOString(),
+    }).catch((err: unknown) => console.error("Redis checkpoint failed:", err));
   }
 }
 

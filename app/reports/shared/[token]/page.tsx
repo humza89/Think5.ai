@@ -37,6 +37,23 @@ export default async function SharedReportPage({
     return notFound();
   }
 
+  // Check if share has been revoked
+  if (report.shareRevoked) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold text-gray-900 mb-2">
+            Access Revoked
+          </h1>
+          <p className="text-gray-500">
+            This shared report link has been revoked. Please contact the
+            recruiter for access.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   // Check expiry
   if (report.shareExpiresAt && new Date() > new Date(report.shareExpiresAt)) {
     return (
@@ -94,6 +111,32 @@ export default async function SharedReportPage({
           integrityEvents={report.interview.integrityEvents as any}
         />
       </main>
+
+      {/* Watermark for shared reports */}
+      <div style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        width: '100%',
+        height: '100%',
+        pointerEvents: 'none',
+        zIndex: 9999,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        overflow: 'hidden',
+      }}>
+        <div style={{
+          transform: 'rotate(-45deg)',
+          fontSize: '3rem',
+          fontWeight: 'bold',
+          color: 'rgba(0, 0, 0, 0.04)',
+          whiteSpace: 'nowrap',
+          userSelect: 'none',
+        }}>
+          Shared via Think5 — Confidential
+        </div>
+      </div>
     </div>
   );
 }

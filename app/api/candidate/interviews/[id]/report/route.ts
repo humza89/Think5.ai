@@ -20,7 +20,13 @@ export async function GET(
         id,
         invitedEmail: { equals: profile.email, mode: "insensitive" },
       },
-      include: {
+      select: {
+        id: true,
+        type: true,
+        createdAt: true,
+        invitedEmail: true,
+        transcript: true,
+        templateSnapshot: true,
         candidate: {
           select: {
             fullName: true,
@@ -39,6 +45,11 @@ export async function GET(
       throw new AuthError("Report not yet available", 404);
     }
 
+    // Check candidate report policy from template snapshot or template
+    const templateConfig = (interview as any).templateSnapshot || {};
+    const reportPolicy = templateConfig.candidateReportPolicy as Record<string, boolean> | null;
+    const showTranscript = reportPolicy?.showTranscript === true;
+
     return NextResponse.json({
       report: {
         overallScore: interview.report.overallScore,
@@ -54,15 +65,14 @@ export async function GET(
         strengths: interview.report.strengths,
         areasToImprove: interview.report.areasToImprove,
         // Exclude hiringAdvice — recruiter-only
-        integrityScore: interview.report.integrityScore,
-        integrityFlags: interview.report.integrityFlags,
+        // Exclude integrity data — not for candidate consumption
+        reviewStatus: interview.report.reviewStatus,
       },
       candidateName: interview.candidate.fullName,
       candidateTitle: interview.candidate.currentTitle,
       interviewType: interview.type,
       interviewDate: interview.createdAt.toISOString(),
-      transcript: interview.transcript,
-      integrityEvents: interview.integrityEvents,
+      ...(showTranscript && interview.transcript ? { transcript: interview.transcript } : {}),
     });
   } catch (error) {
     const { error: message, status } = handleAuthError(error);

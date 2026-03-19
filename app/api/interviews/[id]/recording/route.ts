@@ -17,6 +17,8 @@ import {
   deleteRecording,
   getRecordingMetadata,
 } from "@/lib/media-storage";
+import { computeJsonHash } from "@/lib/versioning";
+import { logInterviewActivity, getClientIp } from "@/lib/interview-audit";
 
 // ── POST: Upload recording chunk or complete recording ─────────────────
 
@@ -61,6 +63,22 @@ export async function POST(
       const buffer = Buffer.from(await chunk.arrayBuffer());
       await uploadRecordingChunk(id, buffer, chunkIndex, chunk.type);
 
+      // Track recording state
+      await prisma.interview.update({
+        where: { id },
+        data: { recordingState: "UPLOADING" },
+      });
+
+      // Audit log chunk upload
+      logInterviewActivity({
+        interviewId: id,
+        action: "recording.chunk_uploaded",
+        userId: "candidate",
+        userRole: "candidate",
+        metadata: { chunkIndex },
+        ipAddress: getClientIp(request.headers),
+      }).catch(() => {});
+
       return Response.json({ ok: true, chunkIndex });
     }
 
@@ -68,6 +86,17 @@ export async function POST(
     const body = await request.json();
 
     if (body.action === "finalize") {
+      // Validate access token for finalization (security fix)
+      if (interview.accessToken !== body.accessToken) {
+        return Response.json({ error: "Unauthorized" }, { status: 401 });
+      }
+
+      // Transition to FINALIZING state
+      await prisma.interview.update({
+        where: { id },
+        data: { recordingState: "FINALIZING" },
+      });
+
       const metadata = await finalizeRecording(
         id,
         body.totalChunks,
@@ -75,16 +104,37 @@ export async function POST(
         body.durationSeconds
       );
 
-      // Update interview record
+      // Compute manifest hash for integrity verification
+      const manifestHash = computeJsonHash({
+        interviewId: id,
+        totalChunks: body.totalChunks,
+        format: body.format || "webm",
+        durationSeconds: body.durationSeconds,
+        sizeBytes: metadata.sizeBytes,
+      });
+
+      // Update interview record with state and integrity hash
       await prisma.interview.update({
         where: { id },
         data: {
           recordingFormat: body.format || "webm",
           recordingSize: metadata.sizeBytes,
+          recordingState: "COMPLETE",
+          recordingManifestHash: manifestHash,
         },
       });
 
-      return Response.json({ ok: true, metadata });
+      // Audit log finalization
+      logInterviewActivity({
+        interviewId: id,
+        action: "recording.finalized",
+        userId: "candidate",
+        userRole: "candidate",
+        metadata: { totalChunks: body.totalChunks, sizeBytes: metadata.sizeBytes, manifestHash },
+        ipAddress: getClientIp(request.headers),
+      }).catch(() => {});
+
+      return Response.json({ ok: true, metadata, manifestHash });
     }
 
     // Handle complete recording upload (base64)

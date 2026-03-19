@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { checkCandidateEligibility } from "@/lib/interview-eligibility";
+import { logInterviewActivity, getClientIp } from "@/lib/interview-audit";
 
 export async function POST(
   request: NextRequest,
@@ -26,12 +28,14 @@ export async function POST(
             fullName: true,
             currentTitle: true,
             profileImage: true,
+            onboardingStatus: true,
           },
         },
         template: {
           select: {
             aiConfig: true,
             durationMinutes: true,
+            readinessCheckRequired: true,
           },
         },
         job: {
@@ -79,6 +83,15 @@ export async function POST(
       );
     }
 
+    // Check candidate eligibility for official interviews
+    const eligibility = checkCandidateEligibility(interview);
+    if (!eligibility.eligible) {
+      return NextResponse.json(
+        { error: eligibility.reason },
+        { status: 403 }
+      );
+    }
+
     // Persist recording consent if provided
     if (consentRecording !== undefined || consentProctoring !== undefined || consentPrivacy !== undefined) {
       await prisma.interview.update({
@@ -95,6 +108,16 @@ export async function POST(
     // Extract proctoring config from template aiConfig
     const aiConfig = (interview.template?.aiConfig as Record<string, unknown>) || {};
 
+    // Audit log: successful validation
+    logInterviewActivity({
+      interviewId: id,
+      action: "interview.validated",
+      userId: interview.candidate.id,
+      userRole: "candidate",
+      metadata: { isPractice: interview.isPractice },
+      ipAddress: getClientIp(request.headers),
+    }).catch(() => {}); // Fire-and-forget
+
     return NextResponse.json({
       id: interview.id,
       type: interview.type,
@@ -108,6 +131,9 @@ export async function POST(
       jobTitle: interview.job?.title || null,
       durationMinutes: interview.template?.durationMinutes || 30,
       isPractice: interview.isPractice,
+      // Readiness and accommodations
+      readinessRequired: interview.template?.readinessCheckRequired || false,
+      accommodations: interview.accommodations || null,
       // Proctoring config from template
       proctoringLevel: aiConfig.proctoringLevel || "strict",
       pastePolicy: aiConfig.pastePolicy || "block",

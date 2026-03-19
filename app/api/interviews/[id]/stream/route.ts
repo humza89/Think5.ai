@@ -6,11 +6,14 @@ import {
   countQuestionsFromTranscript,
 } from "@/lib/aria-prompts";
 import { generateReportInBackground } from "@/lib/report-generator";
+import { checkCandidateEligibility } from "@/lib/interview-eligibility";
+import { logInterviewActivity, getClientIp } from "@/lib/interview-audit";
 
 interface TranscriptEntry {
   role: "interviewer" | "candidate";
   content: string;
   timestamp: string;
+  mediaOffsetMs?: number;
 }
 
 async function validateAccess(
@@ -29,6 +32,7 @@ async function validateAccess(
           skills: true,
           experienceYears: true,
           resumeText: true,
+          onboardingStatus: true,
         },
       },
     },
@@ -86,6 +90,15 @@ export async function POST(
       );
     }
 
+    // Check candidate eligibility for official interviews
+    const eligibility = checkCandidateEligibility(interview);
+    if (!eligibility.eligible) {
+      return new Response(
+        JSON.stringify({ error: eligibility.reason }),
+        { status: 403, headers: { "Content-Type": "application/json" } }
+      );
+    }
+
     if (!process.env.GEMINI_API_KEY) {
       return new Response(
         JSON.stringify({ error: "GEMINI_API_KEY not configured" }),
@@ -105,6 +118,15 @@ export async function POST(
           ...(integrityEvents ? { integrityEvents } : {}),
         },
       });
+
+      // Audit log: stream ended
+      logInterviewActivity({
+        interviewId: id,
+        action: "interview.stream_ended",
+        userId: interview.candidate.id,
+        userRole: "candidate",
+        ipAddress: getClientIp(request.headers),
+      }).catch(() => {});
 
       // Fire-and-forget report generation
       generateReportInBackground(id).catch((err) =>
@@ -145,6 +167,15 @@ export async function POST(
         where: { id },
         data: { status: "IN_PROGRESS", startedAt: new Date() },
       });
+
+      // Audit log: stream started
+      logInterviewActivity({
+        interviewId: id,
+        action: "interview.stream_started",
+        userId: interview.candidate.id,
+        userRole: "candidate",
+        ipAddress: getClientIp(request.headers),
+      }).catch(() => {});
     }
 
     // Build Gemini chat
@@ -206,12 +237,14 @@ export async function POST(
               role: "candidate",
               content: message,
               timestamp: new Date().toISOString(),
+              mediaOffsetMs: interview.startedAt ? Date.now() - new Date(interview.startedAt).getTime() : 0,
             });
           }
           newEntries.push({
             role: "interviewer",
             content: fullResponse,
             timestamp: new Date().toISOString(),
+            mediaOffsetMs: interview.startedAt ? Date.now() - new Date(interview.startedAt).getTime() : 0,
           });
 
           const updatedTranscript = [...existingTranscript, ...newEntries];

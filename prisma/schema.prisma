@@ -116,6 +116,19 @@ enum ProctoringEventSeverity {
   CRITICAL
 }
 
+enum ReviewStatus {
+  PENDING_REVIEW
+  REVIEWED
+  OVERRIDDEN
+}
+
+enum ReviewDecisionType {
+  APPROVE
+  REJECT
+  FLAG
+  OVERRIDE
+}
+
 enum RemotePreference {
   REMOTE
   HYBRID
@@ -517,6 +530,26 @@ model Interview {
   screenRecordingUrl  String?
   screenRecordingSize Int?
 
+  // Template snapshot (immutable at interview creation for audit trail)
+  templateSnapshot     Json?         // Frozen template+modules config
+  templateSnapshotHash String?       // SHA-256 of snapshot
+
+  // Recording pipeline state machine
+  recordingState       String?       // "UPLOADING" | "FINALIZING" | "COMPLETE" | "VERIFIED" | "DELETED"
+  recordingManifestHash String?      // SHA-256 of chunk manifest for integrity
+
+  // Voice session reconnect (durable sessions)
+  reconnectToken       String?       @unique
+
+  // Accessibility accommodations
+  accommodations       Json?         // {extendedTime, textOnly, captioning, screenReader}
+
+  // Retake tracking
+  retakeOfInterviewId  String?       // Links retake to original interview
+
+  // Browser readiness
+  readinessVerified    Boolean       @default(false)
+
   // Multi-tenant
   companyId           String?
   company             Client?       @relation(fields: [companyId], references: [id], onDelete: SetNull)
@@ -528,6 +561,7 @@ model Interview {
   responses       InterviewResponse[]
   feedback        InterviewFeedback[]
   proctoringEvents ProctoringEvent[]
+  reviewDecisions  ReviewDecision[]
 
   createdAt       DateTime          @default(now())
   updatedAt       DateTime          @updatedAt
@@ -536,6 +570,7 @@ model Interview {
   @@index([scheduledBy])
   @@index([status])
   @@index([jobId])
+  @@index([reconnectToken])
 }
 
 model InterviewReport {
@@ -577,9 +612,20 @@ model InterviewReport {
   scorerPromptVersion String?   // SHA-256 hash of scoring prompt
   rubricVersion       String?   // SHA-256 hash of rubric JSON used
 
+  // Human review governance
+  reviewStatus    ReviewStatus @default(PENDING_REVIEW)
+  reviewedAt      DateTime?
+  reviewedBy      String?     // Recruiter/admin ID who reviewed
+
   // Shareable report link (F2)
   shareToken      String?   @unique
   shareExpiresAt  DateTime?
+  recipientEmail  String?   // Who the report was shared with
+  sharePurpose    String?   // Reason for sharing
+  shareRevoked    Boolean   @default(false)
+
+  // Relations
+  views           ReportShareView[]
 
   createdAt       DateTime  @default(now())
 }
@@ -597,6 +643,13 @@ model InterviewTemplate {
   questions       Json      @default("[]") // [{text, type, category, followUpDepth}]
   aiConfig        Json      @default("{}") // {personality, followUpDepth, language, antiCheatLevel}
   isDefault       Boolean   @default(false)
+
+  // Candidate report visibility policy
+  candidateReportPolicy Json?  // {showTranscript, showScores, showStrengths, showAreasToImprove}
+  // Retake governance
+  retakePolicy    Json?        // {allowed, cooldownDays, maxRetakes}
+  // Pre-interview readiness check requirement
+  readinessCheckRequired Boolean @default(false)
 
   recruiterId     String?
   recruiter       Recruiter? @relation(fields: [recruiterId], references: [id])
@@ -1025,6 +1078,44 @@ model TeamInvitation {
   @@index([companyId])
   @@index([token])
   @@index([status])
+}
+
+// ============================================
+// Review Decisions (Human Review Governance)
+// ============================================
+
+model ReviewDecision {
+  id                     String              @id @default(uuid())
+  interviewId            String
+  interview              Interview           @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+  reviewerId             String              // Recruiter/admin who reviewed
+  reviewerEmail          String?
+  decision               ReviewDecisionType
+  overrideReason         String?             @db.Text
+  previousRecommendation String?             // What AI said before override
+  newRecommendation      String?             // What reviewer decided
+  createdAt              DateTime            @default(now())
+
+  @@index([interviewId])
+  @@index([reviewerId])
+  @@index([createdAt])
+}
+
+// ============================================
+// Report Share Views (Access Logging)
+// ============================================
+
+model ReportShareView {
+  id          String          @id @default(uuid())
+  reportId    String
+  report      InterviewReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  shareToken  String
+  viewerIp    String?
+  userAgent   String?
+  viewedAt    DateTime        @default(now())
+
+  @@index([reportId])
+  @@index([shareToken])
 }
 
 // ============================================

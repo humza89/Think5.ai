@@ -3,9 +3,11 @@ import { prisma } from "@/lib/prisma";
 import {
   requireInterviewAccess,
   handleAuthError,
+  getAuthenticatedUser,
 } from "@/lib/auth";
 import { SCORER_MODEL_VERSION, getScorerPromptHash } from "@/lib/gemini";
 import { getSkillModulesHash } from "@/lib/skill-modules";
+import { logInterviewActivity, getClientIp } from "@/lib/interview-audit";
 
 // GET - Get the report for an interview
 export async function GET(
@@ -50,7 +52,12 @@ export async function GET(
       );
     }
 
-    return NextResponse.json(report);
+    // Add review banner for pending reviews
+    const reviewBanner = report.reviewStatus === "PENDING_REVIEW"
+      ? "AI-generated assessment, pending human review"
+      : null;
+
+    return NextResponse.json({ ...report, reviewBanner });
   } catch (error) {
     const { error: message, status } = handleAuthError(error);
     console.error("Error fetching interview report:", error);
@@ -177,6 +184,20 @@ export async function POST(
         ariaOverallScore: overallScore,
       },
     });
+
+    // Audit log: report generated
+    try {
+      const { user } = await getAuthenticatedUser();
+      logInterviewActivity({
+        interviewId: id,
+        action: "report.generated",
+        userId: user.id,
+        userRole: "recruiter",
+        ipAddress: getClientIp(request.headers),
+      }).catch(() => {});
+    } catch {
+      // Auth may not be available for system-triggered generation
+    }
 
     return NextResponse.json(report, { status: 201 });
   } catch (error) {
