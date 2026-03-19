@@ -83,6 +83,8 @@ export default function SignInPage() {
           .single();
         if (profile?.role === "candidate") {
           redirectTo = "/candidate/dashboard";
+        } else if (profile?.role === "admin") {
+          redirectTo = "/admin";
         }
       }
     }
