@@ -1,10 +1,10 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { requireRole, getRecruiterForUser, handleAuthError } from '@/lib/auth';
+import { requireApprovedAccess, getRecruiterForUser, handleAuthError } from '@/lib/auth';
 
 export async function GET() {
   try {
-    const { user, profile } = await requireRole(['recruiter', 'admin']);
+    const { user, profile } = await requireApprovedAccess(['recruiter', 'admin']);
 
     const recruiter = await getRecruiterForUser(
       user.id,

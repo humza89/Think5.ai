@@ -145,6 +145,9 @@ enum RecruiterOnboardingStatus {
   NOT_STARTED
   IN_PROGRESS
   COMPLETED
+  PENDING_APPROVAL
+  APPROVED
+  REJECTED
 }
 
 // ============================================

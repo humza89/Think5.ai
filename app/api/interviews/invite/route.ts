@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireRole, handleAuthError, getRecruiterForUser } from "@/lib/auth";
+import { requireApprovedAccess, handleAuthError, getRecruiterForUser } from "@/lib/auth";
 import crypto from "crypto";
 import { sendEmail } from "@/lib/email/resend";
 import { checkRateLimit } from "@/lib/rate-limit";
 
 export async function POST(request: NextRequest) {
   try {
-    const { user, profile } = await requireRole(["recruiter", "admin"]);
+    const { user, profile } = await requireApprovedAccess(["recruiter", "admin"]);
 
     const ip = request.headers.get("x-forwarded-for") ?? request.headers.get("x-real-ip") ?? "unknown";
     const rateLimitResult = checkRateLimit(`invite:${ip}`, { maxRequests: 20, windowMs: 60000 });

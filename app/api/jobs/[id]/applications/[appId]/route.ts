@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireRole, handleAuthError, getRecruiterForUser } from "@/lib/auth";
+import { requireApprovedAccess, handleAuthError, getRecruiterForUser } from "@/lib/auth";
 
 const VALID_STATUSES = [
   "APPLIED",
@@ -24,7 +24,7 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string; appId: string }> }
 ) {
   try {
-    const { user, profile } = await requireRole(["recruiter", "admin"]);
+    const { user, profile } = await requireApprovedAccess(["recruiter", "admin"]);
     const { id: jobId, appId } = await params;
 
     const body = await request.json();
@@ -113,7 +113,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string; appId: string }> }
 ) {
   try {
-    await requireRole(["recruiter", "admin"]);
+    await requireApprovedAccess(["recruiter", "admin"]);
     const { id: jobId, appId } = await params;
 
     const application = await prisma.application.findFirst({

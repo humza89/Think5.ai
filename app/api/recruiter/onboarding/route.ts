@@ -317,10 +317,18 @@ export async function PATCH(request: NextRequest) {
           where: { id: recruiter.id },
           data: {
             onboardingCompleted: true,
-            onboardingStatus: "COMPLETED",
+            onboardingStatus: "PENDING_APPROVAL",
             onboardingStep: 5,
           },
         });
+
+        // Sync onboarding_status to Supabase profiles for proxy-level gating
+        const { createSupabaseAdminClient } = await import("@/lib/supabase-server");
+        const supabaseAdmin = await createSupabaseAdminClient();
+        await supabaseAdmin
+          .from("profiles")
+          .update({ onboarding_status: "pending_approval" })
+          .eq("id", user.id);
 
         // Send welcome email
         const firstName = recruiter.name.split(" ")[0] || "there";

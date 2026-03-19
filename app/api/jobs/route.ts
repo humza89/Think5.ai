@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireRole, handleAuthError, getRecruiterForUser } from "@/lib/auth";
+import { requireApprovedAccess, handleAuthError, getRecruiterForUser } from "@/lib/auth";
 import { createJobSchema } from "@/lib/validations/job";
 
 export async function GET(request: NextRequest) {
   try {
-    const { profile } = await requireRole(["recruiter", "admin"]);
+    const { profile } = await requireApprovedAccess(["recruiter", "admin"]);
 
     const searchParams = request.nextUrl.searchParams;
     const status = searchParams.get("status");
@@ -72,7 +72,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const { user, profile } = await requireRole(["recruiter", "admin"]);
+    const { user, profile } = await requireApprovedAccess(["recruiter", "admin"]);
 
     const recruiter = await getRecruiterForUser(
       user.id,

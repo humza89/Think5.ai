@@ -4,12 +4,12 @@ import {
   generateMatchesForRole,
   generateMatchesForCandidate,
 } from "@/lib/matching-engine";
-import { requireRole, handleAuthError } from "@/lib/auth";
+import { requireRole, requireApprovedAccess, handleAuthError } from "@/lib/auth";
 
 export async function GET(request: NextRequest) {
   try {
     // Require recruiter or admin role
-    await requireRole(["recruiter", "admin"]);
+    await requireApprovedAccess(["recruiter", "admin"]);
 
     const searchParams = request.nextUrl.searchParams;
     const candidateId = searchParams.get("candidateId");
@@ -84,7 +84,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Non-regenerateAll operations require recruiter or admin
-    await requireRole(["recruiter", "admin"]);
+    await requireApprovedAccess(["recruiter", "admin"]);
 
     if (candidateId) {
       const matches = await generateMatchesForCandidate(candidateId);

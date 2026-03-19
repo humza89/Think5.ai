@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireRole, getRecruiterForUser, AuthError, handleAuthError } from "@/lib/auth";
+import { requireApprovedAccess, getRecruiterForUser, AuthError, handleAuthError } from "@/lib/auth";
 
 /**
  * Verify that the authenticated user owns the job (or is admin).
  * Prevents IDOR — recruiters can only modify their own jobs.
  */
 async function requireJobOwnership(jobId: string) {
-  const { user, profile } = await requireRole(["recruiter", "admin"]);
+  const { user, profile } = await requireApprovedAccess(["recruiter", "admin"]);
 
   // Admins can modify any job
   if (profile.role === "admin") {
@@ -42,7 +42,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireRole(["recruiter", "admin"]);
+    await requireApprovedAccess(["recruiter", "admin"]);
     const { id } = await params;
 
     const job = await prisma.job.findUnique({

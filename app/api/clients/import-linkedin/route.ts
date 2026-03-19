@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { importCompanyFromApollo } from "@/lib/apollo/import-company";
-import { requireRole, handleAuthError } from "@/lib/auth";
+import { requireApprovedAccess, handleAuthError } from "@/lib/auth";
 
 export async function POST(request: NextRequest) {
   try {
-    await requireRole(["recruiter", "admin"]);
+    await requireApprovedAccess(["recruiter", "admin"]);
 
     const body = await request.json();
     const { linkedinUrl, domain } = body;

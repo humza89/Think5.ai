@@ -7,13 +7,9 @@ import {
   LayoutDashboard,
   UserCheck,
   Users,
-  Briefcase,
-  MessageSquare,
-  BarChart3,
   Settings,
   ChevronLeft,
   ChevronRight,
-  ArrowLeft,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/layout/ThemeToggle";
@@ -38,19 +34,9 @@ const NAV_SECTIONS: { title?: string; items: NavItem[] }[] = [
     ],
   },
   {
-    title: "Platform",
-    items: [
-      { label: "Jobs", href: "/jobs", icon: Briefcase },
-      { label: "Candidates", href: "/candidates", icon: Users },
-      { label: "Interviews", href: "/interviews", icon: MessageSquare },
-      { label: "Analytics", href: "/analytics", icon: BarChart3 },
-    ],
-  },
-  {
     title: "System",
     items: [
       { label: "Settings", href: "/settings", icon: Settings },
-      { label: "Back to Dashboard", href: "/dashboard", icon: ArrowLeft },
     ],
   },
 ];

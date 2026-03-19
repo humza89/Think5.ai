@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireRole, handleAuthError, getRecruiterForUser } from "@/lib/auth";
+import { requireApprovedAccess, handleAuthError, getRecruiterForUser } from "@/lib/auth";
 import { checkRateLimit } from "@/lib/rate-limit";
 import crypto from "crypto";
 import { sendEmail } from "@/lib/email/resend";
@@ -25,7 +25,7 @@ export async function POST(
       );
     }
 
-    const { user, profile } = await requireRole(["recruiter", "admin"]);
+    const { user, profile } = await requireApprovedAccess(["recruiter", "admin"]);
     const recruiter = await getRecruiterForUser(
       user.id,
       profile.email,

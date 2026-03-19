@@ -4,11 +4,11 @@ import { parseResumeFile, extractCandidateData } from "@/lib/resume-parser";
 import { writeFile, mkdir } from "fs/promises";
 import path from "path";
 import { existsSync } from "fs";
-import { requireRole, handleAuthError } from "@/lib/auth";
+import { requireApprovedAccess, handleAuthError } from "@/lib/auth";
 
 export async function POST(request: NextRequest) {
   try {
-    await requireRole(["recruiter", "admin"]);
+    await requireApprovedAccess(["recruiter", "admin"]);
 
     const formData = await request.formData();
     const file = formData.get("file") as File | null;

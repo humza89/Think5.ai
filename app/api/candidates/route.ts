@@ -5,7 +5,7 @@ import { generateCandidateSummary } from "@/lib/openai";
 import {
   getAuthenticatedUser,
   getRecruiterForUser,
-  requireRole,
+  requireApprovedAccess,
   handleAuthError,
 } from "@/lib/auth";
 
@@ -85,7 +85,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const { user, profile } = await requireRole(["recruiter", "admin"]);
+    const { user, profile } = await requireApprovedAccess(["recruiter", "admin"]);
 
     const body = await request.json();
 

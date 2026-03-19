@@ -18,7 +18,6 @@ import {
   BarChart3,
   UserSearch,
   Settings,
-  Shield,
   Building2,
 } from "lucide-react";
 
@@ -32,12 +31,11 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { label: "Jobs", href: "/jobs", icon: Briefcase },
-  { label: "Candidates", href: "/candidates", icon: Users },
+  { label: "Candidates", href: "/candidates", icon: Users, roles: ["recruiter"] },
   { label: "Interviews", href: "/interviews", icon: MessageSquare },
-  { label: "Clients", href: "/clients", icon: Building2 },
+  { label: "Clients", href: "/clients", icon: Building2, roles: ["recruiter"] },
   { label: "Analytics", href: "/analytics", icon: BarChart3 },
-  { label: "Passive Profiles", href: "/passive-profiles", icon: UserSearch },
-  { label: "Admin", href: "/admin", icon: Shield, roles: ["admin"] },
+  { label: "Passive Profiles", href: "/passive-profiles", icon: UserSearch, roles: ["recruiter"] },
   { label: "Settings", href: "/settings", icon: Settings },
 ];
 

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { requireCandidateAccess, handleAuthError } from "@/lib/auth";
 
 // PUT - Update a note
 export async function PUT(
@@ -7,7 +8,11 @@ export async function PUT(
   { params }: { params: Promise<{ id: string; noteId: string }> }
 ) {
   try {
-    const { noteId } = await params;
+    const { id, noteId } = await params;
+
+    // Verify caller has access to this candidate
+    await requireCandidateAccess(id);
+
     const body = await request.json();
     const { content = "", callAnswered, voicemailLeft, smsSent, emailSent } = body;
 
@@ -33,6 +38,10 @@ export async function PUT(
 
     return NextResponse.json(note);
   } catch (error: any) {
+    const { error: message, status } = handleAuthError(error);
+    if (status !== 500) {
+      return NextResponse.json({ error: message }, { status });
+    }
     console.error("Error updating note:", error);
     return NextResponse.json(
       { error: "Failed to update note" },
@@ -47,7 +56,10 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string; noteId: string }> }
 ) {
   try {
-    const { noteId } = await params;
+    const { id, noteId } = await params;
+
+    // Verify caller has access to this candidate
+    await requireCandidateAccess(id);
 
     await prisma.note.delete({
       where: { id: noteId },
@@ -55,6 +67,10 @@ export async function DELETE(
 
     return NextResponse.json({ success: true });
   } catch (error: any) {
+    const { error: message, status } = handleAuthError(error);
+    if (status !== 500) {
+      return NextResponse.json({ error: message }, { status });
+    }
     console.error("Error deleting note:", error);
     return NextResponse.json(
       { error: "Failed to delete note" },

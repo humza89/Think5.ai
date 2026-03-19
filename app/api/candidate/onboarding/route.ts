@@ -505,6 +505,15 @@ export async function PATCH(req: NextRequest) {
             },
           });
         }
+
+        // Sync onboarding_status to Supabase profiles for proxy-level gating
+        const adminSupabase = (await import("@/lib/supabase-server")).createSupabaseAdminClient;
+        const admin = await adminSupabase();
+        await admin
+          .from("profiles")
+          .update({ onboarding_status: "pending_approval" })
+          .eq("id", user.id);
+
         break;
       }
     }

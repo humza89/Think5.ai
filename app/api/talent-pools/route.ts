@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireRole, handleAuthError } from '@/lib/auth';
+import { requireApprovedAccess, handleAuthError } from '@/lib/auth';
 
 // Talent pools are stored as a JSON structure for Phase 1
 // In Phase 2, this will be backed by a dedicated TalentPool model
@@ -7,7 +7,7 @@ const talentPools: Map<string, { id: string; name: string; description: string; 
 
 export async function GET() {
   try {
-    await requireRole(['recruiter', 'admin']);
+    await requireApprovedAccess(['recruiter', 'admin']);
 
     const pools = Array.from(talentPools.values());
     return NextResponse.json({ pools });
@@ -19,7 +19,7 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
-    const { user } = await requireRole(['recruiter', 'admin']);
+    const { user } = await requireApprovedAccess(['recruiter', 'admin']);
 
     const body = await request.json();
     const { name, description } = body;

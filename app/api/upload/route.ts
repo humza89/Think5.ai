@@ -4,12 +4,12 @@ import { importLinkedInProfile } from "@/lib/linkedin/importer";
 import { writeFile, mkdir } from "fs/promises";
 import path from "path";
 import { existsSync } from "fs";
-import { requireRole, handleAuthError } from "@/lib/auth";
+import { requireApprovedAccess, handleAuthError } from "@/lib/auth";
 import { checkRateLimit } from "@/lib/rate-limit";
 
 export async function POST(request: NextRequest) {
   try {
-    await requireRole(["recruiter", "admin"]);
+    await requireApprovedAccess(["recruiter", "admin"]);
 
     const ip = request.headers.get("x-forwarded-for") ?? request.headers.get("x-real-ip") ?? "unknown";
     const rateLimitResult = checkRateLimit(`upload:${ip}`, { maxRequests: 10, windowMs: 60000 });

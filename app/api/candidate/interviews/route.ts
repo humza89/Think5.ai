@@ -1,14 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getAuthenticatedUser, handleAuthError, AuthError } from "@/lib/auth";
+import { requireApprovedAccess, handleAuthError } from "@/lib/auth";
 
 export async function GET(req: NextRequest) {
   try {
-    const { profile } = await getAuthenticatedUser();
-
-    if (!profile || profile.role !== "candidate") {
-      throw new AuthError("Forbidden: candidates only", 403);
-    }
+    const { profile } = await requireApprovedAccess(["candidate"]);
 
     const { searchParams } = new URL(req.url);
     const status = searchParams.get("status");

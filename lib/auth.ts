@@ -128,11 +128,14 @@ export async function requireApprovedAccess(allowedRoles: UserRole[]) {
   if (profile.role === 'recruiter') {
     const recruiter = await prisma.recruiter.findFirst({
       where: { supabaseUserId: user.id },
-      select: { onboardingCompleted: true },
+      select: { onboardingCompleted: true, onboardingStatus: true },
     });
 
     if (recruiter && !recruiter.onboardingCompleted) {
       throw new AuthError('Please complete onboarding first.', 403);
+    }
+    if (recruiter && recruiter.onboardingStatus !== 'APPROVED' && recruiter.onboardingStatus !== 'COMPLETED') {
+      throw new AuthError('Account not yet approved. Await admin approval.', 403);
     }
   }
 

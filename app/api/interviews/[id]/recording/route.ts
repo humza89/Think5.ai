@@ -8,6 +8,7 @@
 
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { requireRole, requireInterviewAccess, handleAuthError } from "@/lib/auth";
 import {
   uploadRecordingChunk,
   uploadCompleteRecording,
@@ -122,6 +123,9 @@ export async function GET(
   const { id } = await params;
 
   try {
+    // Verify caller has access to this interview
+    await requireInterviewAccess(id);
+
     // Get playback URL
     const url = await getSignedPlaybackUrl(id);
     const metadata = await getRecordingMetadata(id);
@@ -139,6 +143,10 @@ export async function GET(
       expiresIn: 3600, // 1 hour
     });
   } catch (error) {
+    const { error: message, status } = handleAuthError(error);
+    if (status !== 500) {
+      return Response.json({ error: message }, { status });
+    }
     console.error("Recording playback error:", error);
     return Response.json(
       { error: "Failed to get recording" },
@@ -156,6 +164,9 @@ export async function DELETE(
   const { id } = await params;
 
   try {
+    // Admin only
+    await requireRole(["admin"]);
+
     await deleteRecording(id);
 
     await prisma.interview.update({
@@ -169,6 +180,10 @@ export async function DELETE(
 
     return Response.json({ ok: true });
   } catch (error) {
+    const { error: message, status } = handleAuthError(error);
+    if (status !== 500) {
+      return Response.json({ error: message }, { status });
+    }
     console.error("Recording delete error:", error);
     return Response.json(
       { error: "Failed to delete recording" },

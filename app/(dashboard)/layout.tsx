@@ -7,7 +7,7 @@ export default function DashboardGroupLayout({
   children: React.ReactNode;
 }) {
   return (
-    <ProtectedRoute allowedRoles={["recruiter", "admin", "hiring_manager"]}>
+    <ProtectedRoute allowedRoles={["recruiter", "hiring_manager"]}>
       <DashboardLayout>{children}</DashboardLayout>
     </ProtectedRoute>
   );

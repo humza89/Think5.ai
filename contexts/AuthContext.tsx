@@ -38,7 +38,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const res = await withTimeout(
         fetch('/api/auth/profile'),
-        5000,
+        10000,
         new Response(JSON.stringify({ profile: null }), { status: 408 })
       );
       if (!res.ok) {
@@ -65,7 +65,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (current) console.warn('Auth initialization timed out — forcing loading to false');
         return false;
       });
-    }, 8000);
+    }, 15000);
 
     const initAuth = async () => {
       try {

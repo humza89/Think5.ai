@@ -1,5 +1,9 @@
 export type UserRole = 'admin' | 'candidate' | 'recruiter' | 'hiring_manager';
 
+export type AccountStatus = 'active' | 'suspended' | 'deactivated';
+
+export type OnboardingStatusValue = 'not_started' | 'in_progress' | 'pending_approval' | 'approved' | 'rejected' | 'on_hold' | 'completed';
+
 export type Profile = {
   id: string;
   email: string;
@@ -8,6 +12,8 @@ export type Profile = {
   role: UserRole;
   avatar_url: string | null;
   email_verified: boolean;
+  account_status: AccountStatus;
+  onboarding_status: OnboardingStatusValue;
   created_at: string;
   updated_at: string;
 };
