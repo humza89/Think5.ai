@@ -1,19 +1,27 @@
-import * as ort from "onnxruntime-node";
 import sharp from "sharp";
 import path from "path";
 
 // ============================================
-// UltraFace ONNX Face Detection
+// UltraFace ONNX Face Detection (optional — unavailable on Vercel serverless)
 // ============================================
+
+let ort: typeof import("onnxruntime-node") | null = null;
+try {
+  ort = require("onnxruntime-node");
+} catch {
+  // onnxruntime-node not available (e.g. Vercel serverless) — face detection disabled
+}
 
 const MODEL_PATH = path.join(process.cwd(), "lib", "models", "ultraface-320.onnx");
 const INPUT_WIDTH = 320;
 const INPUT_HEIGHT = 240;
 const CONFIDENCE_THRESHOLD = 0.7;
 
-let session: ort.InferenceSession | null = null;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let session: any = null;
 
-async function getSession(): Promise<ort.InferenceSession> {
+async function getSession() {
+  if (!ort) return null;
   if (!session) {
     session = await ort.InferenceSession.create(MODEL_PATH);
   }
@@ -37,6 +45,8 @@ interface FaceBox {
 // ============================================
 
 export async function detectFace(imageBuffer: Buffer): Promise<FaceBox | null> {
+  if (!ort) return null; // ONNX runtime not available
+
   const metadata = await sharp(imageBuffer).metadata();
   const imgW = metadata.width ?? 800;
   const imgH = metadata.height ?? 800;
@@ -63,6 +73,7 @@ export async function detectFace(imageBuffer: Buffer): Promise<FaceBox | null> {
   const inputTensor = new ort.Tensor("float32", float32Data, [1, 3, INPUT_HEIGHT, INPUT_WIDTH]);
 
   const sess = await getSession();
+  if (!sess) return null;
   const results = await sess.run({ input: inputTensor });
 
   // UltraFace outputs: scores [1, 4420, 2], boxes [1, 4420, 4]
