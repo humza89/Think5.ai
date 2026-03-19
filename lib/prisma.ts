@@ -13,7 +13,28 @@ if (useMockDb) {
   prismaInstance = mockPrisma;
 } else {
   try {
-    prismaInstance = globalForPrisma.prisma ?? new PrismaClient();
+    let dbUrl = process.env.DATABASE_URL;
+
+    if (
+      process.env.NODE_ENV === "production" &&
+      dbUrl &&
+      (dbUrl.includes("localhost") || dbUrl.includes("127.0.0.1"))
+    ) {
+      dbUrl =
+        process.env.POSTGRES_PRISMA_URL ||
+        process.env.POSTGRES_URL_NON_POOLING ||
+        process.env.POSTGRES_URL ||
+        dbUrl;
+    }
+
+    prismaInstance = globalForPrisma.prisma ?? new PrismaClient({
+      datasources: {
+        db: {
+          url: dbUrl,
+        },
+      },
+    });
+
     if (process.env.NODE_ENV !== "production")
       globalForPrisma.prisma = prismaInstance;
   } catch (error) {
