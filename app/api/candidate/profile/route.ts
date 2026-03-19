@@ -17,29 +17,17 @@ export async function GET() {
       throw new AuthError("Forbidden: candidates only", 403);
     }
 
-    // Find candidate records matching this email
-    const candidates = await prisma.candidate.findMany({
+    // Find candidate record with all related data
+    const candidate = await prisma.candidate.findFirst({
       where: { email: { equals: profile.email, mode: "insensitive" } },
       orderBy: { updatedAt: "desc" },
-      select: {
-        fullName: true,
-        currentTitle: true,
-        currentCompany: true,
-        skills: true,
-        experienceYears: true,
-        industries: true,
-        resumeUrl: true,
-        linkedinUrl: true,
-        location: true,
-        headline: true,
-        profileImage: true,
-        onboardingCompleted: true,
-        onboardingStep: true,
+      include: {
+        candidateExperiences: { orderBy: { startDate: "desc" } },
+        candidateEducation: { orderBy: { startDate: "desc" } },
+        certifications: { orderBy: { createdAt: "desc" } },
+        candidateSkills: { orderBy: { createdAt: "desc" } },
       },
     });
-
-    // Aggregate from most recent candidate record
-    const latest = candidates[0] || null;
 
     return NextResponse.json({
       id: user.id,
@@ -51,19 +39,25 @@ export async function GET() {
       phone: (profile as Record<string, unknown>).phone || null,
       jobTitle: (profile as Record<string, unknown>).job_title || null,
       bio: (profile as Record<string, unknown>).bio || null,
-      // From candidate records (display-only)
-      currentTitle: latest?.currentTitle || null,
-      currentCompany: latest?.currentCompany || null,
-      skills: latest?.skills || [],
-      experienceYears: latest?.experienceYears || null,
-      industries: latest?.industries || [],
-      resumeUrl: latest?.resumeUrl || null,
-      linkedinUrl: latest?.linkedinUrl || null,
-      location: latest?.location || null,
-      headline: latest?.headline || null,
-      profileImage: latest?.profileImage || null,
-      onboardingCompleted: latest?.onboardingCompleted || false,
-      onboardingStep: latest?.onboardingStep || 0,
+      // From candidate record
+      currentTitle: candidate?.currentTitle || null,
+      currentCompany: candidate?.currentCompany || null,
+      skills: candidate?.skills || [],
+      experienceYears: candidate?.experienceYears || null,
+      industries: candidate?.industries || [],
+      resumeUrl: candidate?.resumeUrl || null,
+      linkedinUrl: candidate?.linkedinUrl || null,
+      location: candidate?.location || null,
+      headline: candidate?.headline || null,
+      profileImage: candidate?.profileImage || null,
+      summary: candidate?.aiSummary || null,
+      onboardingCompleted: candidate?.onboardingCompleted || false,
+      onboardingStep: candidate?.onboardingStep || 0,
+      // Related data
+      experiences: candidate?.candidateExperiences || [],
+      education: candidate?.candidateEducation || [],
+      certifications: candidate?.certifications || [],
+      candidateSkills: candidate?.candidateSkills || [],
     });
   } catch (error) {
     const { error: message, status } = handleAuthError(error);
