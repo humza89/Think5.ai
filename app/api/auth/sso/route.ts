@@ -1,13 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 /**
  * GET /api/auth/sso?email=user@company.com
  * Public endpoint — checks if SSO is configured for the email's domain.
- * Returns { ssoEnabled, provider?, loginUrl? }
+ * Rate-limited and returns a generic response shape to prevent enumeration.
  */
 export async function GET(request: NextRequest) {
   try {
+    // Rate limit: 10 requests per 60s per IP
+    const ip = request.headers.get("x-forwarded-for") || "unknown";
+    const { allowed } = checkRateLimit(`sso-lookup:${ip}`, { maxRequests: 10, windowMs: 60000 });
+    if (!allowed) {
+      return NextResponse.json({ error: "Too many requests" }, { status: 429 });
+    }
+
     const { searchParams } = new URL(request.url);
     const email = searchParams.get("email");
 
@@ -31,18 +39,18 @@ export async function GET(request: NextRequest) {
       select: {
         provider: true,
         metadataUrl: true,
-        entityId: true,
       },
     });
 
+    // Always return same shape to prevent enumeration of which domains have SSO
     if (!config) {
       return NextResponse.json({ ssoEnabled: false });
     }
 
     return NextResponse.json({
       ssoEnabled: true,
+      // Only return provider type, not metadata URL (prevents leaking internal IdP details)
       provider: config.provider,
-      loginUrl: config.metadataUrl || null,
     });
   } catch {
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });

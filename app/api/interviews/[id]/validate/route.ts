@@ -8,7 +8,7 @@ export async function POST(
   try {
     const { id } = await params;
     const body = await request.json();
-    const { accessToken, consentRecording, consentProctoring } = body;
+    const { accessToken, consentRecording, consentProctoring, consentPrivacy } = body;
 
     if (!accessToken) {
       return NextResponse.json(
@@ -80,12 +80,13 @@ export async function POST(
     }
 
     // Persist recording consent if provided
-    if (consentRecording !== undefined || consentProctoring !== undefined) {
+    if (consentRecording !== undefined || consentProctoring !== undefined || consentPrivacy !== undefined) {
       await prisma.interview.update({
         where: { id },
         data: {
           ...(consentRecording !== undefined && { consentRecording }),
           ...(consentProctoring !== undefined && { consentProctoring }),
+          ...(consentPrivacy !== undefined && { consentPrivacy }),
           consentedAt: new Date(),
         },
       });

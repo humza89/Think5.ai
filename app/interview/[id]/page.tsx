@@ -111,7 +111,7 @@ export default function InterviewRoom() {
   }, [interviewId, accessToken]);
 
   // Handle start — save consent, request fullscreen + start monitoring
-  const handleStart = useCallback(async (consent: { consentRecording: boolean; consentProctoring: boolean }) => {
+  const handleStart = useCallback(async (consent: { consentRecording: boolean; consentProctoring: boolean; consentPrivacy: boolean }) => {
     // Persist consent to the backend before starting
     try {
       await fetch(`/api/interviews/${interviewId}/validate`, {
@@ -121,6 +121,7 @@ export default function InterviewRoom() {
           accessToken,
           consentRecording: consent.consentRecording,
           consentProctoring: consent.consentProctoring,
+          consentPrivacy: consent.consentPrivacy,
         }),
       });
     } catch {

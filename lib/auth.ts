@@ -168,19 +168,8 @@ export async function getRecruiterForUser(supabaseUserId: string, email: string,
     return recruiter;
   }
 
-  // Create new recruiter
-  recruiter = await prisma.recruiter.create({
-    data: {
-      name,
-      email,
-      supabaseUserId,
-      onboardingStep: 0,
-      onboardingCompleted: false,
-      onboardingStatus: "NOT_STARTED",
-    },
-  });
-
-  return recruiter;
+  // Don't auto-create recruiters without company association — require explicit onboarding
+  throw new AuthError('Recruiter account not found. Please complete registration first.', 404);
 }
 
 /**

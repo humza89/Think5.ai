@@ -4,6 +4,8 @@ import {
   requireInterviewAccess,
   handleAuthError,
 } from "@/lib/auth";
+import { SCORER_MODEL_VERSION, getScorerPromptHash } from "@/lib/gemini";
+import { getSkillModulesHash } from "@/lib/skill-modules";
 
 // GET - Get the report for an interview
 export async function GET(
@@ -150,6 +152,9 @@ export async function POST(
         overallScore: reportData.overallScore,
         integrityScore: reportData.integrityScore,
         integrityFlags: reportData.integrityFlags,
+        scorerModelVersion: SCORER_MODEL_VERSION,
+        scorerPromptVersion: getScorerPromptHash(),
+        rubricVersion: getSkillModulesHash(),
       },
     });
 

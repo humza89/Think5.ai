@@ -77,6 +77,10 @@ export function VoiceInterviewRoom({
   const screenChunksRef = useRef<number>(0);
   const screenVideoRef = useRef<HTMLVideoElement>(null);
 
+  // Recording failure tracking
+  const failedChunksRef = useRef<number>(0);
+  const [recordingWarning, setRecordingWarning] = useState(false);
+
   // UI states
   const [textInput, setTextInput] = useState("");
   const [showTextInput, setShowTextInput] = useState(false);
@@ -217,8 +221,13 @@ export function VoiceInterviewRoom({
         method: "POST",
         body: formData,
       });
+      // Reset consecutive failure counter on success
+      failedChunksRef.current = 0;
     } catch {
-      // Silent fail — recording is best-effort
+      failedChunksRef.current++;
+      if (failedChunksRef.current >= 3) {
+        setRecordingWarning(true);
+      }
     }
   };
 
@@ -515,6 +524,14 @@ export function VoiceInterviewRoom({
           </Button>
         </div>
       </header>
+
+      {/* ── Recording Warning ── */}
+      {recordingWarning && (
+        <div className="flex items-center gap-2 bg-yellow-500/10 border-b border-yellow-500/20 px-4 py-2 text-sm text-yellow-700 dark:text-yellow-400">
+          <AlertTriangle className="h-4 w-4 shrink-0" />
+          Recording may be incomplete due to upload issues
+        </div>
+      )}
 
       {/* ── Main Content ── */}
       <div className="flex flex-1 overflow-hidden">

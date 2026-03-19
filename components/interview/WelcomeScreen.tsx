@@ -19,7 +19,7 @@ interface WelcomeScreenProps {
   interviewType: string;
   webcamActive: boolean;
   onRequestWebcam: () => void;
-  onStart: (consent: { consentRecording: boolean; consentProctoring: boolean }) => void;
+  onStart: (consent: { consentRecording: boolean; consentProctoring: boolean; consentPrivacy: boolean }) => void;
   isStarting: boolean;
 }
 
@@ -212,7 +212,7 @@ export function WelcomeScreen({
 
         {/* Start button */}
         <Button
-          onClick={() => onStart({ consentRecording, consentProctoring })}
+          onClick={() => onStart({ consentRecording, consentProctoring, consentPrivacy })}
           disabled={isStarting || !allConsented}
           className="w-full h-12 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 text-white font-semibold text-base disabled:opacity-50 disabled:cursor-not-allowed"
         >

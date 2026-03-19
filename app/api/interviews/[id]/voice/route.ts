@@ -236,6 +236,28 @@ export async function GET(
   });
 }
 
+// ── Transcript Checkpointing ────────────────────────────────────────────
+
+const CHECKPOINT_INTERVAL = 5;
+
+function maybeCheckpointTranscript(session: ActiveVoiceSession) {
+  const transcript = session.geminiSession.transcript;
+  if (transcript.length > 0 && transcript.length % CHECKPOINT_INTERVAL === 0) {
+    // Fire-and-forget: persist transcript without blocking the response
+    prisma.interview
+      .update({
+        where: { id: session.interviewId },
+        data: { transcript: transcript as any },
+      })
+      .catch((err: unknown) =>
+        console.error(
+          `[${session.interviewId}] Transcript checkpoint failed:`,
+          err
+        )
+      );
+  }
+}
+
 // ── Session Management ─────────────────────────────────────────────────
 
 async function startVoiceInterview(
@@ -291,6 +313,8 @@ async function startVoiceInterview(
       if (role === "interviewer" && text.includes("?")) {
         activeSession.questionCount++;
       }
+      // Periodically checkpoint transcript to the database
+      maybeCheckpointTranscript(activeSession);
     },
     onToolCall: (name, args) => {
       activeSession.pendingToolCalls.push({ name, args });

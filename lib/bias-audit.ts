@@ -9,9 +9,10 @@ export interface BiasAuditRecord {
   problemSolving: number | null;
   communicationScore: number | null;
   scorerModelVersion: string | null;
+  demographicData?: Record<string, unknown> | null;
 }
 
-export async function generateBiasAuditExport(options?: { startDate?: Date; endDate?: Date }): Promise<BiasAuditRecord[]> {
+export async function generateBiasAuditExport(options?: { startDate?: Date; endDate?: Date; includeDemographics?: boolean }): Promise<BiasAuditRecord[]> {
   const where: Record<string, unknown> = {
     interview: { status: "COMPLETED" },
   };
@@ -33,20 +34,37 @@ export async function generateBiasAuditExport(options?: { startDate?: Date; endD
       communicationScore: true,
       scorerModelVersion: true,
       interview: {
-        select: { type: true },
+        select: {
+          type: true,
+          ...(options?.includeDemographics ? {
+            candidate: {
+              select: {
+                demographicData: true,
+                demographicConsentGiven: true,
+              },
+            },
+          } : {}),
+        },
       },
     },
     orderBy: { createdAt: "desc" },
   });
 
-  return reports.map((r: typeof reports[number]) => ({
-    interviewDate: r.createdAt.toISOString().split("T")[0],
-    interviewType: r.interview.type,
-    overallScore: r.overallScore,
-    recommendation: r.recommendation,
-    domainExpertise: r.domainExpertise,
-    problemSolving: r.problemSolving,
-    communicationScore: r.communicationScore,
-    scorerModelVersion: r.scorerModelVersion,
-  }));
+  return reports.map((r: typeof reports[number]) => {
+    const candidate = (r.interview as any).candidate;
+    return {
+      interviewDate: r.createdAt.toISOString().split("T")[0],
+      interviewType: r.interview.type,
+      overallScore: r.overallScore,
+      recommendation: r.recommendation,
+      domainExpertise: r.domainExpertise,
+      problemSolving: r.problemSolving,
+      communicationScore: r.communicationScore,
+      scorerModelVersion: r.scorerModelVersion,
+      // Only include demographics when explicitly requested and candidate consented
+      ...(options?.includeDemographics && candidate?.demographicConsentGiven
+        ? { demographicData: candidate.demographicData as Record<string, unknown> | null }
+        : {}),
+    };
+  });
 }

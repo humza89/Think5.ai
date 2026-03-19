@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireRole, handleAuthError } from "@/lib/auth";
+import { resolveTenantId } from "@/lib/tenant-context";
 import type { OnboardingStatus, RecruiterOnboardingStatus } from "@prisma/client";
 
 const VALID_CANDIDATE_STATUSES: OnboardingStatus[] = [
@@ -18,7 +19,10 @@ const VALID_RECRUITER_STATUSES: RecruiterOnboardingStatus[] = [
 
 export async function GET(request: NextRequest) {
   try {
-    await requireRole(["admin"]);
+    const { user } = await requireRole(["admin"]);
+
+    // Resolve tenant — scopes admin to their company's data
+    const tenantId = await resolveTenantId(user.id);
 
     const { searchParams } = new URL(request.url);
     const type = searchParams.get("type") || "candidates"; // "candidates" | "recruiters"
@@ -31,13 +35,19 @@ export async function GET(request: NextRequest) {
     const skip = (page - 1) * limit;
 
     if (type === "recruiters") {
-      return handleRecruiterApprovals({ status, search, sort, order, page, limit, skip });
+      return handleRecruiterApprovals({ status, search, sort, order, page, limit, skip, tenantId });
     }
 
     // Build where clause for candidates
     const where: Record<string, unknown> = {
       onboardingCompleted: true,
     };
+
+    // Scope to tenant's candidates (via recruiter association)
+    if (tenantId) {
+      where.recruiterId = { not: null };
+      where.recruiter = { companyId: tenantId };
+    }
 
     if (status !== "all" && VALID_CANDIDATE_STATUSES.includes(status as OnboardingStatus)) {
       where.onboardingStatus = status;
@@ -100,16 +110,16 @@ export async function GET(request: NextRequest) {
         }),
         prisma.candidate.count({ where }),
         prisma.candidate.count({
-          where: { onboardingCompleted: true, onboardingStatus: "PENDING_APPROVAL" },
+          where: { onboardingCompleted: true, onboardingStatus: "PENDING_APPROVAL", ...(tenantId ? { recruiter: { companyId: tenantId } } : {}) },
         }),
         prisma.candidate.count({
-          where: { onboardingCompleted: true, onboardingStatus: "APPROVED" },
+          where: { onboardingCompleted: true, onboardingStatus: "APPROVED", ...(tenantId ? { recruiter: { companyId: tenantId } } : {}) },
         }),
         prisma.candidate.count({
-          where: { onboardingCompleted: true, onboardingStatus: "REJECTED" },
+          where: { onboardingCompleted: true, onboardingStatus: "REJECTED", ...(tenantId ? { recruiter: { companyId: tenantId } } : {}) },
         }),
         prisma.candidate.count({
-          where: { onboardingCompleted: true, onboardingStatus: "ON_HOLD" },
+          where: { onboardingCompleted: true, onboardingStatus: "ON_HOLD", ...(tenantId ? { recruiter: { companyId: tenantId } } : {}) },
         }),
       ]);
 
@@ -140,6 +150,7 @@ async function handleRecruiterApprovals({
   page,
   limit,
   skip,
+  tenantId,
 }: {
   status: string;
   search: string;
@@ -148,10 +159,16 @@ async function handleRecruiterApprovals({
   page: number;
   limit: number;
   skip: number;
+  tenantId: string | null;
 }) {
   const where: Record<string, unknown> = {
     onboardingCompleted: true,
   };
+
+  // Scope to tenant's recruiters
+  if (tenantId) {
+    where.companyId = tenantId;
+  }
 
   if (status !== "all" && VALID_RECRUITER_STATUSES.includes(status as RecruiterOnboardingStatus)) {
     where.onboardingStatus = status;

@@ -127,23 +127,26 @@ export function useProctoring(
     if (!isMonitoring || tier !== "strict") return;
 
     const handlePaste = (e: ClipboardEvent) => {
-      const effectivePolicy = getEffectivePastePolicy();
+      // Use ref-based check to prevent race condition with rapid pastes
+      const shouldBlock = pastePolicy === "block" ||
+        (pastePolicy === "warn" && pasteWarningCountRef.current >= maxPasteWarnings);
 
-      if (effectivePolicy === "allow") return;
+      if (pastePolicy === "allow") return;
 
-      if (effectivePolicy === "block") {
+      if (shouldBlock) {
         e.preventDefault();
         setPasteBlocked(true);
         addEvent("paste_detected", "Paste attempt blocked during interview");
         setTimeout(() => setPasteBlocked(false), 3000);
-      } else if (effectivePolicy === "warn") {
-        // Allow the paste but log and warn
+      } else if (pastePolicy === "warn") {
+        // Allow the paste but log and warn — increment ref synchronously
         pasteWarningCountRef.current += 1;
-        setPasteWarningCount(pasteWarningCountRef.current);
+        const currentCount = pasteWarningCountRef.current;
+        setPasteWarningCount(currentCount);
         setPasteBlocked(true);
         addEvent(
           "paste_detected",
-          `Paste detected (warning ${pasteWarningCountRef.current}/${maxPasteWarnings})`
+          `Paste detected (warning ${currentCount}/${maxPasteWarnings})`
         );
         setTimeout(() => setPasteBlocked(false), 3000);
       }
@@ -199,21 +202,23 @@ export function useProctoring(
         return;
       }
 
-      // Detect Ctrl+V (paste via keyboard)
+      // Detect Ctrl+V (paste via keyboard) — use ref for race-safe escalation
       if (ctrl && (e.key === "v" || e.key === "V")) {
-        const effectivePolicy = getEffectivePastePolicy();
-        if (effectivePolicy === "block") {
+        const shouldBlock = pastePolicy === "block" ||
+          (pastePolicy === "warn" && pasteWarningCountRef.current >= maxPasteWarnings);
+        if (shouldBlock) {
           e.preventDefault();
           setPasteBlocked(true);
           addEvent("keyboard_shortcut", "Ctrl+V paste shortcut blocked");
           setTimeout(() => setPasteBlocked(false), 3000);
-        } else if (effectivePolicy === "warn") {
+        } else if (pastePolicy === "warn") {
           pasteWarningCountRef.current += 1;
-          setPasteWarningCount(pasteWarningCountRef.current);
+          const currentCount = pasteWarningCountRef.current;
+          setPasteWarningCount(currentCount);
           setPasteBlocked(true);
           addEvent(
             "keyboard_shortcut",
-            `Ctrl+V paste detected (warning ${pasteWarningCountRef.current}/${maxPasteWarnings})`
+            `Ctrl+V paste detected (warning ${currentCount}/${maxPasteWarnings})`
           );
           setTimeout(() => setPasteBlocked(false), 3000);
         }

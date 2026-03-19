@@ -162,7 +162,66 @@ export async function finalizeRecording(
     })
   );
 
+  // Merge chunks into a single playback file
+  try {
+    await mergeRecordingChunks(interviewId, totalChunks, format);
+  } catch (err) {
+    console.error(`Failed to merge chunks for interview ${interviewId}:`, err);
+    // Non-fatal — playback falls back to first chunk
+  }
+
   return metadata;
+}
+
+/**
+ * Merge all recording chunks into a single file for seamless playback.
+ */
+async function mergeRecordingChunks(
+  interviewId: string,
+  totalChunks: number,
+  format: string
+): Promise<void> {
+  const client = getR2Client();
+  const buffers: Buffer[] = [];
+
+  for (let i = 0; i < totalChunks; i++) {
+    const key = `recordings/${interviewId}/chunks/${String(i).padStart(6, "0")}`;
+    try {
+      const response = await client.send(
+        new GetObjectCommand({
+          Bucket: R2_BUCKET_NAME,
+          Key: key,
+        })
+      );
+      if (response.Body) {
+        const bytes = await response.Body.transformToByteArray();
+        buffers.push(Buffer.from(bytes));
+      }
+    } catch {
+      // Skip missing chunks
+    }
+  }
+
+  if (buffers.length === 0) return;
+
+  const merged = Buffer.concat(buffers);
+  const ext = format === "mp4" ? "mp4" : "webm";
+  const mimeType = format === "mp4" ? "video/mp4" : "video/webm";
+
+  await client.send(
+    new PutObjectCommand({
+      Bucket: R2_BUCKET_NAME,
+      Key: `recordings/${interviewId}/recording.${ext}`,
+      Body: merged,
+      ContentType: mimeType,
+      ContentLength: merged.length,
+      Metadata: {
+        interviewId,
+        mergedAt: new Date().toISOString(),
+        chunkCount: String(totalChunks),
+      },
+    })
+  );
 }
 
 // ── Playback Functions ─────────────────────────────────────────────────

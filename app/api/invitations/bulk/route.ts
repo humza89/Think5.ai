@@ -12,6 +12,29 @@ const MAX_INVITATIONS = 500;
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const EXPIRY_DAYS = 7;
 
+function parseCsv(text: string): BulkInvitationItem[] {
+  const lines = text.split(/\r?\n/).filter((line) => line.trim());
+  if (lines.length < 2) return []; // Need header + at least 1 row
+
+  const headers = lines[0].split(",").map((h) => h.trim().toLowerCase());
+  const emailIdx = headers.indexOf("email");
+  if (emailIdx === -1) return [];
+
+  const nameIdx = headers.indexOf("name");
+  const jobIdIdx = headers.indexOf("jobid");
+  const templateIdIdx = headers.indexOf("templateid");
+
+  return lines.slice(1).map((line) => {
+    const cols = line.split(",").map((c) => c.trim().replace(/^"|"$/g, ""));
+    return {
+      email: cols[emailIdx] || "",
+      ...(nameIdx >= 0 && cols[nameIdx] ? { name: cols[nameIdx] } : {}),
+      ...(jobIdIdx >= 0 && cols[jobIdIdx] ? { jobId: cols[jobIdIdx] } : {}),
+      ...(templateIdIdx >= 0 && cols[templateIdIdx] ? { templateId: cols[templateIdIdx] } : {}),
+    };
+  });
+}
+
 interface BulkInvitationItem {
   email: string;
   name?: string;
@@ -52,8 +75,17 @@ export async function POST(request: NextRequest) {
       `${profile.first_name} ${profile.last_name}`
     );
 
-    const body = await request.json();
-    const { invitations } = body as { invitations: BulkInvitationItem[] };
+    // Support both JSON and CSV content types
+    let invitations: BulkInvitationItem[];
+    const contentType = request.headers.get("content-type") || "";
+
+    if (contentType.includes("text/csv")) {
+      const csvText = await request.text();
+      invitations = parseCsv(csvText);
+    } else {
+      const body = await request.json();
+      invitations = body.invitations as BulkInvitationItem[];
+    }
 
     if (!Array.isArray(invitations) || invitations.length === 0) {
       return NextResponse.json(

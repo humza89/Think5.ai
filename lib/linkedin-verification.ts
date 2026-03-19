@@ -17,6 +17,12 @@ export async function checkLinkedInConsistency(
     return { score: 0, flags: ["no_linkedin_provided"] };
   }
 
+  // Validate LinkedIn URL format
+  const linkedinPattern = /^https?:\/\/(www\.)?linkedin\.com\/in\/[\w-]+\/?$/i;
+  if (!linkedinPattern.test(linkedinUrl.trim())) {
+    return { score: 0, flags: ["invalid_linkedin_url_format"] };
+  }
+
   if (!process.env.OPENAI_API_KEY) {
     return { score: 0, flags: ["openai_api_key_missing"] };
   }

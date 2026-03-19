@@ -39,9 +39,12 @@ export async function GET(request: NextRequest) {
     const endDateParam = searchParams.get("endDate");
     const format = searchParams.get("format") || "json";
 
-    const options: { startDate?: Date; endDate?: Date } = {};
+    const includeDemographics = searchParams.get("includeDemographics") === "true";
+
+    const options: { startDate?: Date; endDate?: Date; includeDemographics?: boolean } = {};
     if (startDateParam) options.startDate = new Date(startDateParam);
     if (endDateParam) options.endDate = new Date(endDateParam);
+    if (includeDemographics) options.includeDemographics = true;
 
     // Validate dates
     if (options.startDate && isNaN(options.startDate.getTime())) {

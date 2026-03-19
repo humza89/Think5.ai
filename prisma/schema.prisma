@@ -492,7 +492,9 @@ model Interview {
   isPractice        Boolean         @default(false)
 
   // Composite score (denormalized from report)
-  overallScore    Float?
+  overallScore        Float?
+  reportStatus        String?       @default("pending") // "pending" | "generating" | "completed" | "failed"
+  reportRetryCount    Int           @default(0)
 
   // Candidate access (unauthenticated interview room)
   accessToken          String?           @unique
@@ -505,6 +507,7 @@ model Interview {
   // Recording consent (compliance)
   consentRecording    Boolean       @default(false)
   consentProctoring   Boolean       @default(false)
+  consentPrivacy      Boolean       @default(false)
   consentedAt         DateTime?
 
   // Versioning (audit trail)

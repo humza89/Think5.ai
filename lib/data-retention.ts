@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { deleteRecording } from "@/lib/media-storage";
 
 export async function getDefaultRetentionPolicy() {
   return prisma.retentionPolicy.findFirst({ where: { isDefault: true } });
@@ -22,6 +23,15 @@ export async function applyRetentionPolicies() {
   });
 
   if (oldRecordings.length > 0) {
+    // Delete actual R2 files before clearing database URLs
+    for (const recording of oldRecordings) {
+      try {
+        await deleteRecording(recording.id);
+      } catch (err) {
+        console.error(`Failed to delete R2 recordings for interview ${recording.id}:`, err);
+      }
+    }
+
     await prisma.interview.updateMany({
       where: { id: { in: oldRecordings.map((r: { id: string }) => r.id) } },
       data: { recordingUrl: null, recordingSize: null, screenRecordingUrl: null, screenRecordingSize: null },
