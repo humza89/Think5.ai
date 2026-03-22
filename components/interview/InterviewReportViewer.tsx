@@ -65,6 +65,7 @@ interface HypothesisOutcome {
 interface EvidenceHighlight {
   type: "strength" | "concern" | "contradiction" | "impressive";
   summary: string;
+  transcriptRange?: { startIdx: number; endIdx: number };
 }
 
 interface RequirementMatch {
@@ -131,7 +132,9 @@ export function InterviewReportViewer({
   const [shareLoading, setShareLoading] = useState(false);
   const [shareUrl, setShareUrl] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const transcriptSectionRef = useRef<HTMLDivElement>(null);
   const [currentTime, setCurrentTime] = useState(0);
+  const [highlightedRange, setHighlightedRange] = useState<{ startIdx: number; endIdx: number } | null>(null);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -225,7 +228,13 @@ export function InterviewReportViewer({
           <Button
             variant="outline"
             size="sm"
-            onClick={() => window.print()}
+            onClick={() => {
+              if (interviewId) {
+                window.open(`/api/interviews/${interviewId}/report/pdf`, "_blank");
+              } else {
+                window.print();
+              }
+            }}
             className="no-print"
           >
             <Printer className="w-4 h-4 mr-2" />
@@ -568,12 +577,24 @@ export function InterviewReportViewer({
                      e.type === "impressive" ? "\u2605" :
                      e.type === "concern" ? "!" : "\u26A0"}
                   </span>
-                  <div>
+                  <div className="flex-1">
                     <Badge variant="outline" className="text-xs mb-1">
                       {e.type}
                     </Badge>
                     <p className="text-gray-700">{e.summary}</p>
                   </div>
+                  {e.transcriptRange && transcript && (
+                    <button
+                      onClick={() => {
+                        setHighlightedRange(e.transcriptRange!);
+                        transcriptSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+                      }}
+                      className="text-xs text-blue-500 hover:text-blue-700 whitespace-nowrap flex-shrink-0 mt-1"
+                      title="Jump to transcript"
+                    >
+                      View in transcript →
+                    </button>
+                  )}
                 </div>
               ))}
             </div>
@@ -685,14 +706,24 @@ export function InterviewReportViewer({
                 </CardContent>
               </Card>
             </div>
-            <TranscriptSection
-              transcript={transcript}
-              currentTime={currentTime}
-              onTimestampClick={seekToTimestamp}
-            />
+            <div ref={transcriptSectionRef}>
+              <TranscriptSection
+                transcript={transcript}
+                currentTime={currentTime}
+                onTimestampClick={seekToTimestamp}
+                highlightedRange={highlightedRange}
+                onClearHighlight={() => setHighlightedRange(null)}
+              />
+            </div>
           </div>
         ) : (
-          <TranscriptSection transcript={transcript} />
+          <div ref={transcriptSectionRef}>
+            <TranscriptSection
+              transcript={transcript}
+              highlightedRange={highlightedRange}
+              onClearHighlight={() => setHighlightedRange(null)}
+            />
+          </div>
         )
       )}
     </div>
@@ -796,13 +827,22 @@ function TranscriptSection({
   transcript,
   currentTime,
   onTimestampClick,
+  highlightedRange,
+  onClearHighlight,
 }: {
   transcript: TranscriptEntry[];
   currentTime?: number;
   onTimestampClick?: (seconds: number) => void;
+  highlightedRange?: { startIdx: number; endIdx: number } | null;
+  onClearHighlight?: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const activeRef = useRef<HTMLDivElement>(null);
+
+  // Auto-expand transcript when evidence is highlighted
+  useEffect(() => {
+    if (highlightedRange) setExpanded(true);
+  }, [highlightedRange]);
 
   // Determine which entry is currently active based on video time
   const activeIndex =
@@ -857,8 +897,15 @@ function TranscriptSection({
       {expanded && (
         <CardContent>
           <div className="space-y-4 max-h-[600px] overflow-y-auto">
+            {highlightedRange && (
+              <div className="flex items-center gap-2 mb-3 px-3 py-2 bg-yellow-50 border border-yellow-200 rounded-lg text-sm">
+                <span className="text-yellow-700">Showing highlighted evidence (entries #{highlightedRange.startIdx}–#{highlightedRange.endIdx})</span>
+                <button onClick={onClearHighlight} className="text-yellow-500 hover:text-yellow-700 ml-auto">✕ Clear</button>
+              </div>
+            )}
             {transcript.map((entry, i) => {
               const isActive = i === activeIndex;
+              const isHighlighted = highlightedRange && i >= highlightedRange.startIdx && i <= highlightedRange.endIdx;
               return (
                 <div
                   key={i}
@@ -876,11 +923,13 @@ function TranscriptSection({
                   )}
                   <div
                     className={`max-w-[75%] rounded-lg px-4 py-3 transition-colors duration-200 ${
-                      isActive
-                        ? "bg-blue-50 border-2 border-blue-300 shadow-sm"
-                        : entry.role === "interviewer"
-                          ? "bg-gray-50 border"
-                          : "bg-blue-50 border border-blue-100"
+                      isHighlighted
+                        ? "bg-yellow-50 border-2 border-yellow-400 shadow-sm ring-1 ring-yellow-300"
+                        : isActive
+                          ? "bg-blue-50 border-2 border-blue-300 shadow-sm"
+                          : entry.role === "interviewer"
+                            ? "bg-gray-50 border"
+                            : "bg-blue-50 border border-blue-100"
                     }`}
                   >
                     <p className="text-sm text-gray-700 whitespace-pre-wrap">

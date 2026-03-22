@@ -3,6 +3,7 @@ import { generateInterviewReport, SCORER_MODEL_VERSION, getScorerPromptHash } fr
 import { getSkillModulesHash } from "@/lib/skill-modules";
 import { sendReportReadyEmail } from "@/lib/email/report-ready";
 import { sendCandidateFeedbackEmail } from "@/lib/email/candidate-feedback";
+import * as Sentry from "@sentry/nextjs";
 
 /**
  * Generate an interview report in the background after interview completion.
@@ -185,6 +186,7 @@ export async function generateReportInBackground(
       );
     }
   } catch (error) {
+    Sentry.captureException(error, { tags: { component: "report_generator" }, extra: { interviewId } });
     console.error(`Report generation failed for interview ${interviewId}:`, error);
 
     const currentRetryCount = interview.reportRetryCount ?? 0;

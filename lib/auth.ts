@@ -265,6 +265,13 @@ export function handleAuthError(error: unknown) {
   if (error instanceof AuthError) {
     return { error: error.message, status: error.statusCode };
   }
-  const errorMessage = error instanceof Error ? error.message : String(error);
-  return { error: `Internal server error: ${errorMessage}`, status: 500 };
+  // Log full error to Sentry but return generic message to client
+  try {
+    const Sentry = require("@sentry/nextjs");
+    Sentry.captureException(error);
+  } catch {
+    // Sentry not available
+  }
+  console.error("Internal server error:", error);
+  return { error: "Internal server error", status: 500 };
 }

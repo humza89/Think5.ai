@@ -33,6 +33,7 @@ import { checkCandidateEligibility } from "@/lib/interview-eligibility";
 import { logInterviewActivity, getClientIp } from "@/lib/interview-audit";
 import { saveSessionState, deleteSessionState, generateReconnectToken, validateReconnectToken, type SessionState } from "@/lib/session-store";
 import { persistProctoringEvents } from "@/lib/proctoring-normalizer";
+import * as Sentry from "@sentry/nextjs";
 
 // ── Active Sessions ──
 // NOTE: The Gemini Live WebSocket connection is inherently stateful and
@@ -205,6 +206,7 @@ export async function POST(
 
     return Response.json({ error: "Invalid request" }, { status: 400 });
   } catch (error) {
+    Sentry.captureException(error, { tags: { component: "voice_route" } });
     console.error("Voice route error:", error);
     return Response.json(
       { error: "Internal server error" },
@@ -408,6 +410,7 @@ async function startVoiceInterview(
       activeSession.pendingAudioChunks = [];
     },
     onError: (error) => {
+      Sentry.captureException(error, { tags: { component: "voice_session" }, extra: { interviewId } });
       console.error(`Voice session error [${interviewId}]:`, error);
       activeSession.pendingTextChunks.push({
         role: "system",
@@ -458,6 +461,7 @@ async function startVoiceInterview(
     return Response.json({ ok: true, reconnectToken: reconnToken, message: "Voice session started" });
   } catch (error) {
     activeSessions.delete(interviewId);
+    Sentry.captureException(error, { tags: { component: "gemini_live_connect" }, extra: { interviewId } });
     console.error("Failed to connect Gemini Live:", error);
     return Response.json(
       { error: "Failed to start voice session" },

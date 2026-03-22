@@ -99,6 +99,8 @@ INTERVIEW TRANSCRIPT:
 
 {jobContext}
 
+Each transcript entry is numbered (e.g., [#0], [#1], ...). Use these indices when referencing evidence to enable click-to-transcript navigation in the report.
+
 Generate a JSON assessment report. Every score MUST be justified with specific evidence from the transcript.
 
 {
@@ -159,7 +161,8 @@ Generate a JSON assessment report. Every score MUST be justified with specific e
   "evidenceHighlights": [
     {
       "type": "strength|concern|contradiction|impressive",
-      "summary": "Brief description of this moment"
+      "summary": "Brief description of this moment",
+      "transcriptRange": {"startIdx": <first transcript entry index (0-based)>, "endIdx": <last transcript entry index (inclusive)>}
     }
   ],
 
@@ -229,8 +232,8 @@ export async function generateInterviewReport(
   // Format transcript for the prompt
   const formattedTranscript = transcript
     .map(
-      (entry) =>
-        `[${entry.role.toUpperCase()}${entry.timestamp ? ` @ ${entry.timestamp}` : ""}]: ${entry.content}`
+      (entry, idx) =>
+        `[#${idx} ${entry.role.toUpperCase()}${entry.timestamp ? ` @ ${entry.timestamp}` : ""}]: ${entry.content}`
     )
     .join("\n\n");
 

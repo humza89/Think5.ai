@@ -18,6 +18,7 @@ import {
   ListObjectsV2Command,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import * as Sentry from "@sentry/nextjs";
 
 // ── Configuration ──────────────────────────────────────────────────────
 
@@ -182,6 +183,12 @@ export async function finalizeRecording(
     }
   }
   if (!mergeSuccess) {
+    const mergeError = new Error(`Recording merge failed after ${MAX_MERGE_RETRIES} attempts`);
+    Sentry.captureException(mergeError, {
+      level: "fatal",
+      tags: { component: "recording_merge" },
+      extra: { interviewId, totalChunks, totalSize },
+    });
     console.error(
       `[Recording Merge] CRITICAL: All ${MAX_MERGE_RETRIES} merge attempts failed for interview ${interviewId}. ` +
       `Playback will use first chunk only. Total chunks: ${totalChunks}, total size: ${totalSize} bytes.`

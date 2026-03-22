@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireRole, handleAuthError } from "@/lib/auth";
-import { generateBiasAuditExport, BiasAuditRecord } from "@/lib/bias-audit";
+import { generateBiasAuditExport, runBiasAuditAnalysis, BiasAuditRecord } from "@/lib/bias-audit";
 
 function toCsv(records: BiasAuditRecord[]): string {
   const headers = [
@@ -52,6 +52,15 @@ export async function GET(request: NextRequest) {
     }
     if (options.endDate && isNaN(options.endDate.getTime())) {
       return NextResponse.json({ error: "Invalid endDate" }, { status: 400 });
+    }
+
+    // Analyze mode: run 4/5ths rule adverse impact analysis
+    if (format === "analyze") {
+      const analysis = await runBiasAuditAnalysis({
+        startDate: options.startDate || new Date(Date.now() - 90 * 24 * 60 * 60 * 1000), // Default: last 90 days
+        endDate: options.endDate || new Date(),
+      });
+      return NextResponse.json(analysis);
     }
 
     const records = await generateBiasAuditExport(options);
