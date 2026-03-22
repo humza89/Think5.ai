@@ -67,7 +67,7 @@ export function ProctoringOverlay({
           <div className="bg-amber-500/90 backdrop-blur-sm text-black px-6 py-3 rounded-b-xl flex items-center gap-3 shadow-lg">
             <AlertTriangle className="w-5 h-5" />
             <span className="font-medium text-sm">
-              Tab switch detected — this is noted in your assessment
+              Tab switch detected — this event has been logged in your integrity report
             </span>
           </div>
         </div>
@@ -93,7 +93,7 @@ export function ProctoringOverlay({
           <div className="bg-orange-500/90 backdrop-blur-sm text-black px-6 py-3 rounded-b-xl flex items-center gap-3 shadow-lg">
             <Maximize2 className="w-5 h-5" />
             <span className="font-medium text-sm">
-              Fullscreen exit detected — please return to fullscreen mode
+              Fullscreen exit detected — this event has been logged in your integrity report
             </span>
           </div>
         </div>

@@ -27,6 +27,16 @@ const INTERVIEW_TYPES = [
   { value: "CASE_STUDY", label: "Case Study" },
 ];
 
+const INTERVIEW_MODES = [
+  { value: "GENERAL_PROFILE", label: "General Profile", description: "Broad assessment of skills and experience" },
+  { value: "JOB_FIT", label: "Job Fit", description: "Evaluate fit for a specific role" },
+  { value: "HYBRID", label: "Hybrid", description: "Combined general and role-specific assessment" },
+  { value: "CULTURAL_FIT", label: "Cultural Fit", description: "Assess alignment with company culture" },
+  { value: "TECHNICAL_DEEP_DIVE", label: "Technical Deep Dive", description: "In-depth technical evaluation" },
+  { value: "SCREENING", label: "Screening", description: "Initial qualification screening" },
+  { value: "CUSTOM", label: "Custom", description: "Custom interview configuration" },
+];
+
 interface ScheduleInterviewDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -45,6 +55,7 @@ export function ScheduleInterviewDialog({
   onScheduled,
 }: ScheduleInterviewDialogProps) {
   const [type, setType] = useState("TECHNICAL");
+  const [mode, setMode] = useState("GENERAL_PROFILE");
   const [sendInvite, setSendInvite] = useState(!!candidateEmail);
   const [email, setEmail] = useState(candidateEmail);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -62,6 +73,7 @@ export function ScheduleInterviewDialog({
         body: JSON.stringify({
           candidateId,
           type,
+          mode,
         }),
       });
 
@@ -122,6 +134,26 @@ export function ScheduleInterviewDialog({
                 {INTERVIEW_TYPES.map((t) => (
                   <SelectItem key={t.value} value={t.value}>
                     {t.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Interview mode */}
+          <div className="space-y-2">
+            <Label>Interview Mode</Label>
+            <Select value={mode} onValueChange={setMode}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {INTERVIEW_MODES.map((m) => (
+                  <SelectItem key={m.value} value={m.value}>
+                    <div>
+                      <span>{m.label}</span>
+                      <span className="ml-2 text-xs text-gray-500">{m.description}</span>
+                    </div>
                   </SelectItem>
                 ))}
               </SelectContent>

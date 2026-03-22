@@ -30,7 +30,7 @@ export function CandidateLayout({ children }: { children: React.ReactNode }) {
         const data = await res.json();
         const isOnboardingPage = pathname === "/candidate/onboarding";
         const statusPage = "/candidate/onboarding/status";
-        const allowedPaths = ["/candidate/onboarding", statusPage, "/candidate/settings"];
+        const allowedPaths = ["/candidate/onboarding", statusPage, "/candidate/settings", "/candidate/policy"];
         const isAllowedPath = allowedPaths.some((p) => pathname.startsWith(p));
 
         if (!data.completed && !isOnboardingPage) {

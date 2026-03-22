@@ -35,6 +35,7 @@ import {
 interface Interview {
   id: string;
   type: string;
+  mode: string;
   status: string;
   createdAt: string;
   startedAt: string | null;
@@ -487,6 +488,15 @@ export default function InterviewsDashboard() {
                   >
                     {interview.type.replace(/_/g, " ")}
                   </Badge>
+
+                  {interview.mode && interview.mode !== "GENERAL_PROFILE" && (
+                    <Badge
+                      variant="outline"
+                      className="bg-indigo-50 text-indigo-700 border-indigo-200"
+                    >
+                      {interview.mode.replace(/_/g, " ")}
+                    </Badge>
+                  )}
 
                   <Badge
                     className={

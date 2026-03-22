@@ -16,7 +16,7 @@ export async function POST(request: NextRequest) {
   try {
     const { user, profile } = await getAuthenticatedUser();
 
-    if (!profile || !["recruiter", "admin"].includes(profile.role)) {
+    if (!profile || !["recruiter", "admin", "hiring_manager"].includes(profile.role)) {
       return NextResponse.json(
         { error: "Forbidden: insufficient permissions" },
         { status: 403 }
@@ -47,12 +47,34 @@ export async function POST(request: NextRequest) {
     // Verify ownership of the candidate
     await requireCandidateAccess(candidateId);
 
-    // Get recruiter record
-    const recruiter = await getRecruiterForUser(
-      user.id,
-      profile.email,
-      `${profile.first_name} ${profile.last_name}`
-    );
+    // Get recruiter record — HMs use a company recruiter as scheduledBy
+    let recruiter;
+    if (profile.role === "hiring_manager") {
+      const hmDomain = profile.email.split("@")[1]?.toLowerCase();
+      if (!hmDomain) {
+        return NextResponse.json({ error: "Invalid email domain" }, { status: 403 });
+      }
+      // Find a recruiter in the same company by email domain
+      const companyRecruiter = await prisma.recruiter.findFirst({
+        where: {
+          email: { endsWith: `@${hmDomain}` },
+          companyId: { not: null },
+        },
+      });
+      if (!companyRecruiter) {
+        return NextResponse.json(
+          { error: "No company recruiter found matching your domain. Contact your recruiter to schedule interviews." },
+          { status: 403 }
+        );
+      }
+      recruiter = companyRecruiter;
+    } else {
+      recruiter = await getRecruiterForUser(
+        user.id,
+        profile.email,
+        `${profile.first_name} ${profile.last_name}`
+      );
+    }
 
     // Verify candidate exists
     const candidate = await prisma.candidate.findUnique({
@@ -242,7 +264,7 @@ export async function GET(request: NextRequest) {
   try {
     const { user, profile } = await getAuthenticatedUser();
 
-    if (!profile || !["recruiter", "admin"].includes(profile.role)) {
+    if (!profile || !["recruiter", "admin", "hiring_manager"].includes(profile.role)) {
       return NextResponse.json(
         { error: "Forbidden: insufficient permissions" },
         { status: 403 }
@@ -274,6 +296,20 @@ export async function GET(request: NextRequest) {
       // Apply tenant isolation — only see interviews belonging to their company
       if (recruiter.companyId) {
         where.companyId = recruiter.companyId;
+      }
+    }
+
+    // Hiring managers: see all interviews in their company (via email domain matching)
+    if (profile.role === "hiring_manager") {
+      const hmDomain = profile.email.split("@")[1]?.toLowerCase();
+      if (hmDomain) {
+        const companyRecruiter = await prisma.recruiter.findFirst({
+          where: { email: { endsWith: `@${hmDomain}` }, companyId: { not: null } },
+          select: { companyId: true },
+        });
+        if (companyRecruiter?.companyId) {
+          where.companyId = companyRecruiter.companyId;
+        }
       }
     }
 

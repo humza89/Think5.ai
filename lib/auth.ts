@@ -216,18 +216,20 @@ export async function requireCandidateAccess(candidateId: string) {
 
 /**
  * Verify that the authenticated user has access to a specific interview.
- * Admins can access any interview. Recruiters must have scheduled it or own the candidate.
+ * Admins can access any interview.
+ * Recruiters must have scheduled it or own the candidate.
+ * Hiring managers can access interviews within their company scope.
  */
 export async function requireInterviewAccess(interviewId: string) {
   const { user, profile } = await getAuthenticatedUser();
 
-  if (!profile || !['recruiter', 'admin'].includes(profile.role)) {
+  if (!profile || !['recruiter', 'admin', 'hiring_manager'].includes(profile.role)) {
     throw new AuthError('Forbidden: insufficient permissions', 403);
   }
 
   const interview = await prisma.interview.findUnique({
     where: { id: interviewId },
-    select: { scheduledBy: true, candidateId: true },
+    select: { scheduledBy: true, candidateId: true, companyId: true },
   });
 
   if (!interview) {
@@ -238,6 +240,37 @@ export async function requireInterviewAccess(interviewId: string) {
     return { user, profile, interview };
   }
 
+  // Hiring managers: company-scoped access via scheduling recruiter's company
+  if (profile.role === 'hiring_manager') {
+    if (!interview.companyId) {
+      throw new AuthError('Forbidden: this interview has no company association', 403);
+    }
+    // Find the scheduling recruiter's company and check if the HM's email
+    // matches any recruiter in the same company (team membership proxy)
+    const schedulingRecruiter = await prisma.recruiter.findUnique({
+      where: { id: interview.scheduledBy },
+      select: { companyId: true },
+    });
+    if (!schedulingRecruiter || schedulingRecruiter.companyId !== interview.companyId) {
+      throw new AuthError('Forbidden: you do not have access to this interview', 403);
+    }
+    // Check HM belongs to same company: look up company's domain or match HM email domain
+    const companyRecruiters = await prisma.recruiter.findMany({
+      where: { companyId: interview.companyId },
+      select: { email: true },
+    });
+    // Extract email domains from company recruiters
+    const companyDomains = new Set(
+      companyRecruiters.map((r: { email: string }) => r.email.split('@')[1]?.toLowerCase()).filter(Boolean)
+    );
+    const hmDomain = profile.email.split('@')[1]?.toLowerCase();
+    if (!hmDomain || !companyDomains.has(hmDomain)) {
+      throw new AuthError('Forbidden: you do not have access to this interview', 403);
+    }
+    return { user, profile, interview };
+  }
+
+  // Recruiters: must have scheduled or own the candidate
   const recruiter = await getRecruiterForUser(
     user.id,
     profile.email,

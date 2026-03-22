@@ -163,6 +163,27 @@ export async function POST(
 
     // Start interview — set status to IN_PROGRESS
     if (action === "start" && interview.status === "PENDING") {
+      // P0.3: Block interview start unless consent is confirmed in DB (parity with voice route)
+      // P0.2: Block interview start unless device readiness is verified
+      if (!interview.isPractice) {
+        const preStartCheck = await prisma.interview.findUnique({
+          where: { id },
+          select: { consentRecording: true, consentPrivacy: true, consentedAt: true, readinessVerified: true },
+        });
+        if (!preStartCheck?.consentRecording || !preStartCheck?.consentPrivacy || !preStartCheck?.consentedAt) {
+          return new Response(
+            JSON.stringify({ error: "Recording and privacy consent must be confirmed before starting the interview. Please complete the consent step." }),
+            { status: 403, headers: { "Content-Type": "application/json" } }
+          );
+        }
+        if (!preStartCheck.readinessVerified) {
+          return new Response(
+            JSON.stringify({ error: "Device readiness check must be completed before starting the interview." }),
+            { status: 403, headers: { "Content-Type": "application/json" } }
+          );
+        }
+      }
+
       await prisma.interview.update({
         where: { id },
         data: { status: "IN_PROGRESS", startedAt: new Date() },

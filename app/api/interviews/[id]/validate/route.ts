@@ -3,6 +3,60 @@ import { prisma } from "@/lib/prisma";
 import { checkCandidateEligibility } from "@/lib/interview-eligibility";
 import { logInterviewActivity, getClientIp } from "@/lib/interview-audit";
 
+/**
+ * PATCH: Persist device readiness verification result.
+ * Called by InterviewPreCheck after all device checks pass.
+ */
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params;
+    const body = await request.json();
+    const { accessToken, action } = body;
+
+    if (!accessToken) {
+      return NextResponse.json({ error: "Access token is required" }, { status: 400 });
+    }
+
+    const interview = await prisma.interview.findUnique({
+      where: { id },
+      select: { accessToken: true, accessTokenExpiresAt: true, isPractice: true },
+    });
+
+    if (!interview || interview.accessToken !== accessToken) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    if (interview.accessTokenExpiresAt && new Date() > new Date(interview.accessTokenExpiresAt)) {
+      return NextResponse.json({ error: "Access token has expired" }, { status: 401 });
+    }
+
+    if (action === "readiness_verified") {
+      await prisma.interview.update({
+        where: { id },
+        data: { readinessVerified: true },
+      });
+
+      logInterviewActivity({
+        interviewId: id,
+        action: "interview.readiness_verified",
+        userId: id,
+        userRole: "candidate",
+        ipAddress: getClientIp(request.headers),
+      }).catch(() => {});
+
+      return NextResponse.json({ success: true });
+    }
+
+    return NextResponse.json({ error: "Unknown action" }, { status: 400 });
+  } catch (error) {
+    console.error("Readiness verification error:", error);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  }
+}
+
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -142,8 +196,10 @@ export async function POST(
       // Readiness and accommodations
       readinessRequired: interview.template?.readinessCheckRequired || false,
       accommodations: interview.accommodations || null,
-      // Proctoring config from template
-      proctoringLevel: aiConfig.proctoringLevel || "strict",
+      // Proctoring config from template — map antiCheatLevel to proctoringLevel
+      proctoringLevel: aiConfig.antiCheatLevel
+        ? ({ relaxed: "light", standard: "strict", strict: "strict" } as Record<string, string>)[aiConfig.antiCheatLevel as string] || "strict"
+        : (aiConfig.proctoringLevel as string) || "strict",
       pastePolicy: aiConfig.pastePolicy || "block",
       maxPasteWarnings: aiConfig.maxPasteWarnings || 3,
       // Include transcript for message restoration on resume

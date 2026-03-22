@@ -17,6 +17,7 @@ import {
   MessageSquare,
   Bell,
   Settings,
+  ShieldCheck,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/layout/ThemeToggle";
@@ -51,6 +52,7 @@ const NAV_SECTIONS: { title?: string; items: NavItem[] }[] = [
       { label: "Messages", href: "/candidate/messaging", icon: MessageSquare },
       { label: "Notifications", href: "/candidate/notifications", icon: Bell },
       { label: "Settings", href: "/candidate/settings", icon: Settings },
+      { label: "Policies", href: "/candidate/policy", icon: ShieldCheck },
     ],
   },
 ];

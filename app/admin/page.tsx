@@ -33,6 +33,8 @@ import {
   Activity,
   UserCog,
   ScrollText,
+  Cpu,
+  Hash,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -607,26 +609,308 @@ function UserManagementTab() {
 }
 
 // ============================================
-// Audit Log Tab (Placeholder)
+// Audit Log Tab
 // ============================================
 
+interface AuditLogEntry {
+  id: string;
+  userId: string | null;
+  userRole: string | null;
+  action: string;
+  entityType: string | null;
+  entityId: string | null;
+  metadata: Record<string, unknown> | null;
+  ipAddress: string | null;
+  createdAt: string;
+}
+
 function AuditLogTab() {
+  const [logs, setLogs] = useState<AuditLogEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [actionFilter, setActionFilter] = useState("");
+  const [entityTypeFilter, setEntityTypeFilter] = useState("");
+
+  const fetchLogs = useCallback(async () => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams({ page: String(page), pageSize: "25" });
+      if (actionFilter) params.set("action", actionFilter);
+      if (entityTypeFilter) params.set("entityType", entityTypeFilter);
+      const res = await fetch(`/api/admin/audit-logs?${params}`);
+      if (!res.ok) throw new Error("Failed to load");
+      const data = await res.json();
+      setLogs(data.logs);
+      setTotalPages(data.totalPages);
+      setTotal(data.total);
+    } catch {
+      setLogs([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [page, actionFilter, entityTypeFilter]);
+
+  useEffect(() => {
+    fetchLogs();
+  }, [fetchLogs]);
+
+  const formatAction = (action: string) => {
+    return action.replace(/\./g, " › ").replace(/_/g, " ");
+  };
+
   return (
-    <Card>
-      <CardContent className="flex flex-col items-center justify-center py-20 gap-4">
-        <ScrollText className="h-12 w-12 text-gray-300" />
-        <div className="text-center">
-          <h3 className="text-lg font-medium text-gray-700">
-            Audit Log Coming Soon
-          </h3>
-          <p className="text-sm text-gray-400 mt-1 max-w-md">
-            Track all administrative actions including role changes, user
-            verifications, and system events. This feature is currently under
-            development.
-          </p>
-        </div>
-      </CardContent>
-    </Card>
+    <div className="space-y-4">
+      {/* Filters */}
+      <Card>
+        <CardContent className="pt-6">
+          <div className="flex gap-3 items-end">
+            <div className="flex-1">
+              <label className="text-xs font-medium text-gray-500 mb-1 block">Action</label>
+              <Input
+                placeholder="Filter by action..."
+                value={actionFilter}
+                onChange={(e) => { setActionFilter(e.target.value); setPage(1); }}
+                className="h-9"
+              />
+            </div>
+            <div className="w-48">
+              <label className="text-xs font-medium text-gray-500 mb-1 block">Entity Type</label>
+              <Select value={entityTypeFilter} onValueChange={(v) => { setEntityTypeFilter(v === "all" ? "" : v); setPage(1); }}>
+                <SelectTrigger className="h-9">
+                  <SelectValue placeholder="All types" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All types</SelectItem>
+                  <SelectItem value="interview">Interview</SelectItem>
+                  <SelectItem value="report">Report</SelectItem>
+                  <SelectItem value="user">User</SelectItem>
+                  <SelectItem value="candidate">Candidate</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <Button variant="outline" size="sm" onClick={fetchLogs} className="h-9">
+              <RefreshCw className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Log Table */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm font-medium text-gray-500">
+            {total} log entries
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {loading ? (
+            <div className="flex justify-center py-12">
+              <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+            </div>
+          ) : logs.length === 0 ? (
+            <div className="flex flex-col items-center py-12 text-gray-400">
+              <ScrollText className="h-8 w-8 mb-2" />
+              <p className="text-sm">No audit log entries found</p>
+            </div>
+          ) : (
+            <div className="divide-y">
+              {logs.map((log) => (
+                <div key={log.id} className="flex items-start gap-3 py-3 text-sm">
+                  <div className="mt-0.5">
+                    <Activity className="h-4 w-4 text-gray-400" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-gray-900 truncate">
+                      {formatAction(log.action)}
+                    </p>
+                    <div className="flex items-center gap-2 mt-0.5 text-xs text-gray-500">
+                      {log.entityType && (
+                        <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                          {log.entityType}
+                        </Badge>
+                      )}
+                      {log.userRole && (
+                        <span className="capitalize">{log.userRole}</span>
+                      )}
+                      {log.ipAddress && (
+                        <span className="text-gray-400">{log.ipAddress}</span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="text-xs text-gray-400 whitespace-nowrap flex items-center gap-1">
+                    <Clock className="h-3 w-3" />
+                    {new Date(log.createdAt).toLocaleString()}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between pt-4 border-t mt-4">
+              <p className="text-xs text-gray-500">
+                Page {page} of {totalPages}
+              </p>
+              <div className="flex gap-1">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={page <= 1}
+                  onClick={() => setPage((p) => p - 1)}
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={page >= totalPages}
+                  onClick={() => setPage((p) => p + 1)}
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+// ============================================
+// Model Governance Tab
+// ============================================
+
+interface ModelGovernanceData {
+  current: {
+    scorerModelVersion: string;
+    promptHash: string;
+    rubricHash: string;
+  };
+  totalReports: number;
+  versionDistribution: Record<string, {
+    count: number;
+    latestPromptHash: string | null;
+    latestRubricHash: string | null;
+    lastUsed: string | null;
+  }>;
+}
+
+function ModelGovernanceTab() {
+  const [data, setData] = useState<ModelGovernanceData | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function fetchData() {
+      try {
+        const res = await fetch("/api/admin/model-governance");
+        if (!res.ok) throw new Error("Failed to load");
+        setData(await res.json());
+      } catch {
+        setData(null);
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchData();
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="flex justify-center py-12">
+        <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+      </div>
+    );
+  }
+
+  if (!data) {
+    return <p className="text-sm text-red-500 py-8">Failed to load model governance data</p>;
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Current Configuration */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <Cpu className="h-4 w-4" />
+            Current Scoring Configuration
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="p-4 rounded-lg border">
+              <p className="text-xs text-gray-500 mb-1">Scorer Model</p>
+              <p className="font-mono text-sm font-medium">{data.current.scorerModelVersion}</p>
+            </div>
+            <div className="p-4 rounded-lg border">
+              <p className="text-xs text-gray-500 mb-1">Prompt Hash</p>
+              <p className="font-mono text-xs text-gray-700 break-all">{data.current.promptHash}</p>
+            </div>
+            <div className="p-4 rounded-lg border">
+              <p className="text-xs text-gray-500 mb-1">Rubric Hash</p>
+              <p className="font-mono text-xs text-gray-700 break-all">{data.current.rubricHash}</p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Version Distribution */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <Hash className="h-4 w-4" />
+            Version Distribution ({data.totalReports} total reports)
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {Object.keys(data.versionDistribution).length === 0 ? (
+            <p className="text-sm text-gray-500 py-4">No scored reports yet</p>
+          ) : (
+            <div className="divide-y">
+              {Object.entries(data.versionDistribution).map(([version, info]) => {
+                const percentage = data.totalReports > 0
+                  ? Math.round((info.count / data.totalReports) * 100)
+                  : 0;
+                return (
+                  <div key={version} className="py-3">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className="font-mono text-xs">
+                          {version}
+                        </Badge>
+                        <span className="text-sm font-medium">{info.count} reports</span>
+                        <span className="text-xs text-gray-500">({percentage}%)</span>
+                      </div>
+                      {info.lastUsed && (
+                        <span className="text-xs text-gray-400">
+                          Last used: {new Date(info.lastUsed).toLocaleDateString()}
+                        </span>
+                      )}
+                    </div>
+                    {/* Progress bar */}
+                    <div className="w-full bg-gray-100 rounded-full h-2">
+                      <div
+                        className="bg-blue-500 h-2 rounded-full transition-all"
+                        style={{ width: `${percentage}%` }}
+                      />
+                    </div>
+                    {info.latestPromptHash && (
+                      <p className="text-xs text-gray-400 mt-1 font-mono truncate">
+                        Prompt: {info.latestPromptHash}
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
   );
 }
 
@@ -723,6 +1007,10 @@ export default function AdminPage() {
               <ScrollText className="h-4 w-4" />
               Audit Log
             </TabsTrigger>
+            <TabsTrigger value="model-governance" className="gap-2">
+              <Cpu className="h-4 w-4" />
+              Model Governance
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="overview">
@@ -739,6 +1027,10 @@ export default function AdminPage() {
 
           <TabsContent value="audit">
             <AuditLogTab />
+          </TabsContent>
+
+          <TabsContent value="model-governance">
+            <ModelGovernanceTab />
           </TabsContent>
         </Tabs>
       </div>

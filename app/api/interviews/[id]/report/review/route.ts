@@ -12,7 +12,7 @@ export async function POST(
     const { id } = await params;
     const { user, profile } = await getAuthenticatedUser();
 
-    if (!profile || !["recruiter", "admin"].includes(profile.role)) {
+    if (!profile || !["recruiter", "admin", "hiring_manager"].includes(profile.role)) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 

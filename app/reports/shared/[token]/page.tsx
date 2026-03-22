@@ -1,7 +1,9 @@
 import { prisma } from "@/lib/prisma";
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
+import { createHash } from "crypto";
 import { InterviewReportViewer } from "@/components/interview/InterviewReportViewer";
+import { EmailVerificationGate } from "@/components/reports/EmailVerificationGate";
 
 export const dynamic = "force-dynamic";
 
@@ -14,7 +16,38 @@ export default async function SharedReportPage({
 
   const report = await prisma.interviewReport.findUnique({
     where: { shareToken: token },
-    include: {
+    select: {
+      id: true,
+      shareRevoked: true,
+      shareExpiresAt: true,
+      recipientEmail: true,
+      overallScore: true,
+      recommendation: true,
+      summary: true,
+      technicalSkills: true,
+      softSkills: true,
+      domainExpertise: true,
+      clarityStructure: true,
+      problemSolving: true,
+      communicationScore: true,
+      measurableImpact: true,
+      strengths: true,
+      areasToImprove: true,
+      hiringAdvice: true,
+      integrityScore: true,
+      integrityFlags: true,
+      headline: true,
+      confidenceLevel: true,
+      professionalExperience: true,
+      roleFit: true,
+      culturalFit: true,
+      thinkingJudgment: true,
+      riskSignals: true,
+      hypothesisOutcomes: true,
+      evidenceHighlights: true,
+      jobMatchScore: true,
+      requirementMatches: true,
+      environmentFitNotes: true,
       interview: {
         select: {
           id: true,
@@ -83,7 +116,12 @@ export default async function SharedReportPage({
     },
   }).catch(() => {});
 
-  return (
+  // P1.2: If recipient email is set, require email verification before showing report
+  const recipientEmailHash = report.recipientEmail
+    ? createHash("sha256").update(report.recipientEmail.toLowerCase().trim()).digest("hex")
+    : null;
+
+  const content = (
     <div className="min-h-screen bg-gray-50">
       <header className="bg-white border-b no-print">
         <div className="container mx-auto px-6 py-4">
@@ -164,4 +202,15 @@ export default async function SharedReportPage({
       </div>
     </div>
   );
+
+  // Wrap with email verification gate if recipient email was specified
+  if (recipientEmailHash) {
+    return (
+      <EmailVerificationGate recipientEmailHash={recipientEmailHash}>
+        {content}
+      </EmailVerificationGate>
+    );
+  }
+
+  return content;
 }

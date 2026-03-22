@@ -21,6 +21,7 @@ import {
   MessageSquare,
   Bell,
   Settings,
+  ShieldCheck,
 } from "lucide-react";
 
 interface NavItem {
@@ -53,6 +54,7 @@ const NAV_SECTIONS: { title?: string; items: NavItem[] }[] = [
       { label: "Messages", href: "/candidate/messaging", icon: MessageSquare },
       { label: "Notifications", href: "/candidate/notifications", icon: Bell },
       { label: "Settings", href: "/candidate/settings", icon: Settings },
+      { label: "Policies", href: "/candidate/policy", icon: ShieldCheck },
     ],
   },
 ];

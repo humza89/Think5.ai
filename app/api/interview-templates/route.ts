@@ -5,7 +5,7 @@ import { createInterviewTemplateSchema } from "@/lib/validations/interview-templ
 
 export async function GET(request: NextRequest) {
   try {
-    const { user, profile } = await requireApprovedAccess(["recruiter", "admin"]);
+    const { user, profile } = await requireApprovedAccess(["recruiter", "admin", "hiring_manager"]);
 
     const recruiter = await getRecruiterForUser(
       user.id,
@@ -37,7 +37,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const { user, profile } = await requireApprovedAccess(["recruiter", "admin"]);
+    const { user, profile } = await requireApprovedAccess(["recruiter", "admin", "hiring_manager"]);
 
     const recruiter = await getRecruiterForUser(
       user.id,

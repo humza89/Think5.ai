@@ -669,6 +669,7 @@ model InterviewReport {
   scorerModelVersion  String?   // e.g. "gemini-1.5-pro-001"
   scorerPromptVersion String?   // SHA-256 hash of scoring prompt
   rubricVersion       String?   // SHA-256 hash of rubric JSON used
+  evidenceHash        String?   // SHA-256 hash of transcript+report+recording for tamper detection
 
   // Human review governance
   reviewStatus    ReviewStatus @default(PENDING_REVIEW)

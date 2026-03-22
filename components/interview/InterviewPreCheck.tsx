@@ -9,9 +9,11 @@ import { toast } from "sonner";
 
 interface PreCheckProps {
   onComplete: () => void;
+  interviewId?: string;
+  accessToken?: string;
 }
 
-export function InterviewPreCheck({ onComplete }: PreCheckProps) {
+export function InterviewPreCheck({ onComplete, interviewId, accessToken }: PreCheckProps) {
   const [camera, setCamera] = useState<"pending" | "pass" | "fail">("pending");
   const [mic, setMic] = useState<"pending" | "pass" | "fail">("pending");
   const [network, setNetwork] = useState<"pending" | "pass" | "fail">("pending");
@@ -78,9 +80,21 @@ export function InterviewPreCheck({ onComplete }: PreCheckProps) {
 
   const allPassed = camera === "pass" && mic === "pass" && network === "pass";
 
-  const handleStart = () => {
+  const handleStart = async () => {
+    // Persist readiness verification to server
+    if (interviewId && accessToken) {
+      try {
+        await fetch(`/api/interviews/${interviewId}/validate`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ accessToken, action: "readiness_verified" }),
+        });
+      } catch {
+        // Non-blocking — server will still check readinessVerified field
+      }
+    }
     if (stream) {
-      stream.getTracks().forEach((track) => track.stop()); // Stop local preview stream
+      stream.getTracks().forEach((track) => track.stop());
     }
     onComplete();
   };

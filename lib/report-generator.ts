@@ -3,6 +3,7 @@ import { generateInterviewReport, SCORER_MODEL_VERSION, getScorerPromptHash } fr
 import { getSkillModulesHash } from "@/lib/skill-modules";
 import { sendReportReadyEmail } from "@/lib/email/report-ready";
 import { sendCandidateFeedbackEmail } from "@/lib/email/candidate-feedback";
+import { computeEvidenceHash } from "@/lib/evidence-hash";
 import * as Sentry from "@sentry/nextjs";
 
 /**
@@ -87,6 +88,40 @@ export async function generateReportInBackground(
       reportOptions
     );
 
+    // P0.4: Compute deterministic integrity score from ProctoringEvent rows
+    const proctoringEvents = await prisma.proctoringEvent.findMany({
+      where: { interviewId },
+      select: { eventType: true, severity: true },
+    });
+
+    let computedIntegrityScore = 100;
+    const severityDeductions: Record<string, number> = {
+      CRITICAL: 20,
+      HIGH: 10,
+      MEDIUM: 5,
+      LOW: 2,
+    };
+    const eventCounts: Record<string, number> = {};
+    for (const event of proctoringEvents) {
+      computedIntegrityScore -= severityDeductions[event.severity] || 2;
+      eventCounts[event.eventType] = (eventCounts[event.eventType] || 0) + 1;
+    }
+    computedIntegrityScore = Math.max(0, computedIntegrityScore);
+
+    // Build human-readable integrity flags
+    const computedFlags = Object.entries(eventCounts).map(
+      ([type, count]) => `${type.replace(/_/g, " ")} (${count}x)`
+    );
+
+    // Use the lower of AI-assessed and computed scores for safety
+    const finalIntegrityScore = reportData.integrityScore != null
+      ? Math.min(reportData.integrityScore, computedIntegrityScore)
+      : computedIntegrityScore;
+    const finalIntegrityFlags = [
+      ...(Array.isArray(reportData.integrityFlags) ? reportData.integrityFlags : []),
+      ...computedFlags,
+    ].filter(Boolean);
+
     await prisma.interviewReport.create({
       data: {
         interviewId,
@@ -103,8 +138,8 @@ export async function generateReportInBackground(
         recommendation: reportData.recommendation,
         hiringAdvice: reportData.hiringAdvice,
         overallScore: reportData.overallScore,
-        integrityScore: reportData.integrityScore,
-        integrityFlags: reportData.integrityFlags,
+        integrityScore: finalIntegrityScore,
+        integrityFlags: finalIntegrityFlags,
         scorerModelVersion: SCORER_MODEL_VERSION,
         scorerPromptVersion: getScorerPromptHash(),
         rubricVersion: getSkillModulesHash(),
@@ -147,6 +182,29 @@ export async function generateReportInBackground(
       where: { id: interviewId },
       data: updateData,
     });
+
+    // P1.3: Compute evidence hash for tamper detection
+    try {
+      const evidenceHash = computeEvidenceHash(
+        interview.transcript,
+        {
+          overallScore: reportData.overallScore,
+          recommendation: reportData.recommendation,
+          summary: reportData.summary,
+          domainExpertise: reportData.domainExpertise,
+          problemSolving: reportData.problemSolving,
+          communicationScore: reportData.communicationScore,
+          integrityScore: finalIntegrityScore,
+        },
+        (updateData.recordingUrl as string) || null
+      );
+      await prisma.interviewReport.update({
+        where: { interviewId },
+        data: { evidenceHash },
+      });
+    } catch {
+      // Non-critical — don't fail report generation for hash computation
+    }
 
     await prisma.candidate.update({
       where: { id: interview.candidateId },

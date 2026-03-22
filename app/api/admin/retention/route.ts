@@ -1,23 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireRole, handleAuthError } from "@/lib/auth";
+import { enforceRetentionPolicies, getRetentionStatus } from "@/lib/retention-enforcement";
 
 export async function GET() {
   try {
     await requireRole(["admin"]);
-
-    const policy = await prisma.retentionPolicy.findFirst({
-      where: { isDefault: true },
-    });
-
-    if (!policy) {
-      return NextResponse.json(
-        { error: "No default retention policy found" },
-        { status: 404 }
-      );
-    }
-
-    return NextResponse.json(policy);
+    const status = await getRetentionStatus();
+    return NextResponse.json(status);
   } catch (error) {
     const { error: message, status } = handleAuthError(error);
     return NextResponse.json({ error: message }, { status });
@@ -69,6 +59,18 @@ export async function PATCH(request: NextRequest) {
     }
 
     return NextResponse.json(policy);
+  } catch (error) {
+    const { error: message, status } = handleAuthError(error);
+    return NextResponse.json({ error: message }, { status });
+  }
+}
+
+// POST: Trigger retention policy enforcement
+export async function POST() {
+  try {
+    await requireRole(["admin"]);
+    const result = await enforceRetentionPolicies();
+    return NextResponse.json(result);
   } catch (error) {
     const { error: message, status } = handleAuthError(error);
     return NextResponse.json({ error: message }, { status });

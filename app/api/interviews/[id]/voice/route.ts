@@ -120,14 +120,21 @@ export async function POST(
     // ── Start Interview ──
     if (action === "begin_interview") {
       // P0.4: Block interview start unless consent is confirmed in DB
+      // P0.2: Block interview start unless device readiness is verified
       if (!interview.isPractice) {
-        const consentCheck = await prisma.interview.findUnique({
+        const preStartCheck = await prisma.interview.findUnique({
           where: { id },
-          select: { consentRecording: true, consentPrivacy: true, consentedAt: true },
+          select: { consentRecording: true, consentPrivacy: true, consentedAt: true, readinessVerified: true },
         });
-        if (!consentCheck?.consentRecording || !consentCheck?.consentPrivacy || !consentCheck?.consentedAt) {
+        if (!preStartCheck?.consentRecording || !preStartCheck?.consentPrivacy || !preStartCheck?.consentedAt) {
           return Response.json(
             { error: "Recording and privacy consent must be confirmed before starting the interview. Please complete the consent step." },
+            { status: 403 }
+          );
+        }
+        if (!preStartCheck.readinessVerified) {
+          return Response.json(
+            { error: "Device readiness check must be completed before starting the interview." },
             { status: 403 }
           );
         }

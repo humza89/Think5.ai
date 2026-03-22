@@ -4,7 +4,32 @@ import { requireApprovedAccess, handleAuthError } from "@/lib/auth";
 
 export async function GET(request: NextRequest) {
   try {
-    await requireApprovedAccess(["recruiter", "admin"]);
+    const { user, profile } = await requireApprovedAccess(["recruiter", "admin"]);
+
+    // CRITICAL: Tenant isolation — scope all queries by companyId for non-admin users
+    let companyId: string | null = null;
+    if (profile.role === "recruiter") {
+      const recruiter = await prisma.recruiter.findFirst({
+        where: { supabaseUserId: user.id },
+        select: { companyId: true },
+      });
+      companyId = recruiter?.companyId ?? null;
+      if (!companyId) {
+        return NextResponse.json(
+          { error: "No company associated with your account" },
+          { status: 403 }
+        );
+      }
+    }
+
+    // Build company-scoped where clauses (admins see everything)
+    const jobWhere = companyId ? { companyId } : {};
+    const interviewWhere = companyId ? { companyId } : {};
+    const applicationWhere = companyId ? { job: { companyId } } : {};
+    const candidateWhere = companyId
+      ? { applications: { some: { job: { companyId } } } }
+      : {};
+    const matchWhere = companyId ? { job: { companyId } } : {};
 
     const { searchParams } = new URL(request.url);
     const startDateParam = searchParams.get("startDate");
@@ -49,46 +74,46 @@ export async function GET(request: NextRequest) {
       // Average time-to-hire
       hiredApplications,
     ] = await Promise.all([
-      // Current period counts
-      prisma.job.count(),
-      prisma.job.count({ where: { status: "ACTIVE" } }),
-      prisma.application.count({ where: { appliedAt: dateFilter } }),
-      prisma.interview.count({ where: { createdAt: dateFilter } }),
+      // Current period counts (company-scoped for recruiters, global for admins)
+      prisma.job.count({ where: { ...jobWhere } }),
+      prisma.job.count({ where: { status: "ACTIVE", ...jobWhere } }),
+      prisma.application.count({ where: { appliedAt: dateFilter, ...applicationWhere } }),
+      prisma.interview.count({ where: { createdAt: dateFilter, ...interviewWhere } }),
       prisma.interview.count({
-        where: { status: "COMPLETED", createdAt: dateFilter },
+        where: { status: "COMPLETED", createdAt: dateFilter, ...interviewWhere },
       }),
-      prisma.candidate.count(),
-      prisma.match.count(),
+      prisma.candidate.count({ where: { ...candidateWhere } }),
+      prisma.match.count({ where: { ...matchWhere } }),
       prisma.application.groupBy({
         by: ["status"],
         _count: { status: true },
-        where: { appliedAt: dateFilter },
+        where: { appliedAt: dateFilter, ...applicationWhere },
       }),
       prisma.interview.groupBy({
         by: ["status"],
         _count: { status: true },
-        where: { createdAt: dateFilter },
+        where: { createdAt: dateFilter, ...interviewWhere },
       }),
       prisma.application.count({
-        where: { status: "HIRED", appliedAt: dateFilter },
+        where: { status: "HIRED", appliedAt: dateFilter, ...applicationWhere },
       }),
 
       // Previous period counts for trend calculation
-      prisma.application.count({ where: { appliedAt: prevDateFilter } }),
+      prisma.application.count({ where: { appliedAt: prevDateFilter, ...applicationWhere } }),
       prisma.job.count({
-        where: { status: "ACTIVE", createdAt: prevDateFilter },
+        where: { status: "ACTIVE", createdAt: prevDateFilter, ...jobWhere },
       }),
       prisma.interview.count({
-        where: { status: "COMPLETED", createdAt: prevDateFilter },
+        where: { status: "COMPLETED", createdAt: prevDateFilter, ...interviewWhere },
       }),
-      prisma.interview.count({ where: { createdAt: prevDateFilter } }),
+      prisma.interview.count({ where: { createdAt: prevDateFilter, ...interviewWhere } }),
       prisma.application.count({
-        where: { status: "HIRED", appliedAt: prevDateFilter },
+        where: { status: "HIRED", appliedAt: prevDateFilter, ...applicationWhere },
       }),
 
       // Time-series: raw applications within period (we group in JS)
       prisma.application.findMany({
-        where: { appliedAt: dateFilter },
+        where: { appliedAt: dateFilter, ...applicationWhere },
         select: { appliedAt: true },
         orderBy: { appliedAt: "asc" },
       }),
@@ -99,6 +124,7 @@ export async function GET(request: NextRequest) {
           status: "COMPLETED",
           overallScore: { not: null },
           createdAt: dateFilter,
+          ...interviewWhere,
         },
         select: { overallScore: true },
       }),
@@ -108,6 +134,7 @@ export async function GET(request: NextRequest) {
         where: {
           status: "HIRED",
           appliedAt: dateFilter,
+          ...applicationWhere,
         },
         select: {
           appliedAt: true,

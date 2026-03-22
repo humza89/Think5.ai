@@ -74,7 +74,7 @@ export function WelcomeScreen({
           </div>
           <div className="flex items-center gap-3 text-zinc-300">
             <Maximize2 className="w-5 h-5 text-zinc-500 shrink-0" />
-            <span>Fullscreen mode will be enabled during the interview</span>
+            <span>Fullscreen mode is recommended during the interview</span>
           </div>
         </div>
 
@@ -146,25 +146,34 @@ export function WelcomeScreen({
           </div>
         </div>
 
-        {/* Proctoring notice */}
+        {/* Integrity monitoring notice */}
         <div className="bg-amber-500/5 border border-amber-500/20 rounded-xl p-4 mb-8">
           <div className="flex items-start gap-3">
             <ShieldCheck className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
             <div className="space-y-1.5">
               <p className="text-amber-200 text-sm font-medium">
-                Proctored Interview Session
+                Integrity Monitoring
+              </p>
+              <p className="text-zinc-500 text-xs mb-2">
+                The following activities are monitored and included in your integrity score:
               </p>
               <ul className="text-zinc-500 text-xs space-y-1">
                 <li className="flex items-center gap-1.5">
-                  <AlertTriangle className="w-3 h-3" /> Tab switching and window focus are monitored
+                  <AlertTriangle className="w-3 h-3" /> Tab switches and window focus changes are logged
                 </li>
                 <li className="flex items-center gap-1.5">
-                  <AlertTriangle className="w-3 h-3" /> Copy-paste is disabled during the interview
+                  <AlertTriangle className="w-3 h-3" /> Paste events are detected and recorded
                 </li>
                 <li className="flex items-center gap-1.5">
-                  <AlertTriangle className="w-3 h-3" /> All activity is logged in your integrity report
+                  <AlertTriangle className="w-3 h-3" /> Webcam access status is tracked (if enabled)
+                </li>
+                <li className="flex items-center gap-1.5">
+                  <AlertTriangle className="w-3 h-3" /> Fullscreen exit events are logged
                 </li>
               </ul>
+              <p className="text-zinc-600 text-xs mt-2">
+                These events are logged as telemetry and factor into your integrity score. They do not block interview progress.
+              </p>
             </div>
           </div>
         </div>
@@ -194,7 +203,7 @@ export function WelcomeScreen({
               className="mt-0.5 h-4 w-4 rounded border-zinc-600 bg-zinc-800 text-violet-600 focus:ring-violet-500 focus:ring-offset-0 accent-violet-600"
             />
             <span className="text-sm text-zinc-400 group-hover:text-zinc-300 transition-colors">
-              I consent to webcam and screen activity monitoring for integrity purposes
+              I consent to integrity monitoring (tab switches, paste detection, webcam, and fullscreen tracking) for assessment purposes
             </span>
           </label>
           <label className="flex items-start gap-3 cursor-pointer group">

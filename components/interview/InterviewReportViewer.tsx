@@ -685,6 +685,18 @@ export function InterviewReportViewer({
                   No integrity events flagged
                 </p>
               )}
+              {report.integrityFlags && report.integrityFlags.length > 0 && (
+                <div className="flex flex-wrap gap-2 mt-3">
+                  {report.integrityFlags.map((flag: string, i: number) => (
+                    <span
+                      key={i}
+                      className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800 border border-amber-200"
+                    >
+                      {flag}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
