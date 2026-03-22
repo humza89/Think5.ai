@@ -58,7 +58,7 @@ export async function POST(request: NextRequest) {
       request.headers.get("x-forwarded-for") ??
       request.headers.get("x-real-ip") ??
       "unknown";
-    const rateLimitResult = checkRateLimit(`bulk-invite:${ip}`, {
+    const rateLimitResult = await checkRateLimit(`bulk-invite:${ip}`, {
       maxRequests: 5,
       windowMs: 60000,
     });

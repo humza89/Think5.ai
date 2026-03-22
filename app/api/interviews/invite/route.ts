@@ -10,7 +10,7 @@ export async function POST(request: NextRequest) {
     const { user, profile } = await requireApprovedAccess(["recruiter", "admin"]);
 
     const ip = request.headers.get("x-forwarded-for") ?? request.headers.get("x-real-ip") ?? "unknown";
-    const rateLimitResult = checkRateLimit(`invite:${ip}`, { maxRequests: 20, windowMs: 60000 });
+    const rateLimitResult = await checkRateLimit(`invite:${ip}`, { maxRequests: 20, windowMs: 60000 });
     if (!rateLimitResult.allowed) {
       return NextResponse.json(
         { error: "Too many invitation requests. Please try again later." },

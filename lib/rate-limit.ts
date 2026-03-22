@@ -1,15 +1,43 @@
 /**
- * Rate limiter with LRU eviction and configurable limits.
+ * Rate limiter with Redis-backed storage for distributed deployments.
  *
- * In-memory implementation suitable for single-instance deployments.
- * For multi-replica production deployments, replace with Redis-backed
- * implementation (e.g., @upstash/ratelimit or ioredis sliding window).
+ * Uses Upstash Redis when available (production), falls back to in-memory
+ * for local development.
  */
 
-const MAX_STORE_SIZE = 10000; // Prevent unbounded memory growth
+export interface RateLimitConfig {
+  maxRequests: number;
+  windowMs: number;
+}
+
+// ── Redis-backed rate limiter ──────────────────────────────────────────
+
+let redisClient: { incr: (key: string) => Promise<number>; expire: (key: string, seconds: number) => Promise<unknown>; ttl: (key: string) => Promise<number> } | null = null;
+
+async function getRedisClient() {
+  if (redisClient) return redisClient;
+
+  const url = process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+
+  if (url && token) {
+    try {
+      const { Redis } = await import("@upstash/redis");
+      redisClient = new Redis({ url, token });
+      return redisClient;
+    } catch {
+      // Fall through to in-memory
+    }
+  }
+
+  return null;
+}
+
+// ── In-memory fallback (for local dev only) ────────────────────────────
+
+const MAX_STORE_SIZE = 10000;
 const rateLimitStore = new Map<string, { count: number; resetAt: number }>();
 
-// Clean up expired entries periodically
 if (typeof setInterval !== "undefined") {
   setInterval(() => {
     const now = Date.now();
@@ -21,27 +49,20 @@ if (typeof setInterval !== "undefined") {
   }, 60000);
 }
 
-export interface RateLimitConfig {
-  maxRequests: number;
-  windowMs: number;
-}
-
-export function checkRateLimit(
+function checkRateLimitInMemory(
   key: string,
-  config: RateLimitConfig = { maxRequests: 100, windowMs: 60000 }
+  config: RateLimitConfig
 ): { allowed: boolean; remaining: number; resetAt: number } {
   const now = Date.now();
   const entry = rateLimitStore.get(key);
 
   if (!entry || entry.resetAt < now) {
-    // LRU eviction: if store is full, delete oldest entries
     if (rateLimitStore.size >= MAX_STORE_SIZE) {
       const keysToDelete: string[] = [];
       for (const [k, v] of rateLimitStore) {
         if (v.resetAt < now) keysToDelete.push(k);
         if (keysToDelete.length >= MAX_STORE_SIZE / 2) break;
       }
-      // If no expired entries, just delete oldest 10%
       if (keysToDelete.length === 0) {
         let count = 0;
         for (const k of rateLimitStore.keys()) {
@@ -66,4 +87,42 @@ export function checkRateLimit(
     remaining,
     resetAt: entry.resetAt,
   };
+}
+
+// ── Public API ──────────────────────────────────────────────────────────
+
+export async function checkRateLimit(
+  key: string,
+  config: RateLimitConfig = { maxRequests: 100, windowMs: 60000 }
+): Promise<{ allowed: boolean; remaining: number; resetAt: number }> {
+  const redis = await getRedisClient();
+
+  if (redis) {
+    try {
+      const redisKey = `ratelimit:${key}`;
+      const windowSeconds = Math.ceil(config.windowMs / 1000);
+
+      const count = await redis.incr(redisKey);
+
+      // Set TTL on first request in window
+      if (count === 1) {
+        await redis.expire(redisKey, windowSeconds);
+      }
+
+      const ttl = await redis.ttl(redisKey);
+      const resetAt = Date.now() + ttl * 1000;
+      const remaining = Math.max(0, config.maxRequests - count);
+
+      return {
+        allowed: count <= config.maxRequests,
+        remaining,
+        resetAt,
+      };
+    } catch (error) {
+      console.error("Redis rate limit error, falling back to in-memory:", error);
+      return checkRateLimitInMemory(key, config);
+    }
+  }
+
+  return checkRateLimitInMemory(key, config);
 }

@@ -162,12 +162,30 @@ export async function finalizeRecording(
     })
   );
 
-  // Merge chunks into a single playback file
-  try {
-    await mergeRecordingChunks(interviewId, totalChunks, format);
-  } catch (err) {
-    console.error(`Failed to merge chunks for interview ${interviewId}:`, err);
-    // Non-fatal — playback falls back to first chunk
+  // Merge chunks into a single playback file with retry
+  const MAX_MERGE_RETRIES = 3;
+  let mergeSuccess = false;
+  for (let attempt = 1; attempt <= MAX_MERGE_RETRIES; attempt++) {
+    try {
+      await mergeRecordingChunks(interviewId, totalChunks, format);
+      mergeSuccess = true;
+      break;
+    } catch (err) {
+      console.error(
+        `[Recording Merge] Attempt ${attempt}/${MAX_MERGE_RETRIES} failed for interview ${interviewId}:`,
+        err
+      );
+      if (attempt < MAX_MERGE_RETRIES) {
+        // Exponential backoff: 1s, 2s, 4s
+        await new Promise((resolve) => setTimeout(resolve, 1000 * Math.pow(2, attempt - 1)));
+      }
+    }
+  }
+  if (!mergeSuccess) {
+    console.error(
+      `[Recording Merge] CRITICAL: All ${MAX_MERGE_RETRIES} merge attempts failed for interview ${interviewId}. ` +
+      `Playback will use first chunk only. Total chunks: ${totalChunks}, total size: ${totalSize} bytes.`
+    );
   }
 
   return metadata;
@@ -197,8 +215,8 @@ async function mergeRecordingChunks(
         const bytes = await response.Body.transformToByteArray();
         buffers.push(Buffer.from(bytes));
       }
-    } catch {
-      // Skip missing chunks
+    } catch (err) {
+      console.error(`[Recording Merge] Missing chunk ${i}/${totalChunks} for interview ${interviewId}:`, err);
     }
   }
 

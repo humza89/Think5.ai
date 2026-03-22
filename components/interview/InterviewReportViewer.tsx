@@ -17,6 +17,11 @@ import {
   Share2,
   Copy,
   Loader2,
+  Target,
+  Eye,
+  Lightbulb,
+  TrendingUp,
+  Briefcase,
 } from "lucide-react";
 
 interface SkillRating {
@@ -44,6 +49,31 @@ interface IntegrityEvent {
   timestamp: string;
 }
 
+interface RiskSignal {
+  type: string;
+  severity: "LOW" | "MEDIUM" | "HIGH";
+  evidence: string;
+  confidence: string;
+}
+
+interface HypothesisOutcome {
+  hypothesis: string;
+  outcome: "confirmed" | "refuted" | "inconclusive";
+  evidence: string;
+}
+
+interface EvidenceHighlight {
+  type: "strength" | "concern" | "contradiction" | "impressive";
+  summary: string;
+}
+
+interface RequirementMatch {
+  skillName: string;
+  importance: "REQUIRED" | "PREFERRED" | "NICE_TO_HAVE";
+  matchLevel: "met" | "partially_met" | "not_met" | "not_assessed";
+  evidence: string;
+}
+
 interface ReportData {
   overallScore: number | null;
   recommendation: string | null;
@@ -60,6 +90,19 @@ interface ReportData {
   hiringAdvice: string | null;
   integrityScore: number | null;
   integrityFlags: any[] | null;
+  // Phase 1 enhanced fields
+  headline: string | null;
+  confidenceLevel: string | null;
+  professionalExperience: number | null;
+  roleFit: number | null;
+  culturalFit: number | null;
+  thinkingJudgment: number | null;
+  riskSignals: RiskSignal[] | null;
+  hypothesisOutcomes: HypothesisOutcome[] | null;
+  evidenceHighlights: EvidenceHighlight[] | null;
+  jobMatchScore: number | null;
+  requirementMatches: RequirementMatch[] | null;
+  environmentFitNotes: string | null;
 }
 
 interface InterviewReportViewerProps {
@@ -191,6 +234,37 @@ export function InterviewReportViewer({
         </div>
       </div>
 
+      {/* Headline & Confidence */}
+      {(report.headline || report.confidenceLevel) && (
+        <Card>
+          <CardContent className="pt-6">
+            {report.headline && (
+              <p className="text-lg font-medium text-gray-800 leading-relaxed">
+                {report.headline}
+              </p>
+            )}
+            {report.confidenceLevel && (
+              <div className="flex items-center gap-2 mt-3">
+                <Eye className="w-4 h-4 text-gray-400" />
+                <span className="text-sm text-gray-500">Assessment Confidence:</span>
+                <Badge
+                  variant="outline"
+                  className={
+                    report.confidenceLevel === "HIGH"
+                      ? "border-green-300 text-green-700 bg-green-50"
+                      : report.confidenceLevel === "MEDIUM"
+                        ? "border-yellow-300 text-yellow-700 bg-yellow-50"
+                        : "border-red-300 text-red-700 bg-red-50"
+                  }
+                >
+                  {report.confidenceLevel}
+                </Badge>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       {/* Executive Summary */}
       {report.summary && (
         <Card>
@@ -220,6 +294,89 @@ export function InterviewReportViewer({
           </div>
         </CardContent>
       </Card>
+
+      {/* Enhanced Dimension Scores (Phase 1) */}
+      {(report.professionalExperience != null || report.roleFit != null || report.culturalFit != null || report.thinkingJudgment != null) && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <TrendingUp className="w-5 h-5 text-indigo-500" />
+              Assessment Dimensions
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              <DimensionBar label="Professional Experience" value={report.professionalExperience} />
+              <DimensionBar label="Thinking & Judgment" value={report.thinkingJudgment} />
+              <DimensionBar label="Cultural Fit" value={report.culturalFit} />
+              <DimensionBar label="Role Fit" value={report.roleFit} />
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Job-Fit Section (JOB_FIT / HYBRID modes) */}
+      {(report.jobMatchScore != null || (report.requirementMatches && report.requirementMatches.length > 0)) && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Briefcase className="w-5 h-5 text-blue-500" />
+              Job Fit Assessment
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              {report.jobMatchScore != null && (
+                <DimensionBar label="Job Match Score" value={report.jobMatchScore} />
+              )}
+              {report.requirementMatches && report.requirementMatches.length > 0 && (
+                <div className="mt-4">
+                  <p className="text-sm font-medium text-gray-500 mb-3">Requirement Analysis</p>
+                  <div className="space-y-2">
+                    {report.requirementMatches.map((match, i) => (
+                      <div key={i} className="flex items-start gap-3 text-sm border rounded-lg px-3 py-2">
+                        <span className={`mt-0.5 flex-shrink-0 w-2 h-2 rounded-full ${
+                          match.matchLevel === "met" ? "bg-green-500" :
+                          match.matchLevel === "partially_met" ? "bg-yellow-500" :
+                          match.matchLevel === "not_met" ? "bg-red-500" : "bg-gray-300"
+                        }`} />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium text-gray-900">{match.skillName}</span>
+                            <Badge variant="outline" className="text-xs">
+                              {match.importance.replace(/_/g, " ")}
+                            </Badge>
+                            <Badge
+                              variant="outline"
+                              className={`text-xs ${
+                                match.matchLevel === "met" ? "border-green-300 text-green-700" :
+                                match.matchLevel === "partially_met" ? "border-yellow-300 text-yellow-700" :
+                                match.matchLevel === "not_met" ? "border-red-300 text-red-700" :
+                                "border-gray-300 text-gray-500"
+                              }`}
+                            >
+                              {match.matchLevel.replace(/_/g, " ")}
+                            </Badge>
+                          </div>
+                          {match.evidence && (
+                            <p className="text-gray-500 text-xs mt-1">{match.evidence}</p>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {report.environmentFitNotes && (
+                <div className="mt-4 p-3 bg-blue-50 border border-blue-100 rounded-lg">
+                  <p className="text-sm font-medium text-blue-800 mb-1">Environment Fit</p>
+                  <p className="text-sm text-blue-700">{report.environmentFitNotes}</p>
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Technical Skills */}
       {report.technicalSkills && report.technicalSkills.length > 0 && (
@@ -332,6 +489,136 @@ export function InterviewReportViewer({
             <p className="text-gray-700 leading-relaxed">
               {report.hiringAdvice}
             </p>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Hypothesis Outcomes */}
+      {report.hypothesisOutcomes && report.hypothesisOutcomes.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Target className="w-5 h-5 text-purple-500" />
+              Hypothesis Outcomes
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {report.hypothesisOutcomes.map((h, i) => (
+                <div key={i} className="border rounded-lg p-4">
+                  <div className="flex items-start gap-3">
+                    <span className={`mt-1 flex-shrink-0 w-3 h-3 rounded-full ${
+                      h.outcome === "confirmed" ? "bg-green-500" :
+                      h.outcome === "refuted" ? "bg-red-500" : "bg-yellow-500"
+                    }`} />
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-sm font-medium text-gray-900">
+                          {h.hypothesis}
+                        </span>
+                        <Badge
+                          variant="outline"
+                          className={`text-xs ${
+                            h.outcome === "confirmed" ? "border-green-300 text-green-700 bg-green-50" :
+                            h.outcome === "refuted" ? "border-red-300 text-red-700 bg-red-50" :
+                            "border-yellow-300 text-yellow-700 bg-yellow-50"
+                          }`}
+                        >
+                          {h.outcome}
+                        </Badge>
+                      </div>
+                      <p className="text-sm text-gray-500">{h.evidence}</p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Evidence Highlights */}
+      {report.evidenceHighlights && report.evidenceHighlights.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Lightbulb className="w-5 h-5 text-amber-500" />
+              Key Evidence
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {report.evidenceHighlights.map((e, i) => (
+                <div
+                  key={i}
+                  className={`flex items-start gap-3 text-sm rounded-lg px-3 py-2 ${
+                    e.type === "strength" ? "bg-green-50 border border-green-200" :
+                    e.type === "impressive" ? "bg-purple-50 border border-purple-200" :
+                    e.type === "concern" ? "bg-amber-50 border border-amber-200" :
+                    "bg-red-50 border border-red-200"
+                  }`}
+                >
+                  <span className={`mt-0.5 flex-shrink-0 ${
+                    e.type === "strength" ? "text-green-500" :
+                    e.type === "impressive" ? "text-purple-500" :
+                    e.type === "concern" ? "text-amber-500" :
+                    "text-red-500"
+                  }`}>
+                    {e.type === "strength" ? "+" :
+                     e.type === "impressive" ? "\u2605" :
+                     e.type === "concern" ? "!" : "\u26A0"}
+                  </span>
+                  <div>
+                    <Badge variant="outline" className="text-xs mb-1">
+                      {e.type}
+                    </Badge>
+                    <p className="text-gray-700">{e.summary}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Risk Signals */}
+      {report.riskSignals && report.riskSignals.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5 text-red-500" />
+              Risk Signals
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {report.riskSignals.map((r, i) => (
+                <div key={i} className="flex items-start gap-3 text-sm border border-red-100 bg-red-50/50 rounded-lg px-3 py-2">
+                  <AlertTriangle className={`w-4 h-4 mt-0.5 flex-shrink-0 ${
+                    r.severity === "HIGH" ? "text-red-500" :
+                    r.severity === "MEDIUM" ? "text-amber-500" : "text-yellow-500"
+                  }`} />
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Badge
+                        variant="outline"
+                        className={`text-xs ${
+                          r.severity === "HIGH" ? "border-red-300 text-red-700 bg-red-50" :
+                          r.severity === "MEDIUM" ? "border-amber-300 text-amber-700 bg-amber-50" :
+                          "border-yellow-300 text-yellow-700 bg-yellow-50"
+                        }`}
+                      >
+                        {r.severity}
+                      </Badge>
+                      <span className="text-xs text-gray-500">
+                        {r.type.replace(/_/g, " ")}
+                      </span>
+                    </div>
+                    <p className="text-gray-700">{r.evidence}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
           </CardContent>
         </Card>
       )}

@@ -71,6 +71,19 @@ export default async function ReportPage({
             hiringAdvice: report.hiringAdvice,
             integrityScore: report.integrityScore,
             integrityFlags: report.integrityFlags as any,
+            // Phase 1 enhanced fields
+            headline: report.headline,
+            confidenceLevel: report.confidenceLevel,
+            professionalExperience: report.professionalExperience,
+            roleFit: report.roleFit,
+            culturalFit: report.culturalFit,
+            thinkingJudgment: report.thinkingJudgment,
+            riskSignals: report.riskSignals as any,
+            hypothesisOutcomes: report.hypothesisOutcomes as any,
+            evidenceHighlights: report.evidenceHighlights as any,
+            jobMatchScore: report.jobMatchScore,
+            requirementMatches: report.requirementMatches as any,
+            environmentFitNotes: report.environmentFitNotes,
           }}
           candidateName={interview.candidate.fullName}
           candidateTitle={interview.candidate.currentTitle}

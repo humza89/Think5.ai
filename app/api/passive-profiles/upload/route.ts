@@ -9,7 +9,7 @@ export async function POST(request: NextRequest) {
       request.headers.get("x-forwarded-for") ??
       request.headers.get("x-real-ip") ??
       "unknown";
-    const rateLimitResult = checkRateLimit(`upload:${ip}`, {
+    const rateLimitResult = await checkRateLimit(`upload:${ip}`, {
       maxRequests: 10,
       windowMs: 60000,
     });

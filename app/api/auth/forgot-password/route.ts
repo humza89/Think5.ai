@@ -7,7 +7,7 @@ import { checkRateLimit } from '@/lib/rate-limit';
 export async function POST(request: NextRequest) {
   try {
     const ip = request.headers.get("x-forwarded-for") ?? request.headers.get("x-real-ip") ?? "unknown";
-    const rateLimitResult = checkRateLimit(`forgot-password:${ip}`, { maxRequests: 3, windowMs: 60000 });
+    const rateLimitResult = await checkRateLimit(`forgot-password:${ip}`, { maxRequests: 3, windowMs: 60000 });
     if (!rateLimitResult.allowed) {
       return NextResponse.json(
         { error: "Too many requests. Please try again later." },

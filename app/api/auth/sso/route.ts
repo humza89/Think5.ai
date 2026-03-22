@@ -11,7 +11,7 @@ export async function GET(request: NextRequest) {
   try {
     // Rate limit: 10 requests per 60s per IP
     const ip = request.headers.get("x-forwarded-for") || "unknown";
-    const { allowed } = checkRateLimit(`sso-lookup:${ip}`, { maxRequests: 10, windowMs: 60000 });
+    const { allowed } = await checkRateLimit(`sso-lookup:${ip}`, { maxRequests: 10, windowMs: 60000 });
     if (!allowed) {
       return NextResponse.json({ error: "Too many requests" }, { status: 429 });
     }

@@ -92,17 +92,25 @@ export async function POST(
       );
     }
 
-    // Persist recording consent if provided
+    // Persist recording consent — REQUIRED, not best-effort
     if (consentRecording !== undefined || consentProctoring !== undefined || consentPrivacy !== undefined) {
-      await prisma.interview.update({
-        where: { id },
-        data: {
-          ...(consentRecording !== undefined && { consentRecording }),
-          ...(consentProctoring !== undefined && { consentProctoring }),
-          ...(consentPrivacy !== undefined && { consentPrivacy }),
-          consentedAt: new Date(),
-        },
-      });
+      try {
+        await prisma.interview.update({
+          where: { id },
+          data: {
+            ...(consentRecording !== undefined && { consentRecording }),
+            ...(consentProctoring !== undefined && { consentProctoring }),
+            ...(consentPrivacy !== undefined && { consentPrivacy }),
+            consentedAt: new Date(),
+          },
+        });
+      } catch (consentError) {
+        console.error("Failed to persist consent:", consentError);
+        return NextResponse.json(
+          { error: "Failed to save consent. Please try again." },
+          { status: 500 }
+        );
+      }
     }
 
     // Extract proctoring config from template aiConfig

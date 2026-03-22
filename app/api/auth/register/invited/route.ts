@@ -15,7 +15,7 @@ interface InvitedRegisterRequest {
 export async function POST(request: NextRequest) {
   try {
     const ip = request.headers.get("x-forwarded-for") ?? request.headers.get("x-real-ip") ?? "unknown";
-    const rateLimitResult = checkRateLimit(`register-invited:${ip}`, { maxRequests: 5, windowMs: 60000 });
+    const rateLimitResult = await checkRateLimit(`register-invited:${ip}`, { maxRequests: 5, windowMs: 60000 });
     if (!rateLimitResult.allowed) {
       return NextResponse.json(
         { error: "Too many registration attempts. Please try again later." },

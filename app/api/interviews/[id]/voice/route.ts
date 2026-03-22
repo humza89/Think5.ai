@@ -34,7 +34,13 @@ import { logInterviewActivity, getClientIp } from "@/lib/interview-audit";
 import { saveSessionState, deleteSessionState, generateReconnectToken, validateReconnectToken, type SessionState } from "@/lib/session-store";
 import { persistProctoringEvents } from "@/lib/proctoring-normalizer";
 
-// ── Active Sessions (in-memory for prototype; use Redis in production) ──
+// ── Active Sessions ──
+// NOTE: The Gemini Live WebSocket connection is inherently stateful and
+// cannot be serialized to Redis. In a Vercel serverless environment,
+// the session Map is tied to the function instance. If the instance
+// cold-starts, the WebSocket connection is lost and must be re-established.
+// Session transcript and state are persisted to Redis (via session-store.ts)
+// on every checkpoint to support reconnection after interruptions.
 
 interface ActiveVoiceSession {
   geminiSession: GeminiLiveSession;
@@ -112,6 +118,20 @@ export async function POST(
 
     // ── Start Interview ──
     if (action === "begin_interview") {
+      // P0.4: Block interview start unless consent is confirmed in DB
+      if (!interview.isPractice) {
+        const consentCheck = await prisma.interview.findUnique({
+          where: { id },
+          select: { consentRecording: true, consentPrivacy: true, consentedAt: true },
+        });
+        if (!consentCheck?.consentRecording || !consentCheck?.consentPrivacy || !consentCheck?.consentedAt) {
+          return Response.json(
+            { error: "Recording and privacy consent must be confirmed before starting the interview. Please complete the consent step." },
+            { status: 403 }
+          );
+        }
+      }
+
       // Audit log: voice started
       logInterviewActivity({
         interviewId: id,
@@ -285,7 +305,7 @@ export async function GET(
 
 // ── Transcript Checkpointing ────────────────────────────────────────────
 
-const CHECKPOINT_INTERVAL = 5;
+const CHECKPOINT_INTERVAL = 3; // Aggressive checkpointing for session recovery
 
 function maybeCheckpointTranscript(session: ActiveVoiceSession) {
   const transcript = session.geminiSession.transcript;
@@ -413,17 +433,29 @@ async function startVoiceInterview(
       },
     }, callbacks);
 
-    // Update interview status
+    // Generate reconnect token and update interview status
+    const reconnToken = generateReconnectToken();
     await prisma.interview.update({
       where: { id: interviewId },
       data: {
         status: "IN_PROGRESS",
         startedAt: new Date(),
         voiceProvider: "gemini-live",
+        reconnectToken: reconnToken,
       },
     });
 
-    return Response.json({ ok: true, message: "Voice session started" });
+    // Persist initial session state to Redis for recovery
+    saveSessionState(interviewId, {
+      interviewId,
+      transcript: [],
+      moduleScores: [],
+      questionCount: 0,
+      reconnectToken: reconnToken,
+      lastActiveAt: new Date().toISOString(),
+    }).catch((err: unknown) => console.error("Initial session state save failed:", err));
+
+    return Response.json({ ok: true, reconnectToken: reconnToken, message: "Voice session started" });
   } catch (error) {
     activeSessions.delete(interviewId);
     console.error("Failed to connect Gemini Live:", error);

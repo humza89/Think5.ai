@@ -12,7 +12,7 @@ export async function POST(request: NextRequest) {
     await requireApprovedAccess(["recruiter", "admin"]);
 
     const ip = request.headers.get("x-forwarded-for") ?? request.headers.get("x-real-ip") ?? "unknown";
-    const rateLimitResult = checkRateLimit(`upload:${ip}`, { maxRequests: 10, windowMs: 60000 });
+    const rateLimitResult = await checkRateLimit(`upload:${ip}`, { maxRequests: 10, windowMs: 60000 });
     if (!rateLimitResult.allowed) {
       return NextResponse.json(
         { error: "Too many upload requests. Please try again later." },
