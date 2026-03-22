@@ -27,10 +27,14 @@ export async function POST(request: NextRequest) {
     const {
       candidateId,
       type = "TECHNICAL",
+      mode = "GENERAL_PROFILE",
       voiceProvider = "text-sse",
       templateId,
       jobId,
       isPractice = false,
+      recruiterObjectives,
+      hmNotes,
+      customScreeningQuestions,
     } = body;
 
     if (!candidateId) {
@@ -83,9 +87,16 @@ export async function POST(request: NextRequest) {
           {
             title: job?.title || type,
             skillsRequired: (job?.skillsRequired as string[]) || [],
+            skillsPreferred: (job?.skillsPreferred as string[]) || [],
             description: job?.description || undefined,
           },
-          [] // default modules — can be customized from template
+          [], // default modules — can be customized from template
+          {
+            mode,
+            recruiterObjectives,
+            hmNotes: typeof hmNotes === "string" ? hmNotes : hmNotes ? JSON.stringify(hmNotes) : undefined,
+            customScreeningQuestions,
+          }
         );
       } catch (err) {
         console.error("Failed to generate interview plan:", err);
@@ -183,6 +194,7 @@ export async function POST(request: NextRequest) {
         candidateId,
         scheduledBy: recruiter.id,
         type,
+        mode,
         status: "PENDING",
         voiceProvider,
         templateId: templateId || undefined,
@@ -195,6 +207,8 @@ export async function POST(request: NextRequest) {
         accommodations: accommodations as any,
         retakeOfInterviewId: body.retakeOfInterviewId || null,
         companyId: recruiter.companyId || undefined,
+        recruiterObjectives: recruiterObjectives ? recruiterObjectives : undefined,
+        hmNotes: hmNotes ? (typeof hmNotes === "string" ? hmNotes : hmNotes) : undefined,
       },
       include: {
         candidate: {

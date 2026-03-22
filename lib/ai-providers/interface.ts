@@ -62,13 +62,56 @@ export type ProviderStage =
   | "interviewing"  // Live interview (text)
   | "voice"         // Live interview (voice)
   | "scoring"       // Post-interview scoring/report
+  | "evidence"      // Evidence bundle compilation
   | "general";      // General purpose
 
 /**
- * Get the configured provider for a given stage.
- * Falls back to the default provider if no stage-specific config exists.
+ * Stage-specific environment variable mapping.
+ * Each stage can be configured independently via env vars.
  */
-export function getProviderForStage(_stage: ProviderStage): string {
-  // Currently single-provider (Gemini). Future: read from config/env.
-  return process.env.AI_PROVIDER || "gemini";
+const STAGE_ENV_MAP: Record<ProviderStage, string> = {
+  planning: "AI_PROVIDER_PLANNING",
+  interviewing: "AI_PROVIDER_INTERVIEWING",
+  voice: "AI_PROVIDER_VOICE",
+  scoring: "AI_PROVIDER_SCORING",
+  evidence: "AI_PROVIDER_EVIDENCE",
+  general: "AI_PROVIDER",
+};
+
+/**
+ * Get the configured provider name for a given stage.
+ * Falls back to AI_PROVIDER, then to "gemini".
+ */
+export function getProviderForStage(stage: ProviderStage): string {
+  return (
+    process.env[STAGE_ENV_MAP[stage]] ||
+    process.env.AI_PROVIDER ||
+    "gemini"
+  );
+}
+
+/**
+ * Instantiate an AIProvider for a given stage.
+ * Uses stage-specific env vars for provider selection.
+ */
+export async function createProviderForStage(stage: ProviderStage): Promise<AIProvider> {
+  const providerName = getProviderForStage(stage);
+
+  switch (providerName) {
+    case "claude": {
+      const { ClaudeProvider } = await import("./claude");
+      // Use different models per stage
+      const modelMap: Partial<Record<ProviderStage, string>> = {
+        scoring: "claude-sonnet-4-20250514",
+        planning: "claude-sonnet-4-20250514",
+        evidence: "claude-haiku-4-5-20251001",
+      };
+      return new ClaudeProvider(modelMap[stage]);
+    }
+    case "gemini":
+    default: {
+      const { GeminiProvider } = await import("./gemini");
+      return new GeminiProvider();
+    }
+  }
 }

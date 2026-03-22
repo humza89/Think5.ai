@@ -162,6 +162,19 @@ export async function POST(
         scorerModelVersion: SCORER_MODEL_VERSION,
         scorerPromptVersion: getScorerPromptHash(),
         rubricVersion: getSkillModulesHash(),
+        // Phase 1 enhanced fields
+        professionalExperience: reportData.professionalExperience,
+        roleFit: reportData.roleFit,
+        culturalFit: reportData.culturalFit,
+        thinkingJudgment: reportData.thinkingJudgment,
+        confidenceLevel: reportData.confidenceLevel,
+        headline: reportData.headline,
+        riskSignals: reportData.riskSignals as any,
+        hypothesisOutcomes: reportData.hypothesisOutcomes as any,
+        evidenceHighlights: reportData.evidenceHighlights as any,
+        jobMatchScore: reportData.jobMatchScore,
+        requirementMatches: reportData.requirementMatches as any,
+        environmentFitNotes: reportData.environmentFitNotes,
       },
     });
 

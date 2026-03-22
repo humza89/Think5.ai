@@ -33,6 +33,14 @@ export async function generateReportInBackground(
           email: true,
         },
       },
+      job: {
+        select: {
+          title: true,
+          description: true,
+          skillsRequired: true,
+        },
+      },
+      hypotheses: true,
       report: true,
     },
   });
@@ -48,6 +56,22 @@ export async function generateReportInBackground(
   });
 
   try {
+    // Build report generation options with hypotheses and job context
+    const reportOptions: Parameters<typeof generateInterviewReport>[3] = {
+      hypotheses: interview.hypotheses?.map((h: { hypothesis: string; source: string }) => ({
+        hypothesis: h.hypothesis,
+        source: h.source,
+      })),
+      mode: interview.mode,
+    };
+
+    // Add job context for JOB_FIT and HYBRID modes
+    if (interview.job) {
+      reportOptions.jobTitle = interview.job.title;
+      reportOptions.jobDescription = interview.job.description || undefined;
+      reportOptions.jobSkillsRequired = (interview.job.skillsRequired as string[]) || undefined;
+    }
+
     const reportData = await generateInterviewReport(
       interview.transcript as any[],
       {
@@ -58,7 +82,8 @@ export async function generateReportInBackground(
         experienceYears: interview.candidate.experienceYears,
         resumeText: interview.candidate.resumeText,
       },
-      interview.integrityEvents as any[] | null
+      interview.integrityEvents as any[] | null,
+      reportOptions
     );
 
     await prisma.interviewReport.create({
@@ -82,6 +107,19 @@ export async function generateReportInBackground(
         scorerModelVersion: SCORER_MODEL_VERSION,
         scorerPromptVersion: getScorerPromptHash(),
         rubricVersion: getSkillModulesHash(),
+        // Phase 1: Enhanced fields
+        professionalExperience: reportData.professionalExperience,
+        roleFit: reportData.roleFit,
+        culturalFit: reportData.culturalFit,
+        thinkingJudgment: reportData.thinkingJudgment,
+        confidenceLevel: reportData.confidenceLevel,
+        headline: reportData.headline,
+        riskSignals: reportData.riskSignals as any,
+        hypothesisOutcomes: reportData.hypothesisOutcomes as any,
+        evidenceHighlights: reportData.evidenceHighlights as any,
+        jobMatchScore: reportData.jobMatchScore,
+        requirementMatches: reportData.requirementMatches as any,
+        environmentFitNotes: reportData.environmentFitNotes,
       },
     });
 

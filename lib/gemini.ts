@@ -33,6 +33,25 @@ interface SoftSkillRating {
   description: string;
 }
 
+export interface RiskSignal {
+  type: string;
+  severity: "LOW" | "MEDIUM" | "HIGH";
+  evidence: string;
+  confidence: string;
+}
+
+export interface HypothesisOutcome {
+  hypothesis: string;
+  outcome: "confirmed" | "refuted" | "inconclusive";
+  evidence: string;
+}
+
+export interface EvidenceHighlight {
+  type: "strength" | "concern" | "contradiction" | "impressive";
+  summary: string;
+  transcriptRange?: { startIdx: number; endIdx: number };
+}
+
 export interface InterviewReportData {
   technicalSkills: SkillRating[];
   softSkills: SoftSkillRating[];
@@ -49,11 +68,26 @@ export interface InterviewReportData {
   overallScore: number | null;
   integrityScore: number | null;
   integrityFlags: any[] | null;
+  // Phase 1: Enhanced dimension scores
+  professionalExperience: number | null;
+  roleFit: number | null;
+  culturalFit: number | null;
+  thinkingJudgment: number | null;
+  // Phase 1: Evidence & confidence
+  confidenceLevel: string | null; // HIGH/MEDIUM/LOW
+  headline: string | null; // One-line recruiter summary
+  riskSignals: RiskSignal[];
+  hypothesisOutcomes: HypothesisOutcome[];
+  evidenceHighlights: EvidenceHighlight[];
+  // Phase 1: Job-fit (optional)
+  jobMatchScore: number | null;
+  requirementMatches: Array<{ skillName: string; importance: string; matchLevel: string; evidence: string }> | null;
+  environmentFitNotes: string | null;
 }
 
-const REPORT_GENERATION_PROMPT = `You are Aria, an elite AI interview analyst for Think5, a platform that sources human intelligence for training the world's most advanced AI systems. Your role is to analyze interview transcripts and produce comprehensive, enterprise-grade candidate assessments that match the quality of platforms like micro1 and mercor.
+const REPORT_GENERATION_PROMPT = `You are Aria, an elite AI interview analyst for Think5. Your role is to analyze interview transcripts and produce enterprise-grade, evidence-linked candidate assessments that surpass platforms like micro1 and mercor.
 
-Analyze the following interview transcript and candidate profile to generate a detailed assessment report.
+Analyze the following interview transcript, candidate profile, and hypotheses to generate a detailed assessment report.
 
 CANDIDATE PROFILE:
 {candidateProfile}
@@ -61,7 +95,11 @@ CANDIDATE PROFILE:
 INTERVIEW TRANSCRIPT:
 {transcript}
 
-Generate a JSON assessment report with the following structure. Be thorough, specific, and cite evidence from the transcript for each rating.
+{hypotheses}
+
+{jobContext}
+
+Generate a JSON assessment report. Every score MUST be justified with specific evidence from the transcript.
 
 {
   "technicalSkills": [
@@ -79,31 +117,79 @@ Generate a JSON assessment report with the following structure. Be thorough, spe
       "description": "Assessment of this soft skill"
     }
   ],
-  "domainExpertise": <0-100 float, depth of domain knowledge>,
-  "clarityStructure": <0-100 float, how clearly they structure thoughts and answers>,
-  "problemSolving": <0-100 float, analytical and problem-solving ability>,
-  "communicationScore": <0-100 float, verbal communication effectiveness>,
-  "measurableImpact": <0-100 float, evidence of measurable impact in past work>,
-  "summary": "2-3 paragraph executive summary written for recruiters. Cover the candidate's strengths, gaps, and overall fit. Be specific and actionable.",
-  "strengths": ["Strength 1 with brief explanation", "Strength 2", ...],
-  "areasToImprove": ["Area 1 with brief explanation", "Area 2", ...],
+  "domainExpertise": <0-100>,
+  "clarityStructure": <0-100>,
+  "problemSolving": <0-100>,
+  "communicationScore": <0-100>,
+  "measurableImpact": <0-100>,
+
+  "professionalExperience": <0-100, authenticity and depth of experience, seniority alignment>,
+  "roleFit": <0-100 or null if no job context, match to specific job requirements>,
+  "culturalFit": <0-100, ownership, collaboration, adaptability, coachability signals>,
+  "thinkingJudgment": <0-100, structured thinking, tradeoff awareness, decision quality>,
+
+  "headline": "One sentence summary for recruiter quick scan, e.g. 'Strong backend engineer with genuine distributed systems experience. Weaker on frontend and team leadership.'",
+
+  "confidenceLevel": "HIGH|MEDIUM|LOW — based on depth of transcript evidence. SHORT interviews or many incomplete answers = LOW.",
+
+  "summary": "2-3 paragraph executive summary for recruiters. What this person CAN do, at what LEVEL, in what CONTEXT. Key strengths with evidence. Key gaps. Specific recruiter action.",
+  "strengths": ["Strength with evidence"],
+  "areasToImprove": ["Area with evidence"],
   "recommendation": "STRONG_YES|YES|MAYBE|NO|STRONG_NO",
-  "hiringAdvice": "Detailed paragraph of guidance for the recruiter: what roles this candidate would excel in, potential concerns, suggested follow-up questions, and overall hiring recommendation with reasoning.",
-  "overallScore": <0-100 composite score>,
-  "integrityScore": <0-100 or null if unable to assess>,
+  "hiringAdvice": "Detailed guidance: what roles they'd excel in, concerns, follow-up questions, conditional factors.",
+  "overallScore": <0-100>,
+
+  "riskSignals": [
+    {
+      "type": "inconsistency|inflated_claim|shallow_reasoning|evasion|buzzword_reliance|weak_ownership",
+      "severity": "LOW|MEDIUM|HIGH",
+      "evidence": "Specific transcript reference",
+      "confidence": "HIGH|MEDIUM|LOW"
+    }
+  ],
+
+  "hypothesisOutcomes": [
+    {
+      "hypothesis": "The hypothesis text",
+      "outcome": "confirmed|refuted|inconclusive",
+      "evidence": "What the candidate said that supports this outcome"
+    }
+  ],
+
+  "evidenceHighlights": [
+    {
+      "type": "strength|concern|contradiction|impressive",
+      "summary": "Brief description of this moment"
+    }
+  ],
+
+  "jobMatchScore": <0-100 or null if no job context>,
+  "requirementMatches": [{"skillName": "string", "importance": "REQUIRED|PREFERRED|NICE_TO_HAVE", "matchLevel": "met|partially_met|not_met|not_assessed", "evidence": "string"}] or null,
+  "environmentFitNotes": "string or null",
+
+  "integrityScore": <0-100 or null>,
   "integrityFlags": []
 }
 
 SCORING GUIDELINES:
 - Technical skills: 0-3 = below expectations, 4-6 = meets expectations, 7-8 = exceeds expectations, 9-10 = exceptional
 - Dimension scores (0-100): 0-30 = poor, 31-50 = below average, 51-70 = competent, 71-85 = strong, 86-100 = exceptional
-- Overall score: Weighted composite — 40% technical, 20% problem solving, 15% communication, 15% domain expertise, 10% measurable impact
-- Recommendation: STRONG_YES = top 5% candidate, YES = clearly qualified, MAYBE = borderline/needs more info, NO = not qualified, STRONG_NO = significant concerns
+- Overall score: Weighted — 25% technical/functional, 20% professional experience, 20% thinking/judgment, 15% communication, 10% cultural fit, 10% role fit (if applicable)
+- confidenceLevel: HIGH = deep transcript with specific examples and verified claims. MEDIUM = decent coverage but some gaps. LOW = short interview, many vague answers, or significant areas unassessed.
+- Recommendation: STRONG_YES = top 5%, YES = clearly qualified, MAYBE = borderline, NO = not qualified, STRONG_NO = significant concerns
+
+RISK SIGNAL DETECTION:
+- Look for inconsistencies between resume claims and interview answers
+- Flag inflated claims (title vs. actual described scope)
+- Note shallow reasoning (describes "what" but never "why" or "how")
+- Detect evasion (repeatedly deflecting certain topics)
+- Identify buzzword reliance (uses terms without demonstrating understanding)
+- Flag weak ownership (always "we" never "I", can't describe personal contribution)
 
 IMPORTANT:
-- Be specific and evidence-based. Every rating must be justified.
-- If the transcript is short or lacks depth in an area, note this and adjust confidence accordingly.
-- The summary and hiringAdvice should be actionable and written for a busy recruiter.
+- Every score MUST link to specific evidence. If no evidence exists, score null and note in confidenceLevel.
+- If hypotheses were provided, evaluate each one — confirmed, refuted, or inconclusive with evidence.
+- The headline must be scannable in 3 seconds by a busy recruiter.
 - Return ONLY valid JSON. No markdown, no code blocks, no extra text.`;
 
 /**
@@ -119,10 +205,20 @@ interface IntegrityEvent {
   timestamp: string;
 }
 
+interface ReportGenerationOptions {
+  hypotheses?: Array<{ hypothesis: string; source: string }>;
+  jobTitle?: string;
+  jobDescription?: string;
+  jobSkillsRequired?: string[];
+  jobSkillsPreferred?: string[];
+  mode?: string;
+}
+
 export async function generateInterviewReport(
   transcript: TranscriptEntry[],
   candidateProfile: CandidateProfile,
-  integrityEvents?: IntegrityEvent[] | null
+  integrityEvents?: IntegrityEvent[] | null,
+  options?: ReportGenerationOptions
 ): Promise<InterviewReportData> {
   if (!process.env.GEMINI_API_KEY) {
     throw new Error("GEMINI_API_KEY is not configured");
@@ -154,6 +250,30 @@ export async function generateInterviewReport(
     .filter(Boolean)
     .join("\n");
 
+  // Format hypotheses if available
+  let hypothesesSection = "";
+  if (options?.hypotheses?.length) {
+    const hypothesesStr = options.hypotheses
+      .map((h, i) => `  H${i + 1}. [${h.source}] ${h.hypothesis}`)
+      .join("\n");
+    hypothesesSection = `PRE-INTERVIEW HYPOTHESES TO EVALUATE:
+${hypothesesStr}
+
+For each hypothesis, determine whether the interview evidence confirms, refutes, or leaves it inconclusive. Include your reasoning in hypothesisOutcomes.`;
+  }
+
+  // Format job context if available
+  let jobContextSection = "";
+  if (options?.jobTitle) {
+    jobContextSection = `JOB CONTEXT (evaluate candidate fit against this role):
+- Title: ${options.jobTitle}
+${options.jobDescription ? `- Description: ${options.jobDescription.slice(0, 1000)}` : ""}
+${options.jobSkillsRequired?.length ? `- Required Skills: ${options.jobSkillsRequired.join(", ")}` : ""}
+${options.jobSkillsPreferred?.length ? `- Preferred Skills: ${options.jobSkillsPreferred.join(", ")}` : ""}
+
+Evaluate jobMatchScore, requirementMatches, and environmentFitNotes for this specific role.`;
+  }
+
   // Format integrity events if available
   let integritySection = "";
   if (integrityEvents && integrityEvents.length > 0) {
@@ -162,24 +282,25 @@ export async function generateInterviewReport(
       .join("\n");
     integritySection = `\n\nINTEGRITY EVENTS (proctoring data collected during interview):\n${eventsStr}\n\nINTEGRITY SCORING GUIDELINES:
 Start at 100 and deduct based on events:
-- tab_switch: -5 per occurrence (candidate left the interview tab)
-- focus_lost: -3 per occurrence (window lost focus)
-- paste_detected: -10 per occurrence (attempted to paste content — strong cheating indicator)
-- copy_detected: -2 per occurrence (copied text from interview)
-- right_click: -2 per occurrence (attempted right-click context menu)
-- devtools_attempt: -15 per occurrence (attempted to open browser developer tools — strong cheating indicator)
-- fullscreen_exit: -8 per occurrence (exited fullscreen mode)
-- keyboard_shortcut: -3 per occurrence (suspicious keyboard shortcut detected)
-- webcam_lost: -5 per occurrence (webcam disconnected)
-- webcam_denied: -10 (refused webcam monitoring)
+- tab_switch: -5 per occurrence
+- focus_lost: -3 per occurrence
+- paste_detected: -10 per occurrence (strong cheating indicator)
+- copy_detected: -2 per occurrence
+- right_click: -2 per occurrence
+- devtools_attempt: -15 per occurrence (strong cheating indicator)
+- fullscreen_exit: -8 per occurrence
+- keyboard_shortcut: -3 per occurrence
+- webcam_lost: -5 per occurrence
+- webcam_denied: -10
 
-Minimum score is 0. Populate integrityFlags with each flagged event in format: [{type, description, timestamp}].
-If 3+ paste or devtools events, add a meta-flag: {type: "high_risk", description: "Multiple cheating indicators detected"}.`;
+Minimum score is 0. If 3+ paste or devtools events, add a meta-flag: {type: "high_risk", description: "Multiple cheating indicators detected"}.`;
   }
 
   const prompt = REPORT_GENERATION_PROMPT
     .replace("{candidateProfile}", profileStr)
-    .replace("{transcript}", formattedTranscript) + integritySection;
+    .replace("{transcript}", formattedTranscript)
+    .replace("{hypotheses}", hypothesesSection)
+    .replace("{jobContext}", jobContextSection) + integritySection;
 
   const result = await model.generateContent(prompt);
   const response = result.response;
@@ -199,7 +320,7 @@ If 3+ paste or devtools events, add a meta-flag: {type: "high_risk", description
 
   const reportData: InterviewReportData = JSON.parse(jsonStr);
 
-  // Validate and clamp scores
+  // Validate and clamp all scores
   reportData.overallScore = clampScore(reportData.overallScore, 0, 100);
   reportData.domainExpertise = clampScore(reportData.domainExpertise, 0, 100);
   reportData.clarityStructure = clampScore(reportData.clarityStructure, 0, 100);
@@ -207,12 +328,29 @@ If 3+ paste or devtools events, add a meta-flag: {type: "high_risk", description
   reportData.communicationScore = clampScore(reportData.communicationScore, 0, 100);
   reportData.measurableImpact = clampScore(reportData.measurableImpact, 0, 100);
   reportData.integrityScore = clampScore(reportData.integrityScore, 0, 100);
+  // Phase 1 dimension scores
+  reportData.professionalExperience = clampScore(reportData.professionalExperience, 0, 100);
+  reportData.roleFit = clampScore(reportData.roleFit, 0, 100);
+  reportData.culturalFit = clampScore(reportData.culturalFit, 0, 100);
+  reportData.thinkingJudgment = clampScore(reportData.thinkingJudgment, 0, 100);
+  reportData.jobMatchScore = clampScore(reportData.jobMatchScore, 0, 100);
 
   // Validate recommendation
   const validRecommendations = ["STRONG_YES", "YES", "MAYBE", "NO", "STRONG_NO"];
   if (!validRecommendations.includes(reportData.recommendation)) {
     reportData.recommendation = "MAYBE";
   }
+
+  // Validate confidence level
+  const validConfidence = ["HIGH", "MEDIUM", "LOW"];
+  if (!reportData.confidenceLevel || !validConfidence.includes(reportData.confidenceLevel)) {
+    reportData.confidenceLevel = "MEDIUM";
+  }
+
+  // Ensure arrays exist
+  reportData.riskSignals = reportData.riskSignals || [];
+  reportData.hypothesisOutcomes = reportData.hypothesisOutcomes || [];
+  reportData.evidenceHighlights = reportData.evidenceHighlights || [];
 
   return reportData;
 }

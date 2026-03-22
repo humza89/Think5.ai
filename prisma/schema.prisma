@@ -25,11 +25,17 @@ enum CandidateStatus {
 }
 
 enum InterviewStatus {
+  CREATED
+  PLAN_GENERATED
   PENDING
   IN_PROGRESS
+  DISCONNECTED
   COMPLETED
   CANCELLED
   EXPIRED
+  REPORT_GENERATING
+  REPORT_READY
+  REPORT_FAILED
 }
 
 enum InterviewType {
@@ -38,6 +44,22 @@ enum InterviewType {
   DOMAIN_EXPERT
   LANGUAGE
   CASE_STUDY
+}
+
+enum InterviewMode {
+  GENERAL_PROFILE
+  JOB_FIT
+  HYBRID
+  CULTURAL_FIT
+  TECHNICAL_DEEP_DIVE
+  SCREENING
+  CUSTOM
+}
+
+enum EvidenceConfidence {
+  HIGH
+  MEDIUM
+  LOW
 }
 
 enum JobStatus {
@@ -487,6 +509,7 @@ model Interview {
   invitation      InterviewInvitation? @relation(fields: [invitationId], references: [id], onDelete: SetNull)
   status          InterviewStatus   @default(PENDING)
   type            InterviewType     @default(TECHNICAL)
+  mode            InterviewMode     @default(GENERAL_PROFILE)
   duration        Int?              // duration in seconds
   startedAt       DateTime?
   completedAt     DateTime?
@@ -555,6 +578,13 @@ model Interview {
   companyId           String?
   company             Client?       @relation(fields: [companyId], references: [id], onDelete: SetNull)
 
+  // Hypothesis-driven interview (Phase 1)
+  recruiterObjectives Json?         // [{text, priority}] — strategic objectives from recruiter
+  hmNotes             Json?         // Hiring manager notes visible only to AI
+  candidateSelfAssessment Json?     // Post-interview self-assessment responses
+  coverageMap         Json?         // Per-section coverage percentages
+  evidenceBundle      Json?         // Compiled evidence bundle for recruiter
+
   // Detailed report (1:1)
   report          InterviewReport?
 
@@ -564,6 +594,10 @@ model Interview {
   proctoringEvents ProctoringEvent[]
   reviewDecisions  ReviewDecision[]
 
+  // Hypothesis & section tracking
+  hypotheses      InterviewHypothesis[]
+  sections        InterviewSection[]
+
   createdAt       DateTime          @default(now())
   updatedAt       DateTime          @updatedAt
 
@@ -571,6 +605,7 @@ model Interview {
   @@index([scheduledBy])
   @@index([status])
   @@index([jobId])
+  @@index([mode])
   @@index([reconnectToken])
 }
 
@@ -603,6 +638,28 @@ model InterviewReport {
 
   // Composite score (denormalized from Gemini analysis)
   overallScore    Float?
+
+  // Enhanced dimension scores (Phase 1)
+  professionalExperience Float?  // 0-100
+  roleFit                Float?  // 0-100 (for JOB_FIT/HYBRID modes)
+  culturalFit            Float?  // 0-100
+  thinkingJudgment       Float?  // 0-100
+
+  // Evidence & confidence (Phase 1)
+  confidenceLevel        String? // HIGH/MEDIUM/LOW
+  headline               String? // One-line summary for recruiter quick scan
+  riskSignals            Json?   // [{type, severity, evidence, confidence}]
+  hypothesisOutcomes     Json?   // [{hypothesis, outcome, evidence}]
+  evidenceHighlights     Json?   // [{type, summary, transcriptRange, mediaTimestamp}]
+  rubricSnapshot         Json?   // Frozen rubric used for scoring (audit)
+
+  // Job-fit addendum (JOB_FIT/HYBRID modes)
+  jobMatchScore          Float?  // 0-100
+  requirementMatches     Json?   // [{skillName, importance, matchLevel, evidence}]
+  environmentFitNotes    String? @db.Text
+
+  // Candidate self-assessment
+  candidateSelfAssessment Json?
 
   // Integrity / proctoring
   integrityScore  Float?
@@ -644,6 +701,15 @@ model InterviewTemplate {
   questions       Json      @default("[]") // [{text, type, category, followUpDepth}]
   aiConfig        Json      @default("{}") // {personality, followUpDepth, language, antiCheatLevel}
   isDefault       Boolean   @default(false)
+
+  // Interview mode (Phase 1)
+  mode                    InterviewMode @default(GENERAL_PROFILE)
+  strategicObjectives     Json?    // [{objective, priority}] — what recruiter wants AI to look for
+  customScreeningQuestions Json?   // [{text, mandatory, category}] — fixed questions AI must ask
+  hmNotesTemplate         String?  @db.Text  // Template for HM notes
+  scoringWeights          Json?    // {dimension: weight} overrides default weights
+  maxDurationMinutes      Int      @default(45)
+  minDurationMinutes      Int      @default(15)
 
   // Candidate report visibility policy
   candidateReportPolicy Json?  // {showTranscript, showScores, showStrengths, showAreasToImprove}
@@ -757,6 +823,16 @@ model InterviewResponse {
   aiFeedback          String?   @db.Text
   skillsDemonstrated  Json?     @default("[]") // [string]
 
+  // Enhanced evidence capture (Phase 1)
+  answerQuality       Int?      // 1-5 micro-score per response
+  evidenceStrength    Int?      // 1-5 how concrete/verifiable
+  flags               Json?     // [{type, description}] — contradictions, vagueness, buzzwords
+  hypothesesTested    Json?     // Which hypotheses this answer tested
+  mediaTimestampStartMs Int?    // Recording offset for click-to-play
+  mediaTimestampEndMs   Int?    // Recording offset end
+  sectionName         String?   // Which interview section this belongs to
+  difficultyLevel     String?   // Difficulty when question was asked
+
   createdAt           DateTime  @default(now())
 
   @@index([interviewId])
@@ -788,6 +864,41 @@ model ProctoringEvent {
 
   @@index([interviewId])
   @@index([eventType])
+}
+
+// ============================================
+// Hypothesis-Driven Interview (Phase 1)
+// ============================================
+
+model InterviewHypothesis {
+  id              String    @id @default(uuid())
+  interviewId     String
+  interview       Interview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+  hypothesis      String    @db.Text     // e.g. "React experience may be limited to recent roles"
+  source          String                 // "resume_analysis", "skill_gap", "career_pattern", "recruiter_objective"
+  outcome         String?                // "confirmed", "refuted", "inconclusive"
+  evidence        String?   @db.Text     // Evidence supporting the outcome
+  confidenceLevel String?                // HIGH/MEDIUM/LOW
+  createdAt       DateTime  @default(now())
+
+  @@index([interviewId])
+}
+
+model InterviewSection {
+  id              String    @id @default(uuid())
+  interviewId     String
+  interview       Interview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+  sectionName     String                 // e.g. "Career Arc Exploration", "Skills Verification"
+  sectionOrder    Int
+  skillModuleName String?                // Which skill module, if any
+  plannedDuration Int                    // minutes
+  actualDuration  Int?                   // minutes (filled after section completes)
+  coverageScore   Float?                 // 0-100 (how well was this section covered)
+  startedAt       DateTime?
+  endedAt         DateTime?
+  questionsAsked  Int       @default(0)
+
+  @@index([interviewId])
 }
 
 // ============================================
