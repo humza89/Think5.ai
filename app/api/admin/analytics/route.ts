@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireRole, handleAuthError } from "@/lib/auth";
-import { getUsageStats } from "@/lib/ai-usage";
+import { getUsageStats, checkBudgetThreshold } from "@/lib/ai-usage";
 
 /**
  * GET /api/admin/analytics — Enterprise analytics dashboard
@@ -148,6 +148,55 @@ export async function GET(request: NextRequest) {
       // Quality metrics table may not exist yet
     }
 
+    // ── Cost Governance ─────────────────────────────────────────
+    let costGovernance = null;
+    try {
+      if (companyId) {
+        costGovernance = await checkBudgetThreshold(companyId);
+      } else {
+        // Get per-company cost breakdown for admin overview
+        const companyCosts = await prisma.aIUsageLog.groupBy({
+          by: ["companyId"],
+          where: { createdAt: { gte: since }, companyId: { not: null } },
+          _sum: { estimatedCost: true },
+          _count: true,
+        });
+
+        type CostRow = (typeof companyCosts)[number];
+        costGovernance = {
+          perCompany: companyCosts.map((c: CostRow) => ({
+            companyId: c.companyId,
+            totalCost: c._sum.estimatedCost || 0,
+            operationCount: c._count,
+          })),
+        };
+      }
+    } catch {
+      // AI usage table may not exist yet
+    }
+
+    // ── Section-Level Analytics ──────────────────────────────────
+    let sectionAnalytics = null;
+    try {
+      const sections = await prisma.interviewSection.groupBy({
+        by: ["sectionName"],
+        where: { createdAt: { gte: since } },
+        _avg: { coverageScore: true },
+        _count: true,
+      });
+
+      if (sections.length > 0) {
+        type SectionRow = (typeof sections)[number];
+        sectionAnalytics = sections.map((s: SectionRow) => ({
+          sectionName: s.sectionName,
+          avgCoverageScore: s._avg.coverageScore,
+          totalInterviews: s._count,
+        }));
+      }
+    } catch {
+      // InterviewSection table may not exist yet
+    }
+
     // ── Report Status Distribution ───────────────────────────────
     const reportStatuses = await prisma.interview.groupBy({
       by: ["reportStatus"],
@@ -200,7 +249,9 @@ export async function GET(request: NextRequest) {
         count: s._count,
       })),
       aiUsage: usageStats,
+      costGovernance,
       quality: qualityMetrics,
+      sectionAnalytics,
     });
   } catch (error) {
     const { error: message, status } = handleAuthError(error);

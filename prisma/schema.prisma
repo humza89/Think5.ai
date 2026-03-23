@@ -630,7 +630,7 @@ model Interview {
   // Versioning (audit trail)
   interviewPlanVersion String?      // SHA-256 hash of the generated plan
 
-  // Screen share recording
+  // Screen share recording (RESERVED — not yet implemented; tracked for future release)
   screenRecordingUrl  String?
   screenRecordingSize Int?
 

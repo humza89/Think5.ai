@@ -195,6 +195,7 @@ export async function POST(
       isPractice: interview.isPractice,
       // Readiness and accommodations
       readinessRequired: interview.template?.readinessCheckRequired || false,
+      readinessVerified: interview.readinessVerified || false,
       accommodations: interview.accommodations || null,
       // Proctoring config from template — map antiCheatLevel to proctoringLevel
       proctoringLevel: aiConfig.antiCheatLevel

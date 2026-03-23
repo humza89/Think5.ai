@@ -19,11 +19,19 @@ export async function GET(request: NextRequest) {
 
     const searchParams = request.nextUrl.searchParams;
     const status = searchParams.get("status");
+    const from = searchParams.get("from");
+    const to = searchParams.get("to");
 
-    const where: any = { recruiterId: recruiter.id };
+    const where: Record<string, unknown> = { recruiterId: recruiter.id };
     if (status) where.status = status;
+    if (from || to) {
+      where.createdAt = {
+        ...(from ? { gte: new Date(from) } : {}),
+        ...(to ? { lte: new Date(to) } : {}),
+      };
+    }
 
-    const [invitations, total] = await Promise.all([
+    const [invitations, total, lifecycleStats] = await Promise.all([
       prisma.interviewInvitation.findMany({
         where,
         include: {
@@ -37,11 +45,36 @@ export async function GET(request: NextRequest) {
         take: limit,
       }),
       prisma.interviewInvitation.count({ where }),
+      // Lifecycle stats — counts per status for this recruiter (within date range)
+      prisma.interviewInvitation.groupBy({
+        by: ["status"],
+        where: { recruiterId: recruiter.id, ...(from || to ? { createdAt: where.createdAt } : {}) } as Record<string, unknown>,
+        _count: true,
+      }),
     ]);
+
+    // Compute conversion metrics
+    type StatusRow = { status: string; _count: number };
+    const statusCounts = lifecycleStats.reduce((acc: Record<string, number>, row: StatusRow) => {
+      acc[row.status] = row._count;
+      return acc;
+    }, {} as Record<string, number>);
+
+    const totalSent = (Object.values(statusCounts) as number[]).reduce((a, b) => a + b, 0);
+    const totalAccepted = (statusCounts["ACCEPTED"] || 0) + (statusCounts["COMPLETED"] || 0);
+    const conversionRate = totalSent > 0 ? Math.round((totalAccepted / totalSent) * 100) : 0;
 
     return NextResponse.json({
       data: invitations,
       pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
+      lifecycle: {
+        statusCounts,
+        totalSent,
+        totalAccepted,
+        conversionRate,
+        expired: statusCounts["EXPIRED"] || 0,
+        declined: statusCounts["DECLINED"] || 0,
+      },
     });
   } catch (error) {
     const { error: message, status } = handleAuthError(error);

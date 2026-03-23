@@ -12,9 +12,11 @@ import { CandidatePanel } from "@/components/interview/CandidatePanel";
 import { InterviewComplete } from "@/components/interview/InterviewComplete";
 import { ProctoringOverlay } from "@/components/interview/ProctoringOverlay";
 import { VoiceInterviewRoom } from "@/components/interview/VoiceInterviewRoom";
+import { InterviewPreCheck } from "@/components/interview/InterviewPreCheck";
 
 type InterviewStage =
   | "LOADING"
+  | "READINESS"
   | "WELCOME"
   | "RESUMING"
   | "ACTIVE"
@@ -36,6 +38,8 @@ interface InterviewMeta {
   proctoringLevel?: "none" | "light" | "strict";
   pastePolicy?: "allow" | "warn" | "block";
   maxPasteWarnings?: number;
+  readinessRequired?: boolean;
+  readinessVerified?: boolean;
 }
 
 const MAX_DURATION_MS = 45 * 60 * 1000; // 45 minutes
@@ -94,6 +98,9 @@ export default function InterviewRoom() {
           setStage("RESUMING");
         } else if (data.status === "COMPLETED") {
           setStage("COMPLETE");
+        } else if (data.readinessRequired && !data.readinessVerified) {
+          // Template requires readiness checks — gate before welcome
+          setStage("READINESS");
         } else {
           setStage("WELCOME");
         }
@@ -282,6 +289,17 @@ export default function InterviewRoom() {
           </p>
         </div>
       </div>
+    );
+  }
+
+  // Readiness check gate — show InterviewPreCheck before welcome/voice
+  if (stage === "READINESS" && meta) {
+    return (
+      <InterviewPreCheck
+        interviewId={interviewId}
+        accessToken={accessToken}
+        onComplete={() => setStage("WELCOME")}
+      />
     );
   }
 

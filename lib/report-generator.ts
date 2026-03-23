@@ -7,13 +7,62 @@ import { computeEvidenceHash } from "@/lib/evidence-hash";
 import { logAIUsage } from "@/lib/ai-usage";
 import * as Sentry from "@sentry/nextjs";
 
+// ── Redis deduplication lock ──────────────────────────────────────────
+// Prevents concurrent report generation for the same interview on serverless
+
+const REPORT_LOCK_TTL_SECONDS = 600; // 10 minutes
+
+let _redisClient: any = null;
+async function getReportRedis() {
+  if (_redisClient) return _redisClient;
+  const url = process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  if (!url || !token) return null;
+  try {
+    const { Redis } = await import("@upstash/redis");
+    _redisClient = new Redis({ url, token });
+    return _redisClient;
+  } catch {
+    return null;
+  }
+}
+
+async function acquireReportLock(interviewId: string): Promise<boolean> {
+  const redis = await getReportRedis();
+  if (!redis) return true; // No Redis = allow (local dev)
+  try {
+    const result = await redis.set(`report-lock:${interviewId}`, "1", { nx: true, ex: REPORT_LOCK_TTL_SECONDS });
+    return result === "OK";
+  } catch {
+    return true; // On error, allow generation (fail-open)
+  }
+}
+
+async function releaseReportLock(interviewId: string): Promise<void> {
+  const redis = await getReportRedis();
+  if (!redis) return;
+  try {
+    await redis.del(`report-lock:${interviewId}`);
+  } catch {
+    // Best-effort — lock will expire via TTL
+  }
+}
+
 /**
  * Generate an interview report in the background after interview completion.
  * Tracks report status and supports retry on failure.
+ * Uses Redis lock to prevent concurrent generation on serverless.
  */
 export async function generateReportInBackground(
   interviewId: string
 ): Promise<void> {
+  // Acquire dedup lock — if another instance is already generating, skip
+  const lockAcquired = await acquireReportLock(interviewId);
+  if (!lockAcquired) {
+    console.log(`Report generation already in progress for ${interviewId}, skipping`);
+    return;
+  }
+
   const interview = await prisma.interview.findUnique({
     where: { id: interviewId },
     include: {
@@ -49,6 +98,7 @@ export async function generateReportInBackground(
   });
 
   if (!interview || interview.report || !interview.transcript) {
+    await releaseReportLock(interviewId);
     return;
   }
 
@@ -420,7 +470,13 @@ export async function generateReportInBackground(
         console.error("Failed to send candidate feedback email:", err)
       );
     }
+
+    // Release dedup lock on success
+    await releaseReportLock(interviewId);
   } catch (error) {
+    // Release dedup lock on failure
+    await releaseReportLock(interviewId);
+
     Sentry.captureException(error, { tags: { component: "report_generator" }, extra: { interviewId } });
     console.error(`Report generation failed for interview ${interviewId}:`, error);
 

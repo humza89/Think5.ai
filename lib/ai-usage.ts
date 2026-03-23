@@ -63,6 +63,56 @@ export async function logAIUsage(input: UsageLogInput): Promise<void> {
   }
 }
 
+// Default monthly budget threshold per company (USD)
+const DEFAULT_MONTHLY_BUDGET_USD = 500;
+
+/**
+ * Check if a company's AI spending has exceeded budget threshold.
+ * Returns spending status for governance visibility.
+ */
+export async function checkBudgetThreshold(companyId: string, options?: {
+  budgetUsd?: number;
+}): Promise<{
+  overBudget: boolean;
+  currentSpend: number;
+  threshold: number;
+  utilizationPercent: number;
+}> {
+  const threshold = options?.budgetUsd || DEFAULT_MONTHLY_BUDGET_USD;
+
+  // Current month window
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
+  try {
+    const result = await prisma.aIUsageLog.aggregate({
+      where: {
+        companyId,
+        createdAt: { gte: monthStart },
+      },
+      _sum: { estimatedCost: true },
+    });
+
+    const currentSpend = result._sum.estimatedCost || 0;
+    const overBudget = currentSpend > threshold;
+    const utilizationPercent = threshold > 0 ? Math.round((currentSpend / threshold) * 100) : 0;
+
+    if (overBudget) {
+      console.warn(
+        `[AI Budget Alert] Company ${companyId} has exceeded monthly budget: $${currentSpend.toFixed(2)} / $${threshold} (${utilizationPercent}%)`
+      );
+    } else if (utilizationPercent >= 80) {
+      console.warn(
+        `[AI Budget Warning] Company ${companyId} approaching budget: $${currentSpend.toFixed(2)} / $${threshold} (${utilizationPercent}%)`
+      );
+    }
+
+    return { overBudget, currentSpend, threshold, utilizationPercent };
+  } catch {
+    return { overBudget: false, currentSpend: 0, threshold, utilizationPercent: 0 };
+  }
+}
+
 /**
  * Get aggregated AI usage stats for a given time period.
  */

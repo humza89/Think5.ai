@@ -17,17 +17,33 @@ export async function GET() {
       throw new AuthError("Forbidden: candidates only", 403);
     }
 
-    // Find candidate record with all related data
-    const candidate = await prisma.candidate.findFirst({
-      where: { email: { equals: profile.email, mode: "insensitive" } },
-      orderBy: { updatedAt: "desc" },
-      include: {
-        candidateExperiences: { orderBy: { startDate: "desc" } },
-        candidateEducation: { orderBy: { startDate: "desc" } },
-        certifications: { orderBy: { createdAt: "desc" } },
-        candidateSkills: { orderBy: { createdAt: "desc" } },
-      },
-    });
+    // Find candidate record — try with related data, fall back to base record
+    // if relation tables haven't been migrated yet
+    let candidate: Awaited<ReturnType<typeof prisma.candidate.findFirst>> & {
+      candidateExperiences?: unknown[];
+      candidateEducation?: unknown[];
+      certifications?: unknown[];
+      candidateSkills?: unknown[];
+    } | null = null;
+
+    try {
+      candidate = await prisma.candidate.findFirst({
+        where: { email: { equals: profile.email, mode: "insensitive" } },
+        orderBy: { updatedAt: "desc" },
+        include: {
+          candidateExperiences: { orderBy: { startDate: "desc" } },
+          candidateEducation: { orderBy: { startDate: "desc" } },
+          certifications: { orderBy: { createdAt: "desc" } },
+          candidateSkills: { orderBy: { createdAt: "desc" } },
+        },
+      });
+    } catch {
+      // Relation tables may not exist yet — fetch base candidate record
+      candidate = await prisma.candidate.findFirst({
+        where: { email: { equals: profile.email, mode: "insensitive" } },
+        orderBy: { updatedAt: "desc" },
+      });
+    }
 
     return NextResponse.json({
       id: user.id,

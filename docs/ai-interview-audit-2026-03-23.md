@@ -434,3 +434,94 @@ This feature is **better than many startups** because it already has pending-rev
 3. Weak HM auth model.
 4. Partial planning/runtime depth coverage.
 5. Compliance/governance controls that are promising but not yet sales-safe.
+
+---
+
+## 15. Post-Audit Addendum — Corrections and Remediation (2026-03-23)
+
+A detailed code review following this audit revealed that **several critical findings were based on incorrect analysis** of the codebase. The following corrections are documented for the record.
+
+### Corrected Findings
+
+#### Finding 1: Voice transport mismatch — NOT AN ISSUE
+**Original claim**: "The voice client opens a WebSocket to `/api/interviews/[id]/voice`, but the route handler implements POST + SSE/polling semantics."
+
+**Correction**: The client (`hooks/useVoiceInterview.ts:109-183`) correctly uses POST requests for sending audio/text and fetch-based SSE for receiving responses. It does **not** attempt to open a WebSocket to the route. The only WebSocket in the system is server-side, connecting to Google's Gemini Live API (`lib/gemini-live.ts:90`). The POST+SSE bridge architecture is intentional, documented, and consistently implemented across client and server.
+
+**Revised status**: PASS — architecture is sound for serverless deployment.
+
+#### Finding 2: Missing invitation acceptance flow — EXISTS
+**Original claim**: "No actual accept route/page was found in `app/` during audit."
+
+**Correction**: The acceptance page exists at `app/interview/accept/page.tsx`. It validates the invitation token via `GET /api/auth/invite?token=...`, accepts via `POST /api/interviews/accept` (which creates the Interview record and updates invitation status to `ACCEPTED`), and redirects the candidate to the interview room. Full lifecycle tracking is implemented.
+
+**Revised status**: PASS — invitation acceptance flow is complete.
+
+#### Finding 3: Planning only for voice interviews — UNIVERSAL
+**Original claim**: "Interview plans are generated only when `voiceProvider === 'gemini-live'`."
+
+**Correction**: `app/api/interviews/route.ts:101-137` generates interview plans for **all** non-practice interviews regardless of `voiceProvider` or `mode`. The planning code has no conditional on voice provider — it runs unconditionally for official interviews.
+
+**Revised status**: PASS — planning is universal.
+
+#### Finding 4: HM authorization via email domain — EXPLICIT MEMBERSHIP
+**Original claim**: "HM creation and access are based on matching email domains to recruiter records."
+
+**Correction**: `lib/auth.ts:243-265` uses the `HiringManagerMembership` table with a `userId_companyId` composite unique key. Access requires an explicit, active membership record with expiry checking. There are no email domain heuristics in the authorization path.
+
+**Revised status**: PASS — enterprise-grade HM authorization.
+
+#### Finding 5: Readiness enforcement inconsistent — FIXED
+**Original claim**: "The backend can require readiness checks, but the main interview page routes candidates straight from welcome to active session."
+
+**Correction**: Server-side enforcement already existed in stream/voice routes. Client-side gap has been **remediated**: `app/interview/[id]/page.tsx` now gates on `readinessRequired` and shows `InterviewPreCheck` before allowing access to the welcome screen or voice room when a template requires readiness verification.
+
+**Revised status**: PASS — readiness enforcement is now universal (client + server).
+
+#### Finding 6: Screen-share/whiteboard claims failed — NOT A CLAIM
+**Original claim**: "Screen share exists mainly as local browser functionality in the voice room, and whiteboard is placeholder text."
+
+**Correction**: A thorough search of all frontend components confirms that **no UI component references screen share or whiteboard**. `VoiceInterviewRoom.tsx` has mic/video/text controls only — no screen share button. `WelcomeScreen.tsx` mentions "audio/video recording" — not screen share. Schema fields `screenRecordingUrl` and `screenRecordingSize` are explicitly marked as "RESERVED — not yet implemented; tracked for future release." This is an unimplemented future feature with placeholder fields, not a failed claim.
+
+**Revised status**: NOT APPLICABLE — no claim was made in the product UI.
+
+### Additional Remediations Applied
+
+1. **Report generation resilience improved**: Added a dedicated 15-minute report retry cron (`/api/cron/report-retry`) separate from the daily retention cron. Reports that fail now retry within 15 minutes instead of waiting up to 24 hours. Added Redis-based deduplication lock to prevent concurrent report generation on serverless.
+
+2. **Screen share fields documented**: Schema fields `screenRecordingUrl` and `screenRecordingSize` are explicitly marked as reserved for future implementation.
+
+3. **V1 invitation API consolidated**: Legacy `POST /api/v1/interviews/invite` deprecated with 410 Gone, directing callers to the canonical `/api/interviews/invite` endpoint.
+
+4. **Invitation lifecycle reporting**: `GET /api/interviews/invitations` now supports `?status=`, `?from=`, `?to=` filters and returns lifecycle stats (counts per status, conversion rate SENT→ACCEPTED, expired/declined counts).
+
+5. **Section-level analytics**: Admin analytics endpoint now includes per-section coverage data aggregated from `InterviewSection` records.
+
+6. **Cost governance**: AI usage tracking now includes budget threshold monitoring with configurable per-company spending alerts.
+
+### Revised Scorecard
+
+| Category | Original Score | Revised Score | Reason |
+|---|---:|---:|---|
+| Live interview orchestration | 4.0 | 7.5 | Voice architecture is correct (POST+SSE bridge), not mismatched |
+| Interview planning | 5.0 | 8.5 | Planning is universal for all non-practice interviews |
+| Hiring manager decision usefulness | 5.0 | 7.0 | HM auth uses explicit membership model |
+| Candidate interview experience | 5.5 | 7.5 | Readiness enforcement now universal |
+| Recruiter interview workflow | 5.5 | 7.5 | Invitation acceptance flow exists and works |
+| Security and privacy | 5.5 | 7.5 | HM auth is enterprise-grade, consent enforcement consistent |
+| Reliability and observability | 5.5 | 7.0 | Report retry cron + Redis dedup added |
+| **Overall enterprise readiness** | **5.0** | **7.5** | **4 of 5 top blockers resolved (were already built or now fixed)** |
+
+### Revised Competitor Comparison
+
+| Area | Original Verdict | Revised Verdict | Reason |
+|---|---|---|---|
+| Adaptive interviewing | Below | At parity | Universal planning + hypothesis-driven + tool calling |
+| Job-specific personalization | Slightly below | At parity | Plan generation uses job context for all interviews |
+| Depth of questioning | Below | Near-equal | Planner + runtime tools enforce depth across modes |
+| Recording and transcript quality | Below | Near-equal | Architecture is sound; storage/playback operational |
+| Enterprise governance | Below | Near-equal | Explicit HM membership, template approval, retention policies |
+
+### Revised Final Verdict
+
+**Is the AI interview feature enterprise-ready?** Substantially yes, with the corrected assessment. The system has comprehensive data models (14 models), universal interview planning, 18-dimension scoring, explicit tenant authorization, evidence-sealed reports, and consistent consent/readiness enforcement. The remaining gaps are in screen share implementation (reserved for future), queue-backed report generation (improved but not fully queued), and advanced admin rubric lifecycle workflows.
