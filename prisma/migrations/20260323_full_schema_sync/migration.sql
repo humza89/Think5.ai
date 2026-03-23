@@ -775,6 +775,14 @@ CREATE TABLE IF NOT EXISTS "RetentionPolicy" (
     CONSTRAINT "RetentionPolicy_pkey" PRIMARY KEY ("id")
 );
 
+-- RetentionPolicy: ensure columns exist (table may have been partially created)
+ALTER TABLE "RetentionPolicy" ADD COLUMN IF NOT EXISTS "companyId" TEXT;
+ALTER TABLE "RetentionPolicy" ADD COLUMN IF NOT EXISTS "name" TEXT NOT NULL DEFAULT '';
+ALTER TABLE "RetentionPolicy" ADD COLUMN IF NOT EXISTS "recordingDays" INTEGER NOT NULL DEFAULT 90;
+ALTER TABLE "RetentionPolicy" ADD COLUMN IF NOT EXISTS "transcriptDays" INTEGER NOT NULL DEFAULT 365;
+ALTER TABLE "RetentionPolicy" ADD COLUMN IF NOT EXISTS "candidateDataDays" INTEGER NOT NULL DEFAULT 730;
+ALTER TABLE "RetentionPolicy" ADD COLUMN IF NOT EXISTS "isDefault" BOOLEAN NOT NULL DEFAULT false;
+
 -- SSOConfig
 CREATE TABLE IF NOT EXISTS "SSOConfig" (
     "id" TEXT NOT NULL DEFAULT gen_random_uuid(),
