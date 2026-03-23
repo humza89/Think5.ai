@@ -4,6 +4,7 @@ import { getSkillModulesHash } from "@/lib/skill-modules";
 import { sendReportReadyEmail } from "@/lib/email/report-ready";
 import { sendCandidateFeedbackEmail } from "@/lib/email/candidate-feedback";
 import { computeEvidenceHash } from "@/lib/evidence-hash";
+import { logAIUsage } from "@/lib/ai-usage";
 import * as Sentry from "@sentry/nextjs";
 
 /**
@@ -88,6 +89,17 @@ export async function generateReportInBackground(
       reportOptions
     );
 
+    // Log AI usage for cost tracking
+    logAIUsage({
+      interviewId,
+      operation: "report_generation",
+      model: SCORER_MODEL_VERSION,
+      inputTokens: Array.isArray(interview.transcript) ? interview.transcript.length * 50 : 0, // estimate
+      outputTokens: 2000, // approximate report size
+      companyId: interview.job?.title ? undefined : undefined, // populated if available
+      recruiterId: interview.recruiter?.id,
+    });
+
     // P0.4: Compute deterministic integrity score from ProctoringEvent rows
     const proctoringEvents = await prisma.proctoringEvent.findMany({
       where: { interviewId },
@@ -158,6 +170,171 @@ export async function generateReportInBackground(
         environmentFitNotes: reportData.environmentFitNotes,
       },
     });
+
+    // ── Section-Level Scoring ──────────────────────────────────────
+    // Populate InterviewSection records from the interview plan sections
+    try {
+      const plan = interview.interviewPlan as {
+        sections?: Array<{
+          skillModule: string;
+          category?: string;
+          targetQuestions?: number;
+          estimatedDuration?: number;
+        }>;
+      } | null;
+
+      if (plan?.sections?.length) {
+        const transcript = interview.transcript as Array<{ role: string; content: string }>;
+        const totalMessages = transcript?.length || 0;
+        const messagesPerSection = plan.sections.length > 0 ? Math.floor(totalMessages / plan.sections.length) : 0;
+
+        for (let i = 0; i < plan.sections.length; i++) {
+          const section = plan.sections[i];
+
+          // Calculate coverage score based on technical skill ratings matching this section
+          let coverageScore: number | null = null;
+          const matchingSkills = (reportData.technicalSkills || []).filter(
+            (s: { skill: string; rating: number }) =>
+              s.skill.toLowerCase().includes(section.skillModule.toLowerCase()) ||
+              section.skillModule.toLowerCase().includes(s.skill.toLowerCase())
+          );
+          if (matchingSkills.length > 0) {
+            coverageScore = matchingSkills.reduce(
+              (sum: number, s: { rating: number }) => sum + s.rating * 10,
+              0
+            ) / matchingSkills.length;
+          }
+
+          await prisma.interviewSection.create({
+            data: {
+              interviewId,
+              sectionName: section.skillModule,
+              sectionOrder: i + 1,
+              skillModuleName: section.category || null,
+              plannedDuration: section.estimatedDuration || 5,
+              questionsAsked: section.targetQuestions || messagesPerSection,
+              coverageScore,
+            },
+          });
+        }
+      }
+    } catch (sectionError) {
+      // Non-critical — don't fail report generation for section scoring
+      console.error("Section scoring failed:", sectionError);
+    }
+
+    // ── Interview Quality Metrics ──────────────────────────────────
+    try {
+      const transcript = interview.transcript as Array<{ role: string; content: string }> | null;
+      if (transcript?.length) {
+        const candidateMessages = transcript.filter((m) => m.role === "candidate");
+        const interviewerMessages = transcript.filter((m) => m.role === "interviewer");
+        const totalQuestions = interviewerMessages.length;
+
+        // Count follow-up questions (questions after the candidate's response, not the first question)
+        const planSections = (interview.interviewPlan as { sections?: unknown[] } | null)?.sections;
+        const followUpQuestions = Math.max(0, totalQuestions - (planSections?.length || 0));
+
+        // Average response depth (word count)
+        const avgResponseDepth = candidateMessages.length > 0
+          ? candidateMessages.reduce((sum: number, m: { content: string }) => sum + (m.content?.split(/\s+/).length || 0), 0) / candidateMessages.length
+          : 0;
+
+        // Coverage percentage
+        const plan = interview.interviewPlan as { sections?: unknown[]; totalQuestions?: number } | null;
+        const coveragePercentage = plan?.totalQuestions
+          ? Math.min(100, (totalQuestions / plan.totalQuestions) * 100)
+          : null;
+
+        // Composite depth score
+        const depthScore = Math.min(100, Math.round(
+          (Math.min(avgResponseDepth / 100, 1) * 40) + // response length factor
+          (Math.min(followUpQuestions / 5, 1) * 30) + // follow-up factor
+          ((coveragePercentage || 50) / 100 * 30) // coverage factor
+        ));
+
+        await prisma.interviewQualityMetrics.upsert({
+          where: { interviewId },
+          create: {
+            interviewId,
+            totalQuestions,
+            followUpQuestions,
+            avgResponseDepth,
+            topicTransitions: plan?.sections?.length || 0,
+            coveragePercentage,
+            depthScore,
+            personalizationScore: interview.interviewPlan ? 80 : 40, // planned = personalized
+          },
+          update: {
+            totalQuestions,
+            followUpQuestions,
+            avgResponseDepth,
+            coveragePercentage,
+            depthScore,
+          },
+        });
+      }
+    } catch (qualityError) {
+      console.error("Quality metrics computation failed:", qualityError);
+    }
+
+    // ── Evidence Bundle Compilation ──────────────────────────────────
+    // Compile a unified evidence bundle linking all artifacts
+    try {
+      const evidenceBundle = {
+        version: "1.0",
+        compiledAt: new Date().toISOString(),
+        interviewId,
+        candidateId: interview.candidateId,
+        artifacts: {
+          transcript: {
+            available: !!interview.transcript,
+            messageCount: Array.isArray(interview.transcript) ? interview.transcript.length : 0,
+          },
+          recording: {
+            available: !!interview.recordingUrl,
+          },
+          plan: {
+            available: !!interview.interviewPlan,
+            version: interview.interviewPlanVersion || null,
+          },
+        },
+        scores: {
+          overall: reportData.overallScore,
+          dimensions: {
+            technicalSkills: reportData.technicalSkills?.length || 0,
+            domainExpertise: reportData.domainExpertise,
+            problemSolving: reportData.problemSolving,
+            communication: reportData.communicationScore,
+            professionalExperience: reportData.professionalExperience,
+            roleFit: reportData.roleFit,
+            culturalFit: reportData.culturalFit,
+            thinkingJudgment: reportData.thinkingJudgment,
+          },
+          integrity: finalIntegrityScore,
+          jobMatch: reportData.jobMatchScore,
+          confidence: reportData.confidenceLevel,
+        },
+        evidence: {
+          highlights: reportData.evidenceHighlights || [],
+          riskSignals: reportData.riskSignals || [],
+          hypothesisOutcomes: reportData.hypothesisOutcomes || [],
+          requirementMatches: reportData.requirementMatches || [],
+        },
+        versioning: {
+          scorerModel: SCORER_MODEL_VERSION,
+          scorerPrompt: getScorerPromptHash(),
+          rubric: getSkillModulesHash(),
+        },
+      };
+
+      await prisma.interview.update({
+        where: { id: interviewId },
+        data: { evidenceBundle },
+      });
+    } catch (bundleError) {
+      console.error("Evidence bundle compilation failed:", bundleError);
+    }
 
     const overallScore = reportData.overallScore || null;
 

@@ -16,6 +16,7 @@ import { VoiceInterviewRoom } from "@/components/interview/VoiceInterviewRoom";
 type InterviewStage =
   | "LOADING"
   | "WELCOME"
+  | "RESUMING"
   | "ACTIVE"
   | "CLOSING"
   | "COMPLETE";
@@ -85,13 +86,12 @@ export default function InterviewRoom() {
           });
         }
 
-        // Resume in-progress interview
+        // Resume in-progress interview — show recovery dialog first
         if (data.status === "IN_PROGRESS" && data.hasTranscript) {
           if (data.transcript) {
             session.hydrateMessages(data.transcript);
           }
-          setStage("ACTIVE");
-          proctoring.startMonitoring();
+          setStage("RESUMING");
         } else if (data.status === "COMPLETED") {
           setStage("COMPLETE");
         } else {
@@ -133,6 +133,12 @@ export default function InterviewRoom() {
     await proctoring.requestFullscreen();
     await session.startInterview();
   }, [session, proctoring, interviewId, accessToken]);
+
+  // Handle resume from interrupted session
+  const handleResume = useCallback(() => {
+    setStage("ACTIVE");
+    proctoring.startMonitoring();
+  }, [proctoring]);
 
   // Handle end with confirmation
   const handleEndRequest = useCallback(() => {
@@ -233,6 +239,47 @@ export default function InterviewRoom() {
             <span className="text-white font-bold text-lg">A</span>
           </div>
           <p className="text-zinc-400">Preparing your interview...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Session recovery screen
+  if (stage === "RESUMING" && meta) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-zinc-950">
+        <div className="max-w-md w-full mx-4">
+          <div className="flex flex-col items-center mb-6">
+            <div className="w-16 h-16 rounded-full bg-amber-500/10 flex items-center justify-center mb-4">
+              <span className="text-amber-500 text-2xl">!</span>
+            </div>
+            <h1 className="text-xl font-bold text-white mb-2">
+              Resume Your Interview
+            </h1>
+            <p className="text-zinc-400 text-center text-sm">
+              It looks like your interview was interrupted. Your previous responses
+              have been saved and you can continue from where you left off.
+            </p>
+          </div>
+
+          <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 mb-6 space-y-2 text-sm text-zinc-400">
+            <p><span className="text-zinc-300 font-medium">Interview:</span> {meta.type.replace(/_/g, " ")}</p>
+            <p><span className="text-zinc-300 font-medium">Status:</span> In Progress</p>
+            <p><span className="text-zinc-300 font-medium">Your responses:</span> Saved</p>
+          </div>
+
+          <div className="flex gap-3">
+            <button
+              onClick={handleResume}
+              className="flex-1 px-4 py-3 rounded-lg bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 text-white font-semibold transition-colors"
+            >
+              Continue Interview
+            </button>
+          </div>
+
+          <p className="text-zinc-600 text-xs text-center mt-4">
+            Your previous conversation will be loaded automatically.
+          </p>
         </div>
       </div>
     );

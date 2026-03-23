@@ -66,6 +66,7 @@ enum RecordingState {
 
 enum TemplateStatus {
   DRAFT
+  PENDING_APPROVAL
   ACTIVE
   ARCHIVED
 }
@@ -379,6 +380,45 @@ model Client {
 
 // Explicit membership linking hiring managers to companies
 // Replaces fragile email-domain matching with explicit, auditable access grants
+// AI model usage tracking for cost governance and analytics
+model AIUsageLog {
+  id            String   @id @default(uuid())
+  interviewId   String?
+  operation     String   // "plan_generation" | "report_generation" | "live_interview" | "text_interview"
+  model         String   // e.g. "gemini-1.5-pro", "gemini-2.0-flash-live"
+  inputTokens   Int      @default(0)
+  outputTokens  Int      @default(0)
+  durationMs    Int      @default(0) // wall-clock time
+  estimatedCost Float    @default(0) // USD estimate
+  companyId     String?
+  recruiterId   String?
+  metadata      Json?    // additional context
+  createdAt     DateTime @default(now())
+
+  @@index([interviewId])
+  @@index([companyId])
+  @@index([createdAt])
+  @@index([operation])
+}
+
+// Interview quality signals for adaptive questioning validation
+model InterviewQualityMetrics {
+  id                  String   @id @default(uuid())
+  interviewId         String   @unique
+  totalQuestions      Int      @default(0)
+  followUpQuestions   Int      @default(0) // questions that probed deeper
+  avgResponseDepth    Float?   // average word count of candidate responses
+  topicTransitions    Int      @default(0) // number of topic changes
+  adaptiveDifficulty  Json?    // [{questionIndex, difficulty}] tracking difficulty changes
+  coveragePercentage  Float?   // % of planned sections covered
+  timeUtilization     Float?   // actual duration / planned duration
+  depthScore          Float?   // 0-100 composite depth metric
+  personalizationScore Float?  // 0-100 how personalized to the candidate
+  createdAt           DateTime @default(now())
+
+  @@index([interviewId])
+}
+
 model HiringManagerMembership {
   id        String   @id @default(uuid())
   userId    String   // Supabase user ID of the hiring manager
@@ -765,6 +805,12 @@ model InterviewTemplate {
   retakePolicy    Json?        // {allowed, cooldownDays, maxRetakes}
   // Pre-interview readiness check requirement
   readinessCheckRequired Boolean @default(false)
+
+  // Approval workflow
+  approvedBy      String?       // userId of the admin who approved
+  approvedAt      DateTime?     // when the template was approved
+  approvalNotes   String?  @db.Text  // notes from the approver
+  version         Int      @default(1) // template version number
 
   recruiterId     String?
   recruiter       Recruiter? @relation(fields: [recruiterId], references: [id])
