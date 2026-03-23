@@ -104,9 +104,17 @@ export async function GET() {
       profile.last_name
     );
 
-    // Fetch all related data in parallel
-    const [skills, experiences, education, certifications, documents, jobPreference] =
-      await Promise.all([
+    // Fetch all related data in parallel — gracefully handle missing tables
+    let skills: unknown[] = [];
+    let experiences: unknown[] = [];
+    let education: unknown[] = [];
+    let certifications: unknown[] = [];
+    let documents: unknown[] = [];
+    let jobPreference: unknown = null;
+    let passiveProfile: Record<string, unknown> | null = null;
+
+    try {
+      const results = await Promise.all([
         prisma.candidateSkill.findMany({
           where: { candidateId: candidate.id },
           orderBy: { createdAt: "desc" },
@@ -131,14 +139,22 @@ export async function GET() {
           where: { candidateId: candidate.id },
         }),
       ]);
+      [skills, experiences, education, certifications, documents, jobPreference] = results;
+    } catch (e) {
+      console.warn("Some onboarding relation tables may not exist yet:", e);
+    }
 
     // Check for linked passive profile (pre-fill data)
-    const passiveProfile = await prisma.passiveProfile.findFirst({
-      where: {
-        email: { equals: profile.email, mode: "insensitive" },
-        status: { in: ["INVITED", "LINKED"] },
-      },
-    });
+    try {
+      passiveProfile = await prisma.passiveProfile.findFirst({
+        where: {
+          email: { equals: profile.email, mode: "insensitive" },
+          status: { in: ["INVITED", "LINKED"] },
+        },
+      });
+    } catch {
+      // PassiveProfile table may not exist yet
+    }
 
     return NextResponse.json({
       step: candidate.onboardingStep,
@@ -156,7 +172,7 @@ export async function GET() {
         linkedinUrl: candidate.linkedinUrl,
         profileImage: candidate.profileImage,
       },
-      resume: documents.find((d: { type: string }) => d.type === "RESUME") || null,
+      resume: documents.find((d) => (d as Record<string, unknown>).type === "RESUME") || null,
       experiences,
       education,
       certifications,
