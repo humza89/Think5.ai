@@ -184,6 +184,15 @@ export async function POST(
             { status: 403, headers: { "Content-Type": "application/json" } }
           );
         }
+        // Validate consent freshness — consent must be given within last 24 hours
+        const consentAge = Date.now() - new Date(preStartCheck.consentedAt).getTime();
+        const MAX_CONSENT_AGE_MS = 24 * 60 * 60 * 1000; // 24 hours
+        if (consentAge > MAX_CONSENT_AGE_MS) {
+          return new Response(
+            JSON.stringify({ error: "Your consent has expired. Please refresh the page and re-confirm consent before starting." }),
+            { status: 403, headers: { "Content-Type": "application/json" } }
+          );
+        }
         // Proctoring consent is required for non-practice interviews
         if (!preStartCheck?.consentProctoring) {
           return new Response(

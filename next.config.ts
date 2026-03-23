@@ -29,7 +29,7 @@ const nextConfig: NextConfig = {
           },
           {
             key: "Content-Security-Policy",
-            value: "default-src 'self'; script-src 'self' 'unsafe-eval' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; connect-src 'self' https://*.supabase.co https://*.upstash.io wss://*.supabase.co https://prod.spline.design https://unpkg.com; media-src 'self' blob: data:; font-src 'self' data:; frame-ancestors 'none'",
+            value: "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; connect-src 'self' https://*.supabase.co https://*.upstash.io wss://*.supabase.co https://prod.spline.design https://unpkg.com; media-src 'self' blob: data:; font-src 'self' data:; frame-ancestors 'none'",
           },
         ],
       },

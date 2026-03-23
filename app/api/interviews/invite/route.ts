@@ -92,6 +92,9 @@ export async function POST(request: NextRequest) {
                             Start Interview
                           </a>
                         </div>
+                        <p style="color:rgba(255,255,255,0.5);font-size:13px;text-align:center;margin:0 0 12px 0;">
+                          This interview may include audio/video recording and AI-powered integrity monitoring. You will be asked for explicit consent before the interview begins.
+                        </p>
                         <p style="color:rgba(255,255,255,0.5);font-size:14px;text-align:center;margin:0;">
                           This invitation expires on ${expiresAt.toLocaleDateString()}.
                         </p>

@@ -31,7 +31,7 @@ import { planToSystemContext } from "@/lib/interview-planner";
 import { generateReportInBackground } from "@/lib/report-generator";
 import { checkCandidateEligibility } from "@/lib/interview-eligibility";
 import { logInterviewActivity, getClientIp } from "@/lib/interview-audit";
-import { saveSessionState, deleteSessionState, generateReconnectToken, validateReconnectToken, refreshSessionTTL, tryRestoreSession, type SessionState } from "@/lib/session-store";
+import { saveSessionState, deleteSessionState, generateReconnectToken, validateReconnectToken, refreshSessionTTL, tryRestoreSession, getSessionState, type SessionState } from "@/lib/session-store";
 import { persistProctoringEvents } from "@/lib/proctoring-normalizer";
 import { isValidTransition } from "@/lib/interview-state-machine";
 import * as Sentry from "@sentry/nextjs";
@@ -133,6 +133,15 @@ export async function POST(
             { status: 403 }
           );
         }
+        // Validate consent freshness — consent must be given within last 24 hours
+        const consentAge = Date.now() - new Date(preStartCheck.consentedAt).getTime();
+        const MAX_CONSENT_AGE_MS = 24 * 60 * 60 * 1000; // 24 hours
+        if (consentAge > MAX_CONSENT_AGE_MS) {
+          return Response.json(
+            { error: "Your consent has expired. Please refresh the page and re-confirm consent before starting." },
+            { status: 403 }
+          );
+        }
         // Proctoring consent is required for non-practice interviews
         if (!preStartCheck?.consentProctoring) {
           return Response.json(
@@ -196,9 +205,17 @@ export async function POST(
 
     // ── Send Audio ──
     if (type === "audio" && data) {
-      const session = activeSessions.get(id);
+      let session = activeSessions.get(id);
+      // If in-memory session lost (cold start), attempt Redis restore + reconnect
       if (!session || session.isEnded) {
-        return Response.json({ error: "No active session" }, { status: 400 });
+        const restored = await tryRestoreAndReconnect(id, interview);
+        if (!restored) {
+          return Response.json(
+            { error: "Session expired. Please use your reconnect token to resume.", reconnectRequired: true },
+            { status: 410 }
+          );
+        }
+        session = restored;
       }
 
       sendAudio(session.geminiSession, data);
@@ -207,9 +224,16 @@ export async function POST(
 
     // ── Send Text (fallback) ──
     if (type === "text" && message) {
-      const session = activeSessions.get(id);
+      let session = activeSessions.get(id);
       if (!session || session.isEnded) {
-        return Response.json({ error: "No active session" }, { status: 400 });
+        const restored = await tryRestoreAndReconnect(id, interview);
+        if (!restored) {
+          return Response.json(
+            { error: "Session expired. Please use your reconnect token to resume.", reconnectRequired: true },
+            { status: 410 }
+          );
+        }
+        session = restored;
       }
 
       sendText(session.geminiSession, message);
@@ -538,9 +562,19 @@ async function endVoiceInterview(interviewId: string) {
   return Response.json({ ok: true, message: "Interview ended" });
 }
 
-function pollSession(interviewId: string) {
+async function pollSession(interviewId: string) {
   const session = activeSessions.get(interviewId);
   if (!session) {
+    // Check Redis for session state — if it exists, a cold start occurred
+    const savedState = await getSessionState(interviewId);
+    if (savedState) {
+      return Response.json({
+        active: false,
+        reconnectRequired: true,
+        reconnectToken: savedState.reconnectToken,
+        message: "Session lost due to server restart. Reconnection required.",
+      });
+    }
     return Response.json({ active: false });
   }
 
@@ -563,6 +597,101 @@ function pollSession(interviewId: string) {
     text,
     tools,
   });
+}
+
+// ── Cold-Start Recovery ───────────────────────────────────────────────
+// When Vercel cold-starts a new function instance, the in-memory
+// activeSessions Map is empty. This function attempts to restore session
+// state from Redis and re-establish the Gemini Live WebSocket connection.
+
+async function tryRestoreAndReconnect(
+  interviewId: string,
+  interview: NonNullable<Awaited<ReturnType<typeof validateAccess>>>
+): Promise<ActiveVoiceSession | null> {
+  const savedState = await tryRestoreSession(interviewId);
+  if (!savedState) return null;
+
+  console.log(`[${interviewId}] Attempting cold-start recovery from Redis...`);
+
+  // Build system prompt (same as startVoiceInterview)
+  const systemPrompt = buildAriaVoicePrompt({
+    interviewType: interview.type as "TECHNICAL" | "BEHAVIORAL" | "DOMAIN_EXPERT" | "LANGUAGE" | "CASE_STUDY",
+    candidateName: interview.candidate.fullName,
+    candidateTitle: interview.candidate.currentTitle,
+    candidateCompany: interview.candidate.currentCompany,
+    candidateSkills: interview.candidate.skills as string[] | undefined,
+    candidateExperience: interview.candidate.experienceYears,
+    resumeText: interview.candidate.resumeText,
+  });
+
+  let fullPrompt = systemPrompt;
+  if (interview.interviewPlan) {
+    const planContext = planToSystemContext(interview.interviewPlan as any);
+    fullPrompt += "\n\n" + planContext;
+  }
+
+  // Inject prior transcript context so the AI resumes seamlessly
+  if (savedState.transcript.length > 0) {
+    const transcriptSummary = savedState.transcript
+      .slice(-10) // Last 10 messages for context
+      .map((t: { role: string; text: string }) => `${t.role}: ${t.text}`)
+      .join("\n");
+    fullPrompt += `\n\n--- PRIOR CONVERSATION (resume from here) ---\n${transcriptSummary}\n--- END PRIOR CONVERSATION ---\nContinue the interview naturally from where you left off.`;
+  }
+
+  const activeSession: ActiveVoiceSession = {
+    geminiSession: createGeminiLiveSession(
+      { systemInstruction: fullPrompt, voiceName: "Kore", tools: getInterviewTools() },
+      {} as GeminiLiveCallbacks
+    ),
+    interviewId,
+    pendingAudioChunks: [],
+    pendingTextChunks: [],
+    pendingToolCalls: [],
+    isEnded: false,
+    questionCount: savedState.questionCount,
+    moduleScores: savedState.moduleScores,
+  };
+
+  // Hydrate transcript from saved state
+  activeSession.geminiSession.transcript = savedState.transcript as any;
+
+  const callbacks: GeminiLiveCallbacks = {
+    onAudio: (audioBase64) => { activeSession.pendingAudioChunks.push(audioBase64); },
+    onText: (text, role) => {
+      activeSession.pendingTextChunks.push({ role, text });
+      if (role === "interviewer" && text.includes("?")) activeSession.questionCount++;
+      maybeCheckpointTranscript(activeSession);
+    },
+    onToolCall: (name, args) => {
+      activeSession.pendingToolCalls.push({ name, args });
+      handleToolCall(activeSession, name, args);
+    },
+    onTurnComplete: () => { activeSession.pendingTextChunks.push({ role: "system", text: "__turn_complete__" }); },
+    onInterrupted: () => { activeSession.pendingAudioChunks = []; },
+    onError: (error) => {
+      Sentry.captureException(error, { tags: { component: "voice_session_recovery" }, extra: { interviewId } });
+      console.error(`Voice recovery error [${interviewId}]:`, error);
+    },
+    onClose: () => { activeSession.isEnded = true; },
+  };
+
+  try {
+    await connectGeminiLive(activeSession.geminiSession, {
+      systemInstruction: fullPrompt,
+      voiceName: "Kore",
+      tools: getInterviewTools(),
+      generationConfig: { temperature: 0.7, responseModalities: ["AUDIO", "TEXT"] },
+    }, callbacks);
+
+    activeSessions.set(interviewId, activeSession);
+    console.log(`[${interviewId}] Cold-start recovery successful. Resumed with ${savedState.transcript.length} transcript entries.`);
+    return activeSession;
+  } catch (error) {
+    Sentry.captureException(error, { tags: { component: "voice_cold_start_recovery" }, extra: { interviewId } });
+    console.error(`[${interviewId}] Cold-start recovery failed:`, error);
+    return null;
+  }
 }
 
 // ── Tool Call Handler ──────────────────────────────────────────────────

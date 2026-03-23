@@ -91,6 +91,15 @@ export async function POST(
         return Response.json({ error: "Unauthorized" }, { status: 401 });
       }
 
+      // Validate totalChunks is a positive integer
+      const totalChunks = parseInt(body.totalChunks, 10);
+      if (!totalChunks || totalChunks < 1 || totalChunks > 10000) {
+        return Response.json(
+          { error: "totalChunks must be a positive integer (1-10000)" },
+          { status: 400 }
+        );
+      }
+
       // Transition to FINALIZING state
       await prisma.interview.update({
         where: { id },
@@ -99,7 +108,7 @@ export async function POST(
 
       const metadata = await finalizeRecording(
         id,
-        body.totalChunks,
+        totalChunks,
         body.format || "webm",
         body.durationSeconds
       );

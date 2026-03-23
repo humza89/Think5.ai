@@ -127,9 +127,33 @@ export async function applyRetentionPolicies() {
     }
   }
 
+  // Archive old audit logs (keep 7 years for compliance, then purge)
+  const AUDIT_LOG_RETENTION_DAYS = 2555; // ~7 years
+  const auditLogCutoff = new Date(now.getTime() - AUDIT_LOG_RETENTION_DAYS * 24 * 60 * 60 * 1000);
+  let auditLogsDeleted = 0;
+  try {
+    const auditResult = await prisma.activityLog.deleteMany({
+      where: { createdAt: { lt: auditLogCutoff } },
+    });
+    auditLogsDeleted = auditResult.count;
+    if (auditLogsDeleted > 0) {
+      logActivity({
+        userId: "system",
+        userRole: "system",
+        action: "retention.audit_logs_purged",
+        entityType: "ActivityLog",
+        entityId: "batch",
+        metadata: { count: auditLogsDeleted, cutoffDate: auditLogCutoff.toISOString(), retentionDays: AUDIT_LOG_RETENTION_DAYS },
+      }).catch(() => {});
+    }
+  } catch {
+    // ActivityLog table may not exist yet
+  }
+
   return {
     deleted: totalDeleted,
     recordingsCleared: oldRecordings.length,
     transcriptsCleared: transcriptResult.count,
+    auditLogsDeleted,
   };
 }

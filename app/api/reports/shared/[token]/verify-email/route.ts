@@ -2,39 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { createHash } from "crypto";
 import { cookies } from "next/headers";
-
-// Rate limiting: max 5 attempts per IP per token in a 15-minute window
-const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
-const RATE_LIMIT_MAX = 5;
-const RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
-
-// Cleanup stale entries every 5 minutes
-setInterval(() => {
-  const now = Date.now();
-  for (const [key, value] of rateLimitMap.entries()) {
-    if (now > value.resetAt) {
-      rateLimitMap.delete(key);
-    }
-  }
-}, 5 * 60 * 1000);
-
-function checkRateLimit(ip: string, token: string): boolean {
-  const key = `${ip}:${token}`;
-  const now = Date.now();
-  const entry = rateLimitMap.get(key);
-
-  if (!entry || now > entry.resetAt) {
-    rateLimitMap.set(key, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
-    return true;
-  }
-
-  if (entry.count >= RATE_LIMIT_MAX) {
-    return false;
-  }
-
-  entry.count++;
-  return true;
-}
+import { checkRateLimit } from "@/lib/rate-limit";
 
 export async function POST(
   request: NextRequest,
@@ -49,9 +17,13 @@ export async function POST(
       return NextResponse.json({ error: "Email is required" }, { status: 400 });
     }
 
-    // Rate limit check
+    // Rate limit check — Redis-backed for serverless durability
     const ip = request.headers.get("x-forwarded-for")?.split(",")[0] || "unknown";
-    if (!checkRateLimit(ip, token)) {
+    const rateLimitResult = await checkRateLimit(`report-verify:${ip}:${token}`, {
+      maxRequests: 5,
+      windowMs: 15 * 60 * 1000, // 15 minutes
+    });
+    if (!rateLimitResult.allowed) {
       return NextResponse.json(
         { error: "Too many verification attempts. Please try again later." },
         { status: 429 }
@@ -97,10 +69,16 @@ export async function POST(
     }
 
     // Set HTTP-only cookie for subsequent data fetches
+    const cookieSecret = process.env.NEXTAUTH_SECRET;
+    if (!cookieSecret) {
+      console.error("NEXTAUTH_SECRET is not configured — cannot generate secure report access cookie");
+      return NextResponse.json({ error: "Server configuration error" }, { status: 500 });
+    }
+
     const cookieStore = await cookies();
     const cookieName = `report-access-${token}`;
     const cookieValue = createHash("sha256")
-      .update(`${token}:${inputHash}:${process.env.NEXTAUTH_SECRET || "fallback-secret"}`)
+      .update(`${token}:${inputHash}:${cookieSecret}`)
       .digest("hex");
 
     cookieStore.set(cookieName, cookieValue, {
