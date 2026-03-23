@@ -15,10 +15,18 @@ export async function GET() {
       return NextResponse.json({ skills: [] });
     }
 
-    const skills = await prisma.candidateSkill.findMany({
+    const rawSkills = await prisma.candidateSkill.findMany({
       where: { candidateId: candidate.id },
       orderBy: { createdAt: 'desc' },
     });
+
+    const skills = rawSkills.map((s) => ({
+      id: s.id,
+      name: s.skillName,
+      category: s.category || 'Other',
+      proficiency: s.proficiency || 0,
+      yearsOfExperience: s.yearsExp || 0,
+    }));
 
     return NextResponse.json({ skills });
   } catch (error) {
@@ -32,7 +40,10 @@ export async function POST(request: NextRequest) {
     const { user } = await requireRole(['candidate']);
 
     const body = await request.json();
-    const { skillName, category, proficiency, yearsExp } = body;
+    const skillName = body.skillName || body.name;
+    const category = body.category;
+    const proficiency = body.proficiency;
+    const yearsExp = body.yearsExp ?? body.yearsOfExperience;
 
     if (!skillName) {
       return NextResponse.json({ error: 'Skill name is required' }, { status: 400 });
