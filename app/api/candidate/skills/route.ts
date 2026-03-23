@@ -20,7 +20,7 @@ export async function GET() {
       orderBy: { createdAt: 'desc' },
     });
 
-    const skills = rawSkills.map((s) => ({
+    const skills = rawSkills.map((s: typeof rawSkills[number]) => ({
       id: s.id,
       name: s.skillName || 'Unknown',
       category: s.category || 'Other',
