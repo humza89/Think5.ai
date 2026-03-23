@@ -797,125 +797,107 @@ CREATE TABLE IF NOT EXISTS "SSOConfig" (
 
 -- Recruiter
 DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'Recruiter_supabaseUserId_key') THEN
-    ALTER TABLE "Recruiter" ADD CONSTRAINT "Recruiter_supabaseUserId_key" UNIQUE ("supabaseUserId");
-  END IF;
+  ALTER TABLE "Recruiter" ADD CONSTRAINT "Recruiter_supabaseUserId_key" UNIQUE ("supabaseUserId");
+EXCEPTION WHEN duplicate_table OR duplicate_object THEN null;
 END $$;
 
 -- InterviewQualityMetrics
 DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'InterviewQualityMetrics_interviewId_key') THEN
-    ALTER TABLE "InterviewQualityMetrics" ADD CONSTRAINT "InterviewQualityMetrics_interviewId_key" UNIQUE ("interviewId");
-  END IF;
+  ALTER TABLE "InterviewQualityMetrics" ADD CONSTRAINT "InterviewQualityMetrics_interviewId_key" UNIQUE ("interviewId");
+EXCEPTION WHEN duplicate_table OR duplicate_object THEN null;
 END $$;
 
 -- HiringManagerMembership
 DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'HiringManagerMembership_userId_companyId_key') THEN
-    ALTER TABLE "HiringManagerMembership" ADD CONSTRAINT "HiringManagerMembership_userId_companyId_key" UNIQUE ("userId", "companyId");
-  END IF;
+  ALTER TABLE "HiringManagerMembership" ADD CONSTRAINT "HiringManagerMembership_userId_companyId_key" UNIQUE ("userId", "companyId");
+EXCEPTION WHEN duplicate_table OR duplicate_object THEN null;
 END $$;
 
 -- InterviewReport
 DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'InterviewReport_interviewId_key') THEN
-    ALTER TABLE "InterviewReport" ADD CONSTRAINT "InterviewReport_interviewId_key" UNIQUE ("interviewId");
-  END IF;
+  ALTER TABLE "InterviewReport" ADD CONSTRAINT "InterviewReport_interviewId_key" UNIQUE ("interviewId");
+EXCEPTION WHEN duplicate_table OR duplicate_object THEN null;
 END $$;
 
 DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'InterviewReport_shareToken_key') THEN
-    ALTER TABLE "InterviewReport" ADD CONSTRAINT "InterviewReport_shareToken_key" UNIQUE ("shareToken");
-  END IF;
+  ALTER TABLE "InterviewReport" ADD CONSTRAINT "InterviewReport_shareToken_key" UNIQUE ("shareToken");
+EXCEPTION WHEN duplicate_table OR duplicate_object THEN null;
 END $$;
 
 -- Interview
 DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'Interview_invitationId_key') THEN
-    ALTER TABLE "Interview" ADD CONSTRAINT "Interview_invitationId_key" UNIQUE ("invitationId");
-  END IF;
+  ALTER TABLE "Interview" ADD CONSTRAINT "Interview_invitationId_key" UNIQUE ("invitationId");
+EXCEPTION WHEN duplicate_table OR duplicate_object THEN null;
 END $$;
 
 DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'Interview_accessToken_key') THEN
-    ALTER TABLE "Interview" ADD CONSTRAINT "Interview_accessToken_key" UNIQUE ("accessToken");
-  END IF;
+  ALTER TABLE "Interview" ADD CONSTRAINT "Interview_accessToken_key" UNIQUE ("accessToken");
+EXCEPTION WHEN duplicate_table OR duplicate_object THEN null;
 END $$;
 
 DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'Interview_reconnectToken_key') THEN
-    ALTER TABLE "Interview" ADD CONSTRAINT "Interview_reconnectToken_key" UNIQUE ("reconnectToken");
-  END IF;
+  ALTER TABLE "Interview" ADD CONSTRAINT "Interview_reconnectToken_key" UNIQUE ("reconnectToken");
+EXCEPTION WHEN duplicate_table OR duplicate_object THEN null;
 END $$;
 
 -- InterviewInvitation
 DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'InterviewInvitation_token_key') THEN
-    ALTER TABLE "InterviewInvitation" ADD CONSTRAINT "InterviewInvitation_token_key" UNIQUE ("token");
-  END IF;
+  ALTER TABLE "InterviewInvitation" ADD CONSTRAINT "InterviewInvitation_token_key" UNIQUE ("token");
+EXCEPTION WHEN duplicate_table OR duplicate_object THEN null;
 END $$;
 
 -- InterviewTemplateModule
 DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'InterviewTemplateModule_templateId_moduleId_key') THEN
-    ALTER TABLE "InterviewTemplateModule" ADD CONSTRAINT "InterviewTemplateModule_templateId_moduleId_key" UNIQUE ("templateId", "moduleId");
-  END IF;
+  ALTER TABLE "InterviewTemplateModule" ADD CONSTRAINT "InterviewTemplateModule_templateId_moduleId_key" UNIQUE ("templateId", "moduleId");
+EXCEPTION WHEN duplicate_table OR duplicate_object THEN null;
 END $$;
 
 -- JobSkill
 DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'JobSkill_jobId_skillName_key') THEN
-    ALTER TABLE "JobSkill" ADD CONSTRAINT "JobSkill_jobId_skillName_key" UNIQUE ("jobId", "skillName");
-  END IF;
+  ALTER TABLE "JobSkill" ADD CONSTRAINT "JobSkill_jobId_skillName_key" UNIQUE ("jobId", "skillName");
+EXCEPTION WHEN duplicate_table OR duplicate_object THEN null;
 END $$;
 
 -- Application
 DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'Application_candidateId_jobId_key') THEN
-    ALTER TABLE "Application" ADD CONSTRAINT "Application_candidateId_jobId_key" UNIQUE ("candidateId", "jobId");
-  END IF;
+  ALTER TABLE "Application" ADD CONSTRAINT "Application_candidateId_jobId_key" UNIQUE ("candidateId", "jobId");
+EXCEPTION WHEN duplicate_table OR duplicate_object THEN null;
 END $$;
 
 -- CandidateSkill
 DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'CandidateSkill_candidateId_skillName_key') THEN
-    ALTER TABLE "CandidateSkill" ADD CONSTRAINT "CandidateSkill_candidateId_skillName_key" UNIQUE ("candidateId", "skillName");
-  END IF;
+  ALTER TABLE "CandidateSkill" ADD CONSTRAINT "CandidateSkill_candidateId_skillName_key" UNIQUE ("candidateId", "skillName");
+EXCEPTION WHEN duplicate_table OR duplicate_object THEN null;
 END $$;
 
 -- NotificationPreference
 DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'NotificationPreference_userId_key') THEN
-    ALTER TABLE "NotificationPreference" ADD CONSTRAINT "NotificationPreference_userId_key" UNIQUE ("userId");
-  END IF;
+  ALTER TABLE "NotificationPreference" ADD CONSTRAINT "NotificationPreference_userId_key" UNIQUE ("userId");
+EXCEPTION WHEN duplicate_table OR duplicate_object THEN null;
 END $$;
 
 -- JobPreference
 DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'JobPreference_candidateId_key') THEN
-    ALTER TABLE "JobPreference" ADD CONSTRAINT "JobPreference_candidateId_key" UNIQUE ("candidateId");
-  END IF;
+  ALTER TABLE "JobPreference" ADD CONSTRAINT "JobPreference_candidateId_key" UNIQUE ("candidateId");
+EXCEPTION WHEN duplicate_table OR duplicate_object THEN null;
 END $$;
 
 -- TeamInvitation
 DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'TeamInvitation_token_key') THEN
-    ALTER TABLE "TeamInvitation" ADD CONSTRAINT "TeamInvitation_token_key" UNIQUE ("token");
-  END IF;
+  ALTER TABLE "TeamInvitation" ADD CONSTRAINT "TeamInvitation_token_key" UNIQUE ("token");
+EXCEPTION WHEN duplicate_table OR duplicate_object THEN null;
 END $$;
 
 -- RetentionPolicy
 DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'RetentionPolicy_companyId_key') THEN
-    ALTER TABLE "RetentionPolicy" ADD CONSTRAINT "RetentionPolicy_companyId_key" UNIQUE ("companyId");
-  END IF;
+  ALTER TABLE "RetentionPolicy" ADD CONSTRAINT "RetentionPolicy_companyId_key" UNIQUE ("companyId");
+EXCEPTION WHEN duplicate_table OR duplicate_object THEN null;
 END $$;
 
 -- SSOConfig
 DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'SSOConfig_companyId_key') THEN
-    ALTER TABLE "SSOConfig" ADD CONSTRAINT "SSOConfig_companyId_key" UNIQUE ("companyId");
-  END IF;
+  ALTER TABLE "SSOConfig" ADD CONSTRAINT "SSOConfig_companyId_key" UNIQUE ("companyId");
+EXCEPTION WHEN duplicate_table OR duplicate_object THEN null;
 END $$;
 
 -- Match (already exists from init but ensure jobId index)
@@ -1084,394 +1066,345 @@ CREATE INDEX IF NOT EXISTS "SSOConfig_domain_idx" ON "SSOConfig"("domain");
 
 -- Recruiter -> Client (companyId)
 DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'Recruiter_companyId_fkey') THEN
-    ALTER TABLE "Recruiter" ADD CONSTRAINT "Recruiter_companyId_fkey"
+  ALTER TABLE "Recruiter" ADD CONSTRAINT "Recruiter_companyId_fkey"
       FOREIGN KEY ("companyId") REFERENCES "Client"("id") ON DELETE SET NULL ON UPDATE CASCADE;
-  END IF;
+EXCEPTION WHEN duplicate_table OR duplicate_object THEN null;
 END $$;
 
 -- Candidate -> Recruiter (already exists from init, but ensure it's there)
 DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'Candidate_recruiterId_fkey') THEN
-    ALTER TABLE "Candidate" ADD CONSTRAINT "Candidate_recruiterId_fkey"
+  ALTER TABLE "Candidate" ADD CONSTRAINT "Candidate_recruiterId_fkey"
       FOREIGN KEY ("recruiterId") REFERENCES "Recruiter"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-  END IF;
+EXCEPTION WHEN duplicate_table OR duplicate_object THEN null;
 END $$;
 
 -- Note -> Candidate (already exists)
 DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'Note_candidateId_fkey') THEN
-    ALTER TABLE "Note" ADD CONSTRAINT "Note_candidateId_fkey"
+  ALTER TABLE "Note" ADD CONSTRAINT "Note_candidateId_fkey"
       FOREIGN KEY ("candidateId") REFERENCES "Candidate"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-  END IF;
+EXCEPTION WHEN duplicate_table OR duplicate_object THEN null;
 END $$;
 
 -- Role -> Client (already exists)
 DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'Role_clientId_fkey') THEN
-    ALTER TABLE "Role" ADD CONSTRAINT "Role_clientId_fkey"
+  ALTER TABLE "Role" ADD CONSTRAINT "Role_clientId_fkey"
       FOREIGN KEY ("clientId") REFERENCES "Client"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-  END IF;
+EXCEPTION WHEN duplicate_table OR duplicate_object THEN null;
 END $$;
 
 -- Match -> Candidate (already exists)
 DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'Match_candidateId_fkey') THEN
-    ALTER TABLE "Match" ADD CONSTRAINT "Match_candidateId_fkey"
+  ALTER TABLE "Match" ADD CONSTRAINT "Match_candidateId_fkey"
       FOREIGN KEY ("candidateId") REFERENCES "Candidate"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-  END IF;
+EXCEPTION WHEN duplicate_table OR duplicate_object THEN null;
 END $$;
 
 -- Match -> Role (already exists)
 DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'Match_roleId_fkey') THEN
-    ALTER TABLE "Match" ADD CONSTRAINT "Match_roleId_fkey"
+  ALTER TABLE "Match" ADD CONSTRAINT "Match_roleId_fkey"
       FOREIGN KEY ("roleId") REFERENCES "Role"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-  END IF;
+EXCEPTION WHEN duplicate_table OR duplicate_object THEN null;
 END $$;
 
 -- Match -> Job
 DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'Match_jobId_fkey') THEN
-    ALTER TABLE "Match" ADD CONSTRAINT "Match_jobId_fkey"
+  ALTER TABLE "Match" ADD CONSTRAINT "Match_jobId_fkey"
       FOREIGN KEY ("jobId") REFERENCES "Job"("id") ON DELETE SET NULL ON UPDATE CASCADE;
-  END IF;
+EXCEPTION WHEN duplicate_table OR duplicate_object THEN null;
 END $$;
 
 -- HiringManagerMembership -> Client
 DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'HiringManagerMembership_companyId_fkey') THEN
-    ALTER TABLE "HiringManagerMembership" ADD CONSTRAINT "HiringManagerMembership_companyId_fkey"
+  ALTER TABLE "HiringManagerMembership" ADD CONSTRAINT "HiringManagerMembership_companyId_fkey"
       FOREIGN KEY ("companyId") REFERENCES "Client"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-  END IF;
+EXCEPTION WHEN duplicate_table OR duplicate_object THEN null;
 END $$;
 
 -- Job -> Recruiter
 DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'Job_recruiterId_fkey') THEN
-    ALTER TABLE "Job" ADD CONSTRAINT "Job_recruiterId_fkey"
+  ALTER TABLE "Job" ADD CONSTRAINT "Job_recruiterId_fkey"
       FOREIGN KEY ("recruiterId") REFERENCES "Recruiter"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-  END IF;
+EXCEPTION WHEN duplicate_table OR duplicate_object THEN null;
 END $$;
 
 -- Job -> Client
 DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'Job_companyId_fkey') THEN
-    ALTER TABLE "Job" ADD CONSTRAINT "Job_companyId_fkey"
+  ALTER TABLE "Job" ADD CONSTRAINT "Job_companyId_fkey"
       FOREIGN KEY ("companyId") REFERENCES "Client"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-  END IF;
+EXCEPTION WHEN duplicate_table OR duplicate_object THEN null;
 END $$;
 
 -- Job -> InterviewTemplate
 DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'Job_templateId_fkey') THEN
-    ALTER TABLE "Job" ADD CONSTRAINT "Job_templateId_fkey"
+  ALTER TABLE "Job" ADD CONSTRAINT "Job_templateId_fkey"
       FOREIGN KEY ("templateId") REFERENCES "InterviewTemplate"("id") ON DELETE SET NULL ON UPDATE CASCADE;
-  END IF;
+EXCEPTION WHEN duplicate_table OR duplicate_object THEN null;
 END $$;
 
 -- JobSkill -> Job
 DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'JobSkill_jobId_fkey') THEN
-    ALTER TABLE "JobSkill" ADD CONSTRAINT "JobSkill_jobId_fkey"
+  ALTER TABLE "JobSkill" ADD CONSTRAINT "JobSkill_jobId_fkey"
       FOREIGN KEY ("jobId") REFERENCES "Job"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-  END IF;
+EXCEPTION WHEN duplicate_table OR duplicate_object THEN null;
 END $$;
 
 -- Application -> Candidate
 DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'Application_candidateId_fkey') THEN
-    ALTER TABLE "Application" ADD CONSTRAINT "Application_candidateId_fkey"
+  ALTER TABLE "Application" ADD CONSTRAINT "Application_candidateId_fkey"
       FOREIGN KEY ("candidateId") REFERENCES "Candidate"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-  END IF;
+EXCEPTION WHEN duplicate_table OR duplicate_object THEN null;
 END $$;
 
 -- Application -> Job
 DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'Application_jobId_fkey') THEN
-    ALTER TABLE "Application" ADD CONSTRAINT "Application_jobId_fkey"
+  ALTER TABLE "Application" ADD CONSTRAINT "Application_jobId_fkey"
       FOREIGN KEY ("jobId") REFERENCES "Job"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-  END IF;
+EXCEPTION WHEN duplicate_table OR duplicate_object THEN null;
 END $$;
 
 -- Interview -> Candidate
 DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'Interview_candidateId_fkey') THEN
-    ALTER TABLE "Interview" ADD CONSTRAINT "Interview_candidateId_fkey"
+  ALTER TABLE "Interview" ADD CONSTRAINT "Interview_candidateId_fkey"
       FOREIGN KEY ("candidateId") REFERENCES "Candidate"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-  END IF;
+EXCEPTION WHEN duplicate_table OR duplicate_object THEN null;
 END $$;
 
 -- Interview -> Recruiter (scheduledBy)
 DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'Interview_scheduledBy_fkey') THEN
-    ALTER TABLE "Interview" ADD CONSTRAINT "Interview_scheduledBy_fkey"
+  ALTER TABLE "Interview" ADD CONSTRAINT "Interview_scheduledBy_fkey"
       FOREIGN KEY ("scheduledBy") REFERENCES "Recruiter"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-  END IF;
+EXCEPTION WHEN duplicate_table OR duplicate_object THEN null;
 END $$;
 
 -- Interview -> Job
 DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'Interview_jobId_fkey') THEN
-    ALTER TABLE "Interview" ADD CONSTRAINT "Interview_jobId_fkey"
+  ALTER TABLE "Interview" ADD CONSTRAINT "Interview_jobId_fkey"
       FOREIGN KEY ("jobId") REFERENCES "Job"("id") ON DELETE SET NULL ON UPDATE CASCADE;
-  END IF;
+EXCEPTION WHEN duplicate_table OR duplicate_object THEN null;
 END $$;
 
 -- Interview -> InterviewTemplate
 DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'Interview_templateId_fkey') THEN
-    ALTER TABLE "Interview" ADD CONSTRAINT "Interview_templateId_fkey"
+  ALTER TABLE "Interview" ADD CONSTRAINT "Interview_templateId_fkey"
       FOREIGN KEY ("templateId") REFERENCES "InterviewTemplate"("id") ON DELETE SET NULL ON UPDATE CASCADE;
-  END IF;
+EXCEPTION WHEN duplicate_table OR duplicate_object THEN null;
 END $$;
 
 -- Interview -> InterviewInvitation
 DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'Interview_invitationId_fkey') THEN
-    ALTER TABLE "Interview" ADD CONSTRAINT "Interview_invitationId_fkey"
+  ALTER TABLE "Interview" ADD CONSTRAINT "Interview_invitationId_fkey"
       FOREIGN KEY ("invitationId") REFERENCES "InterviewInvitation"("id") ON DELETE SET NULL ON UPDATE CASCADE;
-  END IF;
+EXCEPTION WHEN duplicate_table OR duplicate_object THEN null;
 END $$;
 
 -- Interview -> Client (companyId)
 DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'Interview_companyId_fkey') THEN
-    ALTER TABLE "Interview" ADD CONSTRAINT "Interview_companyId_fkey"
+  ALTER TABLE "Interview" ADD CONSTRAINT "Interview_companyId_fkey"
       FOREIGN KEY ("companyId") REFERENCES "Client"("id") ON DELETE SET NULL ON UPDATE CASCADE;
-  END IF;
+EXCEPTION WHEN duplicate_table OR duplicate_object THEN null;
 END $$;
 
 -- InterviewReport -> Interview
 DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'InterviewReport_interviewId_fkey') THEN
-    ALTER TABLE "InterviewReport" ADD CONSTRAINT "InterviewReport_interviewId_fkey"
+  ALTER TABLE "InterviewReport" ADD CONSTRAINT "InterviewReport_interviewId_fkey"
       FOREIGN KEY ("interviewId") REFERENCES "Interview"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-  END IF;
+EXCEPTION WHEN duplicate_table OR duplicate_object THEN null;
 END $$;
 
 -- InterviewTemplate -> Recruiter
 DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'InterviewTemplate_recruiterId_fkey') THEN
-    ALTER TABLE "InterviewTemplate" ADD CONSTRAINT "InterviewTemplate_recruiterId_fkey"
+  ALTER TABLE "InterviewTemplate" ADD CONSTRAINT "InterviewTemplate_recruiterId_fkey"
       FOREIGN KEY ("recruiterId") REFERENCES "Recruiter"("id") ON DELETE SET NULL ON UPDATE CASCADE;
-  END IF;
+EXCEPTION WHEN duplicate_table OR duplicate_object THEN null;
 END $$;
 
 -- InterviewTemplate -> Client
 DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'InterviewTemplate_companyId_fkey') THEN
-    ALTER TABLE "InterviewTemplate" ADD CONSTRAINT "InterviewTemplate_companyId_fkey"
+  ALTER TABLE "InterviewTemplate" ADD CONSTRAINT "InterviewTemplate_companyId_fkey"
       FOREIGN KEY ("companyId") REFERENCES "Client"("id") ON DELETE SET NULL ON UPDATE CASCADE;
-  END IF;
+EXCEPTION WHEN duplicate_table OR duplicate_object THEN null;
 END $$;
 
 -- SkillModule -> Recruiter
 DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'SkillModule_recruiterId_fkey') THEN
-    ALTER TABLE "SkillModule" ADD CONSTRAINT "SkillModule_recruiterId_fkey"
+  ALTER TABLE "SkillModule" ADD CONSTRAINT "SkillModule_recruiterId_fkey"
       FOREIGN KEY ("recruiterId") REFERENCES "Recruiter"("id") ON DELETE SET NULL ON UPDATE CASCADE;
-  END IF;
+EXCEPTION WHEN duplicate_table OR duplicate_object THEN null;
 END $$;
 
 -- InterviewTemplateModule -> InterviewTemplate
 DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'InterviewTemplateModule_templateId_fkey') THEN
-    ALTER TABLE "InterviewTemplateModule" ADD CONSTRAINT "InterviewTemplateModule_templateId_fkey"
+  ALTER TABLE "InterviewTemplateModule" ADD CONSTRAINT "InterviewTemplateModule_templateId_fkey"
       FOREIGN KEY ("templateId") REFERENCES "InterviewTemplate"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-  END IF;
+EXCEPTION WHEN duplicate_table OR duplicate_object THEN null;
 END $$;
 
 -- InterviewTemplateModule -> SkillModule
 DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'InterviewTemplateModule_moduleId_fkey') THEN
-    ALTER TABLE "InterviewTemplateModule" ADD CONSTRAINT "InterviewTemplateModule_moduleId_fkey"
+  ALTER TABLE "InterviewTemplateModule" ADD CONSTRAINT "InterviewTemplateModule_moduleId_fkey"
       FOREIGN KEY ("moduleId") REFERENCES "SkillModule"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-  END IF;
+EXCEPTION WHEN duplicate_table OR duplicate_object THEN null;
 END $$;
 
 -- InterviewInvitation -> Recruiter
 DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'InterviewInvitation_recruiterId_fkey') THEN
-    ALTER TABLE "InterviewInvitation" ADD CONSTRAINT "InterviewInvitation_recruiterId_fkey"
+  ALTER TABLE "InterviewInvitation" ADD CONSTRAINT "InterviewInvitation_recruiterId_fkey"
       FOREIGN KEY ("recruiterId") REFERENCES "Recruiter"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-  END IF;
+EXCEPTION WHEN duplicate_table OR duplicate_object THEN null;
 END $$;
 
 -- InterviewInvitation -> Candidate
 DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'InterviewInvitation_candidateId_fkey') THEN
-    ALTER TABLE "InterviewInvitation" ADD CONSTRAINT "InterviewInvitation_candidateId_fkey"
+  ALTER TABLE "InterviewInvitation" ADD CONSTRAINT "InterviewInvitation_candidateId_fkey"
       FOREIGN KEY ("candidateId") REFERENCES "Candidate"("id") ON DELETE SET NULL ON UPDATE CASCADE;
-  END IF;
+EXCEPTION WHEN duplicate_table OR duplicate_object THEN null;
 END $$;
 
 -- InterviewInvitation -> Job
 DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'InterviewInvitation_jobId_fkey') THEN
-    ALTER TABLE "InterviewInvitation" ADD CONSTRAINT "InterviewInvitation_jobId_fkey"
+  ALTER TABLE "InterviewInvitation" ADD CONSTRAINT "InterviewInvitation_jobId_fkey"
       FOREIGN KEY ("jobId") REFERENCES "Job"("id") ON DELETE SET NULL ON UPDATE CASCADE;
-  END IF;
+EXCEPTION WHEN duplicate_table OR duplicate_object THEN null;
 END $$;
 
 -- InterviewInvitation -> InterviewTemplate
 DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'InterviewInvitation_templateId_fkey') THEN
-    ALTER TABLE "InterviewInvitation" ADD CONSTRAINT "InterviewInvitation_templateId_fkey"
+  ALTER TABLE "InterviewInvitation" ADD CONSTRAINT "InterviewInvitation_templateId_fkey"
       FOREIGN KEY ("templateId") REFERENCES "InterviewTemplate"("id") ON DELETE SET NULL ON UPDATE CASCADE;
-  END IF;
+EXCEPTION WHEN duplicate_table OR duplicate_object THEN null;
 END $$;
 
 -- InterviewResponse -> Interview
 DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'InterviewResponse_interviewId_fkey') THEN
-    ALTER TABLE "InterviewResponse" ADD CONSTRAINT "InterviewResponse_interviewId_fkey"
+  ALTER TABLE "InterviewResponse" ADD CONSTRAINT "InterviewResponse_interviewId_fkey"
       FOREIGN KEY ("interviewId") REFERENCES "Interview"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-  END IF;
+EXCEPTION WHEN duplicate_table OR duplicate_object THEN null;
 END $$;
 
 -- InterviewFeedback -> Interview
 DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'InterviewFeedback_interviewId_fkey') THEN
-    ALTER TABLE "InterviewFeedback" ADD CONSTRAINT "InterviewFeedback_interviewId_fkey"
+  ALTER TABLE "InterviewFeedback" ADD CONSTRAINT "InterviewFeedback_interviewId_fkey"
       FOREIGN KEY ("interviewId") REFERENCES "Interview"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-  END IF;
+EXCEPTION WHEN duplicate_table OR duplicate_object THEN null;
 END $$;
 
 -- ProctoringEvent -> Interview
 DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'ProctoringEvent_interviewId_fkey') THEN
-    ALTER TABLE "ProctoringEvent" ADD CONSTRAINT "ProctoringEvent_interviewId_fkey"
+  ALTER TABLE "ProctoringEvent" ADD CONSTRAINT "ProctoringEvent_interviewId_fkey"
       FOREIGN KEY ("interviewId") REFERENCES "Interview"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-  END IF;
+EXCEPTION WHEN duplicate_table OR duplicate_object THEN null;
 END $$;
 
 -- InterviewHypothesis -> Interview
 DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'InterviewHypothesis_interviewId_fkey') THEN
-    ALTER TABLE "InterviewHypothesis" ADD CONSTRAINT "InterviewHypothesis_interviewId_fkey"
+  ALTER TABLE "InterviewHypothesis" ADD CONSTRAINT "InterviewHypothesis_interviewId_fkey"
       FOREIGN KEY ("interviewId") REFERENCES "Interview"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-  END IF;
+EXCEPTION WHEN duplicate_table OR duplicate_object THEN null;
 END $$;
 
 -- InterviewSection -> Interview
 DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'InterviewSection_interviewId_fkey') THEN
-    ALTER TABLE "InterviewSection" ADD CONSTRAINT "InterviewSection_interviewId_fkey"
+  ALTER TABLE "InterviewSection" ADD CONSTRAINT "InterviewSection_interviewId_fkey"
       FOREIGN KEY ("interviewId") REFERENCES "Interview"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-  END IF;
+EXCEPTION WHEN duplicate_table OR duplicate_object THEN null;
 END $$;
 
 -- PassiveProfile -> Recruiter
 DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'PassiveProfile_sourceRecruiterId_fkey') THEN
-    ALTER TABLE "PassiveProfile" ADD CONSTRAINT "PassiveProfile_sourceRecruiterId_fkey"
+  ALTER TABLE "PassiveProfile" ADD CONSTRAINT "PassiveProfile_sourceRecruiterId_fkey"
       FOREIGN KEY ("sourceRecruiterId") REFERENCES "Recruiter"("id") ON DELETE SET NULL ON UPDATE CASCADE;
-  END IF;
+EXCEPTION WHEN duplicate_table OR duplicate_object THEN null;
 END $$;
 
 -- Notification -> Candidate
 DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'Notification_candidateId_fkey') THEN
-    ALTER TABLE "Notification" ADD CONSTRAINT "Notification_candidateId_fkey"
+  ALTER TABLE "Notification" ADD CONSTRAINT "Notification_candidateId_fkey"
       FOREIGN KEY ("candidateId") REFERENCES "Candidate"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-  END IF;
+EXCEPTION WHEN duplicate_table OR duplicate_object THEN null;
 END $$;
 
 -- Document -> Candidate
 DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'Document_candidateId_fkey') THEN
-    ALTER TABLE "Document" ADD CONSTRAINT "Document_candidateId_fkey"
+  ALTER TABLE "Document" ADD CONSTRAINT "Document_candidateId_fkey"
       FOREIGN KEY ("candidateId") REFERENCES "Candidate"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-  END IF;
+EXCEPTION WHEN duplicate_table OR duplicate_object THEN null;
 END $$;
 
 -- CandidateSkill -> Candidate
 DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'CandidateSkill_candidateId_fkey') THEN
-    ALTER TABLE "CandidateSkill" ADD CONSTRAINT "CandidateSkill_candidateId_fkey"
+  ALTER TABLE "CandidateSkill" ADD CONSTRAINT "CandidateSkill_candidateId_fkey"
       FOREIGN KEY ("candidateId") REFERENCES "Candidate"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-  END IF;
+EXCEPTION WHEN duplicate_table OR duplicate_object THEN null;
 END $$;
 
 -- CandidateExperience -> Candidate
 DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'CandidateExperience_candidateId_fkey') THEN
-    ALTER TABLE "CandidateExperience" ADD CONSTRAINT "CandidateExperience_candidateId_fkey"
+  ALTER TABLE "CandidateExperience" ADD CONSTRAINT "CandidateExperience_candidateId_fkey"
       FOREIGN KEY ("candidateId") REFERENCES "Candidate"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-  END IF;
+EXCEPTION WHEN duplicate_table OR duplicate_object THEN null;
 END $$;
 
 -- CandidateEducation -> Candidate
 DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'CandidateEducation_candidateId_fkey') THEN
-    ALTER TABLE "CandidateEducation" ADD CONSTRAINT "CandidateEducation_candidateId_fkey"
+  ALTER TABLE "CandidateEducation" ADD CONSTRAINT "CandidateEducation_candidateId_fkey"
       FOREIGN KEY ("candidateId") REFERENCES "Candidate"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-  END IF;
+EXCEPTION WHEN duplicate_table OR duplicate_object THEN null;
 END $$;
 
 -- CandidateCertification -> Candidate
 DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'CandidateCertification_candidateId_fkey') THEN
-    ALTER TABLE "CandidateCertification" ADD CONSTRAINT "CandidateCertification_candidateId_fkey"
+  ALTER TABLE "CandidateCertification" ADD CONSTRAINT "CandidateCertification_candidateId_fkey"
       FOREIGN KEY ("candidateId") REFERENCES "Candidate"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-  END IF;
+EXCEPTION WHEN duplicate_table OR duplicate_object THEN null;
 END $$;
 
 -- JobPreference -> Candidate
 DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'JobPreference_candidateId_fkey') THEN
-    ALTER TABLE "JobPreference" ADD CONSTRAINT "JobPreference_candidateId_fkey"
+  ALTER TABLE "JobPreference" ADD CONSTRAINT "JobPreference_candidateId_fkey"
       FOREIGN KEY ("candidateId") REFERENCES "Candidate"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-  END IF;
+EXCEPTION WHEN duplicate_table OR duplicate_object THEN null;
 END $$;
 
 -- ApprovalAction -> Candidate
 DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'ApprovalAction_candidateId_fkey') THEN
-    ALTER TABLE "ApprovalAction" ADD CONSTRAINT "ApprovalAction_candidateId_fkey"
+  ALTER TABLE "ApprovalAction" ADD CONSTRAINT "ApprovalAction_candidateId_fkey"
       FOREIGN KEY ("candidateId") REFERENCES "Candidate"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-  END IF;
+EXCEPTION WHEN duplicate_table OR duplicate_object THEN null;
 END $$;
 
 -- TeamInvitation -> Client
 DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'TeamInvitation_companyId_fkey') THEN
-    ALTER TABLE "TeamInvitation" ADD CONSTRAINT "TeamInvitation_companyId_fkey"
+  ALTER TABLE "TeamInvitation" ADD CONSTRAINT "TeamInvitation_companyId_fkey"
       FOREIGN KEY ("companyId") REFERENCES "Client"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-  END IF;
+EXCEPTION WHEN duplicate_table OR duplicate_object THEN null;
 END $$;
 
 -- ReviewDecision -> Interview
 DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'ReviewDecision_interviewId_fkey') THEN
-    ALTER TABLE "ReviewDecision" ADD CONSTRAINT "ReviewDecision_interviewId_fkey"
+  ALTER TABLE "ReviewDecision" ADD CONSTRAINT "ReviewDecision_interviewId_fkey"
       FOREIGN KEY ("interviewId") REFERENCES "Interview"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-  END IF;
+EXCEPTION WHEN duplicate_table OR duplicate_object THEN null;
 END $$;
 
 -- ReportShareView -> InterviewReport
 DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'ReportShareView_reportId_fkey') THEN
-    ALTER TABLE "ReportShareView" ADD CONSTRAINT "ReportShareView_reportId_fkey"
+  ALTER TABLE "ReportShareView" ADD CONSTRAINT "ReportShareView_reportId_fkey"
       FOREIGN KEY ("reportId") REFERENCES "InterviewReport"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-  END IF;
+EXCEPTION WHEN duplicate_table OR duplicate_object THEN null;
 END $$;
 
 -- RetentionPolicy -> Client
 DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'RetentionPolicy_companyId_fkey') THEN
-    ALTER TABLE "RetentionPolicy" ADD CONSTRAINT "RetentionPolicy_companyId_fkey"
+  ALTER TABLE "RetentionPolicy" ADD CONSTRAINT "RetentionPolicy_companyId_fkey"
       FOREIGN KEY ("companyId") REFERENCES "Client"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-  END IF;
+EXCEPTION WHEN duplicate_table OR duplicate_object THEN null;
 END $$;
 
 -- SSOConfig -> Client
 DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'SSOConfig_companyId_fkey') THEN
-    ALTER TABLE "SSOConfig" ADD CONSTRAINT "SSOConfig_companyId_fkey"
+  ALTER TABLE "SSOConfig" ADD CONSTRAINT "SSOConfig_companyId_fkey"
       FOREIGN KEY ("companyId") REFERENCES "Client"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-  END IF;
+EXCEPTION WHEN duplicate_table OR duplicate_object THEN null;
 END $$;
 
 -- ============================================
