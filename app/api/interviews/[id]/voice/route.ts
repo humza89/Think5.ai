@@ -125,7 +125,7 @@ export async function POST(
       if (!interview.isPractice) {
         const preStartCheck = await prisma.interview.findUnique({
           where: { id },
-          select: { consentRecording: true, consentPrivacy: true, consentedAt: true, readinessVerified: true },
+          select: { consentRecording: true, consentProctoring: true, consentPrivacy: true, consentedAt: true, readinessVerified: true },
         });
         if (!preStartCheck?.consentRecording || !preStartCheck?.consentPrivacy || !preStartCheck?.consentedAt) {
           return Response.json(
@@ -133,7 +133,16 @@ export async function POST(
             { status: 403 }
           );
         }
-        if (!preStartCheck.readinessVerified) {
+        // Proctoring consent is required for non-practice interviews
+        if (!preStartCheck?.consentProctoring) {
+          return Response.json(
+            { error: "Proctoring consent must be confirmed before starting the interview." },
+            { status: 403 }
+          );
+        }
+        // Template-driven readiness check enforcement
+        const readinessRequired = interview.template?.readinessCheckRequired ?? true;
+        if (readinessRequired && !preStartCheck.readinessVerified) {
           return Response.json(
             { error: "Device readiness check must be completed before starting the interview." },
             { status: 403 }

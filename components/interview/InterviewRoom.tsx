@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
-import { Mic, MicOff, Video, VideoOff, PhoneOff, AlertTriangle, Monitor, Share, MessageSquare, Code2, PenTool, FileText, WifiHigh, WifiLow } from "lucide-react";
+import { Mic, MicOff, Video, VideoOff, PhoneOff, AlertTriangle, Monitor, MessageSquare, Code2, FileText, WifiHigh, WifiLow } from "lucide-react";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import Editor from "@monaco-editor/react";
@@ -22,7 +22,6 @@ export function InterviewRoom({ interviewId, candidateName, jobTitle }: Intervie
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [micEnabled, setMicEnabled] = useState(true);
   const [cameraEnabled, setCameraEnabled] = useState(true);
-  const [screenShared, setScreenShared] = useState(false);
   const [networkQuality, setNetworkQuality] = useState<"high" | "low">("high");
   
   // AI States
@@ -181,25 +180,6 @@ export function InterviewRoom({ interviewId, candidateName, jobTitle }: Intervie
     }
   };
 
-  const toggleScreenShare = async () => {
-    try {
-        if (!screenShared) {
-            const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
-            
-            // In a real VAPI/Daily setup, we'd replace the video track in the peer connection here.
-            
-            setScreenShared(true);
-            screenStream.getVideoTracks()[0].onended = () => {
-                setScreenShared(false);
-            };
-        } else {
-            setScreenShared(false);
-        }
-    } catch(e) {
-        console.error("Screen share failed", e);
-    }
-  };
-
   const endInterview = async () => {
     setIsUploading(true);
     
@@ -249,20 +229,6 @@ export function InterviewRoom({ interviewId, candidateName, jobTitle }: Intervie
     return `${min}:${sec < 10 ? '0' : ''}${sec}`;
   };
 
-  // Simulate Candidate "Talking" for demo visual purposes
-  const simulateCandidateSpeaking = () => {
-      const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-      setTranscript(prev => [...prev, { role: "candidate", text: "Yes, I have extensively utilized Agile in my previous roles, particularly managing 2-week sprints.", time: now }]);
-      
-      // AI responds shortly after
-      setTimeout(() => {
-          setAiSpeaking(true);
-          const aiNow = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-          setTranscript(prev => [...prev, { role: "ai", text: "That's great. Can you write a quick function in the code editor to demonstrate how you'd calculate sprint velocity?", time: aiNow }]);
-          setTimeout(() => setAiSpeaking(false), 4000);
-      }, 3000);
-  };
-
   return (
     <div className="flex flex-col h-screen bg-[#0a0a0a] text-zinc-100 overflow-hidden font-sans">
       
@@ -304,9 +270,6 @@ export function InterviewRoom({ interviewId, candidateName, jobTitle }: Intervie
                     <TabsTrigger value="code" className="data-[state=active]:bg-zinc-800 data-[state=active]:text-white text-zinc-400">
                         <Code2 className="h-4 w-4 mr-2" /> Code Editor
                     </TabsTrigger>
-                    <TabsTrigger value="whiteboard" className="data-[state=active]:bg-zinc-800 data-[state=active]:text-white text-zinc-400">
-                        <PenTool className="h-4 w-4 mr-2" /> Whiteboard
-                    </TabsTrigger>
                     <TabsTrigger value="notes" className="data-[state=active]:bg-zinc-800 data-[state=active]:text-white text-zinc-400">
                         <FileText className="h-4 w-4 mr-2" /> Notes
                     </TabsTrigger>
@@ -332,12 +295,6 @@ export function InterviewRoom({ interviewId, candidateName, jobTitle }: Intervie
                 />
             </TabsContent>
             
-            <TabsContent value="whiteboard" className="flex-1 m-0 p-8 flex flex-col items-center justify-center text-zinc-500">
-                <PenTool className="h-16 w-16 mb-4 opacity-50" />
-                <p>Whiteboard canvas integrating Excalidraw...</p>
-                <p className="text-sm">Available in v1.2</p>
-            </TabsContent>
-
             <TabsContent value="notes" className="flex-1 m-0 p-6">
                  <textarea 
                     className="w-full h-full bg-zinc-900 border border-zinc-800 rounded-lg p-4 text-zinc-300 resize-none focus:outline-none focus:ring-1 focus:ring-primary/50"
@@ -438,12 +395,6 @@ export function InterviewRoom({ interviewId, candidateName, jobTitle }: Intervie
                     <div ref={chatEndRef} />
                 </div>
                 
-                {/* Temporary button to simulate talking for UI demo */}
-                <div className="absolute bottom-4 right-4 z-10 opacity-20 hover:opacity-100 transition-opacity">
-                    <Button size="sm" variant="outline" className="text-[10px] h-6" onClick={simulateCandidateSpeaking}>
-                        Simulate Speak
-                    </Button>
-                </div>
             </div>
 
         </div>
@@ -475,15 +426,6 @@ export function InterviewRoom({ interviewId, candidateName, jobTitle }: Intervie
                 {cameraEnabled ? <Video className="h-5 w-5" /> : <VideoOff className="h-5 w-5" />}
             </Button>
 
-            <Button 
-                variant="outline" 
-                size="icon" 
-                className={`rounded-full h-12 w-12 border-zinc-700 bg-zinc-900 hover:bg-zinc-800 hover:text-white ${screenShared && 'border-green-500/50 text-green-500 hover:bg-green-500/10 hover:text-green-500'}`}
-                onClick={toggleScreenShare}
-                title="Share Screen"
-            >
-                <Share className="h-5 w-5" />
-            </Button>
         </div>
 
         <Button 

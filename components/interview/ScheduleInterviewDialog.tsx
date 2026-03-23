@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
   DialogContent,
@@ -58,6 +59,10 @@ export function ScheduleInterviewDialog({
   const [mode, setMode] = useState("GENERAL_PROFILE");
   const [sendInvite, setSendInvite] = useState(!!candidateEmail);
   const [email, setEmail] = useState(candidateEmail);
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [recruiterObjectives, setRecruiterObjectives] = useState("");
+  const [customQuestions, setCustomQuestions] = useState("");
+  const [hmNotes, setHmNotes] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -74,6 +79,13 @@ export function ScheduleInterviewDialog({
           candidateId,
           type,
           mode,
+          ...(recruiterObjectives.trim() && {
+            recruiterObjectives: recruiterObjectives.split("\n").filter(Boolean),
+          }),
+          ...(customQuestions.trim() && {
+            customScreeningQuestions: customQuestions.split("\n").filter(Boolean),
+          }),
+          ...(hmNotes.trim() && { hmNotes: hmNotes.trim() }),
         }),
       });
 
@@ -182,6 +194,57 @@ export function ScheduleInterviewDialog({
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="candidate@example.com"
               />
+            </div>
+          )}
+
+          {/* Advanced Settings */}
+          <div>
+            <button
+              type="button"
+              onClick={() => setShowAdvanced(!showAdvanced)}
+              className="text-sm text-blue-600 hover:text-blue-700 font-medium"
+            >
+              {showAdvanced ? "Hide" : "Show"} Advanced Settings
+            </button>
+          </div>
+
+          {showAdvanced && (
+            <div className="space-y-4 border rounded-lg p-4 bg-gray-50 dark:bg-zinc-900">
+              <div className="space-y-2">
+                <Label>Recruiter Objectives</Label>
+                <Textarea
+                  value={recruiterObjectives}
+                  onChange={(e) => setRecruiterObjectives(e.target.value)}
+                  placeholder="One objective per line, e.g.&#10;Assess system design skills&#10;Evaluate leadership experience"
+                  rows={3}
+                  className="text-sm"
+                />
+                <p className="text-xs text-gray-500">Guide the AI interviewer to focus on specific areas.</p>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Custom Screening Questions</Label>
+                <Textarea
+                  value={customQuestions}
+                  onChange={(e) => setCustomQuestions(e.target.value)}
+                  placeholder="One question per line, e.g.&#10;Tell me about a time you led a migration&#10;How do you handle technical debt?"
+                  rows={3}
+                  className="text-sm"
+                />
+                <p className="text-xs text-gray-500">Specific questions the AI must ask during the interview.</p>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Hiring Manager Notes</Label>
+                <Textarea
+                  value={hmNotes}
+                  onChange={(e) => setHmNotes(e.target.value)}
+                  placeholder="Context only visible to the AI, e.g. 'Team needs someone who can own the billing system refactor'"
+                  rows={3}
+                  className="text-sm"
+                />
+                <p className="text-xs text-gray-500">Private context for the AI. Not shown to the candidate.</p>
+              </div>
             </div>
           )}
 

@@ -240,32 +240,26 @@ export async function requireInterviewAccess(interviewId: string) {
     return { user, profile, interview };
   }
 
-  // Hiring managers: company-scoped access via scheduling recruiter's company
+  // Hiring managers: company-scoped access via explicit membership
   if (profile.role === 'hiring_manager') {
     if (!interview.companyId) {
       throw new AuthError('Forbidden: this interview has no company association', 403);
     }
-    // Find the scheduling recruiter's company and check if the HM's email
-    // matches any recruiter in the same company (team membership proxy)
-    const schedulingRecruiter = await prisma.recruiter.findUnique({
-      where: { id: interview.scheduledBy },
-      select: { companyId: true },
+    // Check for explicit HM membership record (replaces email domain matching)
+    const membership = await prisma.hiringManagerMembership.findUnique({
+      where: {
+        userId_companyId: {
+          userId: user.id,
+          companyId: interview.companyId,
+        },
+      },
     });
-    if (!schedulingRecruiter || schedulingRecruiter.companyId !== interview.companyId) {
-      throw new AuthError('Forbidden: you do not have access to this interview', 403);
+    if (!membership || !membership.isActive) {
+      throw new AuthError('Forbidden: you do not have access to this company\'s interviews. Contact your admin to request access.', 403);
     }
-    // Check HM belongs to same company: look up company's domain or match HM email domain
-    const companyRecruiters = await prisma.recruiter.findMany({
-      where: { companyId: interview.companyId },
-      select: { email: true },
-    });
-    // Extract email domains from company recruiters
-    const companyDomains = new Set(
-      companyRecruiters.map((r: { email: string }) => r.email.split('@')[1]?.toLowerCase()).filter(Boolean)
-    );
-    const hmDomain = profile.email.split('@')[1]?.toLowerCase();
-    if (!hmDomain || !companyDomains.has(hmDomain)) {
-      throw new AuthError('Forbidden: you do not have access to this interview', 403);
+    // Check membership expiry
+    if (membership.expiresAt && new Date() > membership.expiresAt) {
+      throw new AuthError('Forbidden: your hiring manager access has expired. Contact your admin to renew.', 403);
     }
     return { user, profile, interview };
   }

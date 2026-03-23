@@ -64,6 +64,12 @@ enum RecordingState {
   DELETED
 }
 
+enum TemplateStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+}
+
 enum EvidenceConfidence {
   HIGH
   MEDIUM
@@ -366,8 +372,29 @@ model Client {
   interviews       Interview[]
   retentionPolicy  RetentionPolicy?
   ssoConfig        SSOConfig?
+  hmMemberships    HiringManagerMembership[]
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
+}
+
+// Explicit membership linking hiring managers to companies
+// Replaces fragile email-domain matching with explicit, auditable access grants
+model HiringManagerMembership {
+  id        String   @id @default(uuid())
+  userId    String   // Supabase user ID of the hiring manager
+  email     String   // HM email for reference
+  companyId String
+  company   Client   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  role      String   @default("viewer") // viewer | collaborator
+  grantedBy String?  // admin/recruiter who granted access
+  grantedAt DateTime @default(now())
+  expiresAt DateTime?
+  isActive  Boolean  @default(true)
+
+  @@unique([userId, companyId])
+  @@index([companyId])
+  @@index([userId])
+  @@index([email])
 }
 
 model Role {
@@ -721,6 +748,7 @@ model InterviewTemplate {
   questions       Json      @default("[]") // [{text, type, category, followUpDepth}]
   aiConfig        Json      @default("{}") // {personality, followUpDepth, language, antiCheatLevel}
   isDefault       Boolean   @default(false)
+  status          TemplateStatus @default(DRAFT)
 
   // Interview mode (Phase 1)
   mode                    InterviewMode @default(GENERAL_PROFILE)

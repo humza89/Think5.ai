@@ -254,39 +254,95 @@ export async function generateReportInBackground(
       where: { id: interviewId },
       data: {
         reportRetryCount: newRetryCount,
-        reportStatus: newRetryCount >= 3 ? "failed" : "pending",
+        reportStatus: newRetryCount >= MAX_RETRIES ? "failed" : "pending",
       },
     });
   }
 }
 
-const MAX_RETRIES = 3;
-const RETRY_DELAY_MINUTES = 5;
+const MAX_RETRIES = 5;
+const STUCK_THRESHOLD_MS = 10 * 60 * 1000; // 10 minutes
+
+/**
+ * Calculate exponential backoff delay for retries.
+ * Retry 1: 2min, Retry 2: 4min, Retry 3: 8min, Retry 4: 16min
+ */
+function getRetryDelayMinutes(retryCount: number): number {
+  return Math.pow(2, retryCount); // 2, 4, 8, 16, 32
+}
+
+/**
+ * Recover stuck reports: reports stuck in "generating" for >10 minutes
+ * are reset to "pending" so they can be retried.
+ */
+export async function recoverStuckReports(): Promise<{ recovered: number }> {
+  const stuckCutoff = new Date(Date.now() - STUCK_THRESHOLD_MS);
+
+  const stuckReports = await prisma.interview.findMany({
+    where: {
+      reportStatus: "generating",
+      updatedAt: { lt: stuckCutoff },
+      report: null,
+    },
+    select: { id: true, reportRetryCount: true },
+  });
+
+  let recovered = 0;
+  for (const interview of stuckReports) {
+    const retryCount = (interview.reportRetryCount ?? 0) + 1;
+    await prisma.interview.update({
+      where: { id: interview.id },
+      data: {
+        reportStatus: retryCount >= MAX_RETRIES ? "failed" : "pending",
+        reportRetryCount: retryCount,
+      },
+    });
+    recovered++;
+  }
+
+  if (recovered > 0) {
+    console.log(`Recovered ${recovered} stuck report(s)`);
+  }
+
+  return { recovered };
+}
 
 /**
  * Find interviews with failed report generation that are eligible for retry
- * and attempt to regenerate their reports.
+ * (with exponential backoff) and attempt to regenerate their reports.
  */
 export async function retryFailedReports(): Promise<void> {
-  const cutoff = new Date(Date.now() - RETRY_DELAY_MINUTES * 60 * 1000);
+  // First, recover any stuck reports
+  await recoverStuckReports();
 
   const interviews = await prisma.interview.findMany({
     where: {
       reportStatus: "pending",
       reportRetryCount: { gt: 0, lt: MAX_RETRIES },
-      completedAt: { lt: cutoff },
       report: null,
     },
-    select: { id: true },
+    select: { id: true, reportRetryCount: true, updatedAt: true },
   });
 
-  console.log(`Retrying report generation for ${interviews.length} interview(s)`);
-
+  let retried = 0;
   for (const interview of interviews) {
+    // Exponential backoff: check if enough time has passed since last attempt
+    const delayMinutes = getRetryDelayMinutes(interview.reportRetryCount ?? 1);
+    const eligibleAt = new Date(interview.updatedAt.getTime() + delayMinutes * 60 * 1000);
+
+    if (new Date() < eligibleAt) {
+      continue; // Not yet eligible for retry
+    }
+
     try {
       await generateReportInBackground(interview.id);
+      retried++;
     } catch (error) {
       console.error(`Retry failed for interview ${interview.id}:`, error);
     }
+  }
+
+  if (retried > 0) {
+    console.log(`Retried report generation for ${retried} interview(s)`);
   }
 }

@@ -5,6 +5,7 @@ import {
   buildAriaSystemPrompt,
   countQuestionsFromTranscript,
 } from "@/lib/aria-prompts";
+import { planToSystemContext } from "@/lib/interview-planner";
 import { generateReportInBackground } from "@/lib/report-generator";
 import { checkCandidateEligibility } from "@/lib/interview-eligibility";
 import { logInterviewActivity, getClientIp } from "@/lib/interview-audit";
@@ -34,6 +35,14 @@ async function validateAccess(
           resumeText: true,
           onboardingStatus: true,
         },
+      },
+      template: {
+        select: {
+          readinessCheckRequired: true,
+        },
+      },
+      job: {
+        select: { title: true },
       },
     },
   });
@@ -163,12 +172,11 @@ export async function POST(
 
     // Start interview — set status to IN_PROGRESS
     if (action === "start" && interview.status === "PENDING") {
-      // P0.3: Block interview start unless consent is confirmed in DB (parity with voice route)
-      // P0.2: Block interview start unless device readiness is verified
+      // P0.4: Block interview start unless consent is confirmed in DB (parity with voice route)
       if (!interview.isPractice) {
         const preStartCheck = await prisma.interview.findUnique({
           where: { id },
-          select: { consentRecording: true, consentPrivacy: true, consentedAt: true, readinessVerified: true },
+          select: { consentRecording: true, consentProctoring: true, consentPrivacy: true, consentedAt: true, readinessVerified: true },
         });
         if (!preStartCheck?.consentRecording || !preStartCheck?.consentPrivacy || !preStartCheck?.consentedAt) {
           return new Response(
@@ -176,7 +184,16 @@ export async function POST(
             { status: 403, headers: { "Content-Type": "application/json" } }
           );
         }
-        if (!preStartCheck.readinessVerified) {
+        // Proctoring consent is required for non-practice interviews
+        if (!preStartCheck?.consentProctoring) {
+          return new Response(
+            JSON.stringify({ error: "Proctoring consent must be confirmed before starting the interview." }),
+            { status: 403, headers: { "Content-Type": "application/json" } }
+          );
+        }
+        // Template-driven readiness check enforcement
+        const readinessRequired = interview.template?.readinessCheckRequired ?? true;
+        if (readinessRequired && !preStartCheck.readinessVerified) {
           return new Response(
             JSON.stringify({ error: "Device readiness check must be completed before starting the interview." }),
             { status: 403, headers: { "Content-Type": "application/json" } }
@@ -203,7 +220,7 @@ export async function POST(
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
     const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
 
-    const systemPrompt = buildAriaSystemPrompt({
+    let systemPrompt = buildAriaSystemPrompt({
       interviewType: interview.type as any,
       candidateName: interview.candidate.fullName,
       candidateTitle: interview.candidate.currentTitle,
@@ -214,6 +231,12 @@ export async function POST(
       candidateExperience: interview.candidate.experienceYears,
       resumeText: interview.candidate.resumeText,
     });
+
+    // Inject interview plan context if available
+    if (interview.interviewPlan) {
+      const planContext = planToSystemContext(interview.interviewPlan as any);
+      systemPrompt = `${systemPrompt}\n\n${planContext}`;
+    }
 
     // Build chat history from existing transcript
     const history = existingTranscript.map((entry) => ({

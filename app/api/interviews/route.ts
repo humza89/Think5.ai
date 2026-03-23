@@ -50,20 +50,30 @@ export async function POST(request: NextRequest) {
     // Get recruiter record — HMs use a company recruiter as scheduledBy
     let recruiter;
     if (profile.role === "hiring_manager") {
-      const hmDomain = profile.email.split("@")[1]?.toLowerCase();
-      if (!hmDomain) {
-        return NextResponse.json({ error: "Invalid email domain" }, { status: 403 });
+      // Use explicit membership to find the HM's company
+      const membership = await prisma.hiringManagerMembership.findFirst({
+        where: { userId: user.id, isActive: true },
+      });
+      if (!membership) {
+        return NextResponse.json(
+          { error: "No company membership found. Contact your admin to request access." },
+          { status: 403 }
+        );
       }
-      // Find a recruiter in the same company by email domain
+      // Check membership expiry
+      if (membership.expiresAt && new Date() > membership.expiresAt) {
+        return NextResponse.json(
+          { error: "Your hiring manager access has expired. Contact your admin to renew." },
+          { status: 403 }
+        );
+      }
+      // Find a recruiter in the membership company to use as scheduledBy
       const companyRecruiter = await prisma.recruiter.findFirst({
-        where: {
-          email: { endsWith: `@${hmDomain}` },
-          companyId: { not: null },
-        },
+        where: { companyId: membership.companyId },
       });
       if (!companyRecruiter) {
         return NextResponse.json(
-          { error: "No company recruiter found matching your domain. Contact your recruiter to schedule interviews." },
+          { error: "No recruiter found in your company. Contact your admin." },
           { status: 403 }
         );
       }
@@ -88,9 +98,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Generate interview plan for voice interviews
+    // Generate interview plan for all non-practice interviews
     let interviewPlan = null;
-    if (voiceProvider === "gemini-live") {
+    if (!isPractice) {
       try {
         const { generateInterviewPlan } = await import("@/lib/interview-planner");
         const job = jobId
@@ -299,16 +309,15 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Hiring managers: see all interviews in their company (via email domain matching)
+    // Hiring managers: see all interviews in their company (via explicit membership)
     if (profile.role === "hiring_manager") {
-      const hmDomain = profile.email.split("@")[1]?.toLowerCase();
-      if (hmDomain) {
-        const companyRecruiter = await prisma.recruiter.findFirst({
-          where: { email: { endsWith: `@${hmDomain}` }, companyId: { not: null } },
-          select: { companyId: true },
-        });
-        if (companyRecruiter?.companyId) {
-          where.companyId = companyRecruiter.companyId;
+      const membership = await prisma.hiringManagerMembership.findFirst({
+        where: { userId: user.id, isActive: true },
+      });
+      if (membership) {
+        // Check membership expiry
+        if (!membership.expiresAt || new Date() <= membership.expiresAt) {
+          where.companyId = membership.companyId;
         }
       }
     }

@@ -219,6 +219,17 @@ export function WelcomeScreen({
           </label>
         </div>
 
+        {/* Data Retention Notice */}
+        <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-4 mb-6">
+          <div className="flex items-start gap-3">
+            <BarChart3 className="w-4 h-4 text-zinc-500 shrink-0 mt-0.5" />
+            <div className="text-xs text-zinc-500 space-y-1">
+              <p className="text-zinc-400 font-medium">Data Retention</p>
+              <p>Your interview recording, transcript, and evaluation data will be retained according to company policy (default: 90 days for recordings, 365 days for transcripts). You may request data deletion at any time by contacting support.</p>
+            </div>
+          </div>
+        </div>
+
         {/* Start button */}
         <Button
           onClick={() => onStart({ consentRecording, consentProctoring, consentPrivacy })}
