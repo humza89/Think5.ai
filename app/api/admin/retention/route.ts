@@ -3,10 +3,14 @@ import { prisma } from "@/lib/prisma";
 import { requireRole, handleAuthError } from "@/lib/auth";
 import { enforceRetentionPolicies, getRetentionStatus } from "@/lib/retention-enforcement";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     await requireRole(["admin"]);
-    const status = await getRetentionStatus();
+
+    const { searchParams } = new URL(request.url);
+    const companyId = searchParams.get("companyId") || undefined;
+
+    const status = await getRetentionStatus(companyId);
     return NextResponse.json(status);
   } catch (error) {
     const { error: message, status } = handleAuthError(error);
@@ -19,7 +23,7 @@ export async function PATCH(request: NextRequest) {
     await requireRole(["admin"]);
 
     const body = await request.json();
-    const { recordingDays, transcriptDays, candidateDataDays } = body;
+    const { recordingDays, transcriptDays, candidateDataDays, companyId } = body;
 
     // Validate input
     if (
@@ -33,29 +37,58 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
-    // Find or create the default policy
-    let policy = await prisma.retentionPolicy.findFirst({
-      where: { isDefault: true },
-    });
-
     const updateData: Record<string, unknown> = {};
     if (recordingDays !== undefined) updateData.recordingDays = recordingDays;
     if (transcriptDays !== undefined) updateData.transcriptDays = transcriptDays;
     if (candidateDataDays !== undefined) updateData.candidateDataDays = candidateDataDays;
 
-    if (policy) {
-      policy = await prisma.retentionPolicy.update({
-        where: { id: policy.id },
-        data: updateData,
+    let policy;
+
+    if (companyId) {
+      // Company-specific policy
+      policy = await prisma.retentionPolicy.findUnique({
+        where: { companyId },
       });
+
+      if (policy) {
+        policy = await prisma.retentionPolicy.update({
+          where: { id: policy.id },
+          data: updateData,
+        });
+      } else {
+        // Verify company exists
+        const company = await prisma.client.findUnique({ where: { id: companyId } });
+        if (!company) {
+          return NextResponse.json({ error: "Company not found" }, { status: 404 });
+        }
+        policy = await prisma.retentionPolicy.create({
+          data: {
+            name: `${company.name} Policy`,
+            companyId,
+            ...updateData,
+          },
+        });
+      }
     } else {
-      policy = await prisma.retentionPolicy.create({
-        data: {
-          name: "Default",
-          isDefault: true,
-          ...updateData,
-        },
+      // Default (global) policy
+      policy = await prisma.retentionPolicy.findFirst({
+        where: { isDefault: true },
       });
+
+      if (policy) {
+        policy = await prisma.retentionPolicy.update({
+          where: { id: policy.id },
+          data: updateData,
+        });
+      } else {
+        policy = await prisma.retentionPolicy.create({
+          data: {
+            name: "Default",
+            isDefault: true,
+            ...updateData,
+          },
+        });
+      }
     }
 
     return NextResponse.json(policy);

@@ -1,40 +1,49 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Shield } from "lucide-react";
+import { Shield, Loader2 } from "lucide-react";
 
 interface EmailVerificationGateProps {
-  children: React.ReactNode;
-  recipientEmailHash: string; // SHA-256 hash of expected email (don't leak actual email to client)
+  token: string;
 }
 
-export function EmailVerificationGate({ children, recipientEmailHash }: EmailVerificationGateProps) {
+export function EmailVerificationGate({ token }: EmailVerificationGateProps) {
   const [email, setEmail] = useState("");
-  const [verified, setVerified] = useState(false);
-  const [error, setError] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const router = useRouter();
 
   async function handleVerify(e: React.FormEvent) {
     e.preventDefault();
-    setError(false);
+    setError(null);
+    setLoading(true);
 
-    // Hash the entered email client-side and compare
-    const encoder = new TextEncoder();
-    const data = encoder.encode(email.toLowerCase().trim());
-    const hashBuffer = await crypto.subtle.digest("SHA-256", data);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    const hashHex = hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
+    try {
+      const res = await fetch(`/api/reports/shared/${token}/verify-email`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: email.trim() }),
+      });
 
-    if (hashHex === recipientEmailHash) {
-      setVerified(true);
-    } else {
-      setError(true);
+      if (res.ok) {
+        // Cookie is set by the server — reload page to get full report data
+        router.refresh();
+      } else {
+        const data = await res.json();
+        if (res.status === 429) {
+          setError("Too many attempts. Please try again in 15 minutes.");
+        } else {
+          setError(data.error || "Email does not match. Please check and try again.");
+        }
+      }
+    } catch {
+      setError("Verification failed. Please try again.");
+    } finally {
+      setLoading(false);
     }
-  }
-
-  if (verified) {
-    return <>{children}</>;
   }
 
   return (
@@ -55,16 +64,22 @@ export function EmailVerificationGate({ children, recipientEmailHash }: EmailVer
               type="email"
               placeholder="Enter your email address"
               value={email}
-              onChange={(e) => { setEmail(e.target.value); setError(false); }}
+              onChange={(e) => { setEmail(e.target.value); setError(null); }}
               required
+              disabled={loading}
             />
             {error && (
-              <p className="text-sm text-red-500">
-                Email does not match. Please check and try again.
-              </p>
+              <p className="text-sm text-red-500">{error}</p>
             )}
-            <Button type="submit" className="w-full">
-              Verify & View Report
+            <Button type="submit" className="w-full" disabled={loading}>
+              {loading ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Verifying...
+                </>
+              ) : (
+                "Verify & View Report"
+              )}
             </Button>
           </form>
         </div>

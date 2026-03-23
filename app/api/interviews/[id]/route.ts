@@ -4,6 +4,7 @@ import {
   requireInterviewAccess,
   handleAuthError,
 } from "@/lib/auth";
+import { isValidTransition, getAllowedTransitions } from "@/lib/interview-state-machine";
 
 // GET - Get interview details with report
 export async function GET(
@@ -72,6 +73,23 @@ export async function PATCH(
     const updateData: any = {};
 
     if (newStatus) {
+      // Validate status transition using state machine
+      const currentInterview = await prisma.interview.findUnique({
+        where: { id },
+        select: { status: true },
+      });
+      if (!currentInterview) {
+        return NextResponse.json({ error: "Interview not found" }, { status: 404 });
+      }
+      if (!isValidTransition(currentInterview.status, newStatus)) {
+        return NextResponse.json(
+          {
+            error: `Invalid status transition from ${currentInterview.status} to ${newStatus}. Allowed transitions: ${getAllowedTransitions(currentInterview.status).join(", ") || "none (terminal state)"}`,
+          },
+          { status: 400 }
+        );
+      }
+
       updateData.status = newStatus;
 
       if (newStatus === "IN_PROGRESS") {

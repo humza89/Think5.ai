@@ -133,3 +133,82 @@ export async function validateReconnectToken(
 export function isRedisAvailable(): boolean {
   return redisAvailable;
 }
+
+/**
+ * Refresh the TTL on a session to prevent premature expiry during active use.
+ * Should be called on each client poll to keep the session alive.
+ */
+export async function refreshSessionTTL(interviewId: string): Promise<void> {
+  const key = sessionKey(interviewId);
+
+  const redis = await getRedis();
+  if (redis) {
+    try {
+      await redis.expire(key, SESSION_TTL_SECONDS);
+    } catch (err) {
+      console.warn(`[${interviewId}] Failed to refresh session TTL:`, err);
+    }
+  }
+  // In-memory store doesn't have TTL, so no-op
+}
+
+/**
+ * Get session health diagnostics for monitoring.
+ */
+export async function getSessionHealth(interviewId: string): Promise<{
+  exists: boolean;
+  store: "redis" | "memory";
+  lastActiveAt: string | null;
+  ttlSeconds: number | null;
+}> {
+  const key = sessionKey(interviewId);
+  const redis = await getRedis();
+
+  if (redis) {
+    const [data, ttl] = await Promise.all([
+      redis.get(key),
+      redis.ttl(key),
+    ]);
+    const state = data
+      ? (typeof data === "string" ? JSON.parse(data) : data) as SessionState
+      : null;
+    return {
+      exists: !!data,
+      store: "redis",
+      lastActiveAt: state?.lastActiveAt || null,
+      ttlSeconds: ttl > 0 ? ttl : null,
+    };
+  }
+
+  const data = memoryStore.get(key);
+  const state = data ? JSON.parse(data) as SessionState : null;
+  return {
+    exists: !!data,
+    store: "memory",
+    lastActiveAt: state?.lastActiveAt || null,
+    ttlSeconds: null,
+  };
+}
+
+/**
+ * Attempt to restore session state from Redis when in-memory Map doesn't have it.
+ * Returns the restored state or null if not found.
+ */
+export async function tryRestoreSession(
+  interviewId: string
+): Promise<SessionState | null> {
+  const redis = await getRedis();
+  if (!redis) return null;
+
+  const key = sessionKey(interviewId);
+  try {
+    const data = await redis.get(key);
+    if (!data) return null;
+    const state = typeof data === "string" ? JSON.parse(data) : data as SessionState;
+    console.log(`[${interviewId}] Session restored from Redis (last active: ${state.lastActiveAt})`);
+    return state;
+  } catch (err) {
+    console.warn(`[${interviewId}] Failed to restore session from Redis:`, err);
+    return null;
+  }
+}

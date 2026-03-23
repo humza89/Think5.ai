@@ -56,6 +56,14 @@ enum InterviewMode {
   CUSTOM
 }
 
+enum RecordingState {
+  UPLOADING
+  FINALIZING
+  COMPLETE
+  VERIFIED
+  DELETED
+}
+
 enum EvidenceConfidence {
   HIGH
   MEDIUM
@@ -283,6 +291,10 @@ model Candidate {
   consentDataProcessing Boolean          @default(false)
   consentedAt           DateTime?
 
+  // Legal hold — prevents retention enforcement from deleting data
+  legalHold             Boolean          @default(false)
+  legalHoldReason       String?
+
   // New relations
   applications          Application[]
   invitations           InterviewInvitation[]
@@ -352,6 +364,7 @@ model Client {
   interviewTemplates InterviewTemplate[]
   teamInvitations  TeamInvitation[]
   interviews       Interview[]
+  retentionPolicy  RetentionPolicy?
   ssoConfig        SSOConfig?
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
@@ -559,7 +572,7 @@ model Interview {
   templateSnapshotHash String?       // SHA-256 of snapshot
 
   // Recording pipeline state machine
-  recordingState       String?       // "UPLOADING" | "FINALIZING" | "COMPLETE" | "VERIFIED" | "DELETED"
+  recordingState       RecordingState?
   recordingManifestHash String?      // SHA-256 of chunk manifest for integrity
 
   // Voice session reconnect (durable sessions)
@@ -584,6 +597,12 @@ model Interview {
   candidateSelfAssessment Json?     // Post-interview self-assessment responses
   coverageMap         Json?         // Per-section coverage percentages
   evidenceBundle      Json?         // Compiled evidence bundle for recruiter
+
+  // Legal hold — prevents retention enforcement from deleting data
+  legalHold        Boolean   @default(false)
+  legalHoldReason  String?
+  legalHoldSetBy   String?
+  legalHoldSetAt   DateTime?
 
   // Detailed report (1:1)
   report          InterviewReport?
@@ -1242,6 +1261,8 @@ model RetentionPolicy {
   transcriptDays    Int      @default(365)
   candidateDataDays Int      @default(730)
   isDefault         Boolean  @default(false)
+  companyId         String?  @unique
+  company           Client?  @relation(fields: [companyId], references: [id], onDelete: Cascade)
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 }

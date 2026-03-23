@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
-import { headers } from "next/headers";
 import { notFound } from "next/navigation";
+import { cookies } from "next/headers";
 import { createHash } from "crypto";
 import { InterviewReportViewer } from "@/components/interview/InterviewReportViewer";
 import { EmailVerificationGate } from "@/components/reports/EmailVerificationGate";
@@ -14,13 +14,75 @@ export default async function SharedReportPage({
 }) {
   const { token } = await params;
 
-  const report = await prisma.interviewReport.findUnique({
+  // First: lightweight check for token validity + email gate status
+  const reportMeta = await prisma.interviewReport.findUnique({
     where: { shareToken: token },
     select: {
       id: true,
       shareRevoked: true,
       shareExpiresAt: true,
       recipientEmail: true,
+    },
+  });
+
+  if (!reportMeta) {
+    return notFound();
+  }
+
+  if (reportMeta.shareRevoked) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold text-gray-900 mb-2">Access Revoked</h1>
+          <p className="text-gray-500">
+            This shared report link has been revoked. Please contact the recruiter for access.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (reportMeta.shareExpiresAt && new Date() > new Date(reportMeta.shareExpiresAt)) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold text-gray-900 mb-2">Link Expired</h1>
+          <p className="text-gray-500">
+            This shared report link has expired. Please request a new link from the recruiter.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // If email-gated, check for valid access cookie before loading full data
+  if (reportMeta.recipientEmail) {
+    const cookieStore = await cookies();
+    const cookieName = `report-access-${token}`;
+    const cookie = cookieStore.get(cookieName);
+
+    let cookieValid = false;
+    if (cookie) {
+      const emailHash = createHash("sha256")
+        .update(reportMeta.recipientEmail.toLowerCase().trim())
+        .digest("hex");
+      const expectedCookieValue = createHash("sha256")
+        .update(`${token}:${emailHash}:${process.env.NEXTAUTH_SECRET || "fallback-secret"}`)
+        .digest("hex");
+      cookieValid = cookie.value === expectedCookieValue;
+    }
+
+    if (!cookieValid) {
+      // Show email verification gate — NO report data sent to client
+      return <EmailVerificationGate token={token} />;
+    }
+  }
+
+  // Cookie is valid or no email gate — load full report data
+  const report = await prisma.interviewReport.findUnique({
+    where: { shareToken: token },
+    select: {
+      id: true,
       overallScore: true,
       recommendation: true,
       summary: true,
@@ -71,57 +133,17 @@ export default async function SharedReportPage({
     return notFound();
   }
 
-  // Check if share has been revoked
-  if (report.shareRevoked) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <h1 className="text-2xl font-bold text-gray-900 mb-2">
-            Access Revoked
-          </h1>
-          <p className="text-gray-500">
-            This shared report link has been revoked. Please contact the
-            recruiter for access.
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  // Check expiry
-  if (report.shareExpiresAt && new Date() > new Date(report.shareExpiresAt)) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <h1 className="text-2xl font-bold text-gray-900 mb-2">
-            Link Expired
-          </h1>
-          <p className="text-gray-500">
-            This shared report link has expired. Please request a new link from
-            the recruiter.
-          </p>
-        </div>
-      </div>
-    );
-  }
-
   // Log share view (fire-and-forget)
-  const headersList = await headers();
   prisma.reportShareView.create({
     data: {
       reportId: report.id,
       shareToken: token,
-      viewerIp: headersList.get("x-forwarded-for")?.split(",")[0] || "unknown",
-      userAgent: headersList.get("user-agent") || "unknown",
+      viewerIp: "server-render",
+      userAgent: "server-render",
     },
   }).catch(() => {});
 
-  // P1.2: If recipient email is set, require email verification before showing report
-  const recipientEmailHash = report.recipientEmail
-    ? createHash("sha256").update(report.recipientEmail.toLowerCase().trim()).digest("hex")
-    : null;
-
-  const content = (
+  return (
     <div className="min-h-screen bg-gray-50">
       <header className="bg-white border-b no-print">
         <div className="container mx-auto px-6 py-4">
@@ -136,8 +158,7 @@ export default async function SharedReportPage({
       <main className="container mx-auto px-6 py-8">
         <InterviewReportViewer
           report={{
-            overallScore:
-              report.overallScore ?? report.interview.overallScore,
+            overallScore: report.overallScore ?? report.interview.overallScore,
             recommendation: report.recommendation,
             summary: report.summary,
             technicalSkills: report.technicalSkills as any,
@@ -152,7 +173,6 @@ export default async function SharedReportPage({
             hiringAdvice: report.hiringAdvice,
             integrityScore: report.integrityScore,
             integrityFlags: report.integrityFlags as any,
-            // Phase 1 enhanced fields
             headline: report.headline,
             confidenceLevel: report.confidenceLevel,
             professionalExperience: report.professionalExperience,
@@ -178,39 +198,20 @@ export default async function SharedReportPage({
       {/* Watermark for shared reports */}
       <div style={{
         position: 'fixed',
-        top: 0,
-        left: 0,
-        width: '100%',
-        height: '100%',
-        pointerEvents: 'none',
-        zIndex: 9999,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
+        top: 0, left: 0, width: '100%', height: '100%',
+        pointerEvents: 'none', zIndex: 9999,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
         overflow: 'hidden',
       }}>
         <div style={{
           transform: 'rotate(-45deg)',
-          fontSize: '3rem',
-          fontWeight: 'bold',
+          fontSize: '3rem', fontWeight: 'bold',
           color: 'rgba(0, 0, 0, 0.04)',
-          whiteSpace: 'nowrap',
-          userSelect: 'none',
+          whiteSpace: 'nowrap', userSelect: 'none',
         }}>
           Shared via Think5 — Confidential
         </div>
       </div>
     </div>
   );
-
-  // Wrap with email verification gate if recipient email was specified
-  if (recipientEmailHash) {
-    return (
-      <EmailVerificationGate recipientEmailHash={recipientEmailHash}>
-        {content}
-      </EmailVerificationGate>
-    );
-  }
-
-  return content;
 }

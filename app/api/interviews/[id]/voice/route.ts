@@ -31,8 +31,9 @@ import { planToSystemContext } from "@/lib/interview-planner";
 import { generateReportInBackground } from "@/lib/report-generator";
 import { checkCandidateEligibility } from "@/lib/interview-eligibility";
 import { logInterviewActivity, getClientIp } from "@/lib/interview-audit";
-import { saveSessionState, deleteSessionState, generateReconnectToken, validateReconnectToken, type SessionState } from "@/lib/session-store";
+import { saveSessionState, deleteSessionState, generateReconnectToken, validateReconnectToken, refreshSessionTTL, tryRestoreSession, type SessionState } from "@/lib/session-store";
 import { persistProctoringEvents } from "@/lib/proctoring-normalizer";
+import { isValidTransition } from "@/lib/interview-state-machine";
 import * as Sentry from "@sentry/nextjs";
 
 // ── Active Sessions ──
@@ -445,6 +446,10 @@ async function startVoiceInterview(
 
     // Generate reconnect token and update interview status
     const reconnToken = generateReconnectToken();
+    const currentStatus = interview.status;
+    if (!isValidTransition(currentStatus, "IN_PROGRESS")) {
+      console.warn(`[${interviewId}] Invalid voice session status transition: ${currentStatus} → IN_PROGRESS`);
+    }
     await prisma.interview.update({
       where: { id: interviewId },
       data: {
@@ -489,6 +494,13 @@ async function endVoiceInterview(interviewId: string) {
 
   // Save transcript and scores to database
   const transcript = session.geminiSession.transcript;
+  const currentState = await prisma.interview.findUnique({
+    where: { id: interviewId },
+    select: { status: true },
+  });
+  if (currentState && !isValidTransition(currentState.status, "COMPLETED")) {
+    console.warn(`[${interviewId}] Invalid voice end status transition: ${currentState.status} → COMPLETED`);
+  }
   await prisma.interview.update({
     where: { id: interviewId },
     data: {
@@ -522,6 +534,9 @@ function pollSession(interviewId: string) {
   if (!session) {
     return Response.json({ active: false });
   }
+
+  // Refresh session TTL on each poll to keep Redis session alive
+  refreshSessionTTL(interviewId).catch(() => {});
 
   // Drain pending data
   const audio = [...session.pendingAudioChunks];
