@@ -22,7 +22,7 @@ export async function GET() {
 
     const skills = rawSkills.map((s) => ({
       id: s.id,
-      name: s.skillName,
+      name: s.skillName || 'Unknown',
       category: s.category || 'Other',
       proficiency: s.proficiency || 0,
       yearsOfExperience: s.yearsExp || 0,

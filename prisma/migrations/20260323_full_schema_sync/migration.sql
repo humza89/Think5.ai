@@ -1416,5 +1416,111 @@ EXCEPTION WHEN duplicate_table OR duplicate_object THEN null;
 END $$;
 
 -- ============================================
+-- FIX: ALTER TABLE for pre-existing tables
+-- CREATE TABLE IF NOT EXISTS skips entirely when table exists,
+-- so columns added after initial creation are missing.
+-- ADD COLUMN IF NOT EXISTS is idempotent — safe to re-run.
+-- ============================================
+
+-- Interview table — add all columns that may be missing
+ALTER TABLE "Interview" ADD COLUMN IF NOT EXISTS "candidateId" TEXT;
+ALTER TABLE "Interview" ADD COLUMN IF NOT EXISTS "scheduledBy" TEXT;
+ALTER TABLE "Interview" ADD COLUMN IF NOT EXISTS "jobId" TEXT;
+ALTER TABLE "Interview" ADD COLUMN IF NOT EXISTS "templateId" TEXT;
+ALTER TABLE "Interview" ADD COLUMN IF NOT EXISTS "invitationId" TEXT;
+ALTER TABLE "Interview" ADD COLUMN IF NOT EXISTS "status" "InterviewStatus" DEFAULT 'PENDING';
+ALTER TABLE "Interview" ADD COLUMN IF NOT EXISTS "type" "InterviewType" DEFAULT 'TECHNICAL';
+ALTER TABLE "Interview" ADD COLUMN IF NOT EXISTS "mode" "InterviewMode" DEFAULT 'GENERAL_PROFILE';
+ALTER TABLE "Interview" ADD COLUMN IF NOT EXISTS "duration" INTEGER;
+ALTER TABLE "Interview" ADD COLUMN IF NOT EXISTS "startedAt" TIMESTAMP(3);
+ALTER TABLE "Interview" ADD COLUMN IF NOT EXISTS "completedAt" TIMESTAMP(3);
+ALTER TABLE "Interview" ADD COLUMN IF NOT EXISTS "transcript" JSONB;
+ALTER TABLE "Interview" ADD COLUMN IF NOT EXISTS "videoUrl" TEXT;
+ALTER TABLE "Interview" ADD COLUMN IF NOT EXISTS "audioUrl" TEXT;
+ALTER TABLE "Interview" ADD COLUMN IF NOT EXISTS "voiceProvider" TEXT DEFAULT 'text-sse';
+ALTER TABLE "Interview" ADD COLUMN IF NOT EXISTS "recordingUrl" TEXT;
+ALTER TABLE "Interview" ADD COLUMN IF NOT EXISTS "recordingFormat" TEXT DEFAULT 'webm';
+ALTER TABLE "Interview" ADD COLUMN IF NOT EXISTS "recordingSize" INTEGER;
+ALTER TABLE "Interview" ADD COLUMN IF NOT EXISTS "interviewPlan" JSONB;
+ALTER TABLE "Interview" ADD COLUMN IF NOT EXISTS "skillModuleScores" JSONB;
+ALTER TABLE "Interview" ADD COLUMN IF NOT EXISTS "isPractice" BOOLEAN DEFAULT false;
+ALTER TABLE "Interview" ADD COLUMN IF NOT EXISTS "overallScore" DOUBLE PRECISION;
+ALTER TABLE "Interview" ADD COLUMN IF NOT EXISTS "reportStatus" TEXT DEFAULT 'pending';
+ALTER TABLE "Interview" ADD COLUMN IF NOT EXISTS "reportRetryCount" INTEGER DEFAULT 0;
+ALTER TABLE "Interview" ADD COLUMN IF NOT EXISTS "accessToken" TEXT;
+ALTER TABLE "Interview" ADD COLUMN IF NOT EXISTS "accessTokenExpiresAt" TIMESTAMP(3);
+ALTER TABLE "Interview" ADD COLUMN IF NOT EXISTS "invitedEmail" TEXT;
+ALTER TABLE "Interview" ADD COLUMN IF NOT EXISTS "integrityEvents" JSONB;
+ALTER TABLE "Interview" ADD COLUMN IF NOT EXISTS "consentRecording" BOOLEAN DEFAULT false;
+ALTER TABLE "Interview" ADD COLUMN IF NOT EXISTS "consentProctoring" BOOLEAN DEFAULT false;
+ALTER TABLE "Interview" ADD COLUMN IF NOT EXISTS "consentPrivacy" BOOLEAN DEFAULT false;
+ALTER TABLE "Interview" ADD COLUMN IF NOT EXISTS "consentedAt" TIMESTAMP(3);
+ALTER TABLE "Interview" ADD COLUMN IF NOT EXISTS "interviewPlanVersion" TEXT;
+ALTER TABLE "Interview" ADD COLUMN IF NOT EXISTS "screenRecordingUrl" TEXT;
+ALTER TABLE "Interview" ADD COLUMN IF NOT EXISTS "screenRecordingSize" INTEGER;
+ALTER TABLE "Interview" ADD COLUMN IF NOT EXISTS "templateSnapshot" JSONB;
+ALTER TABLE "Interview" ADD COLUMN IF NOT EXISTS "templateSnapshotHash" TEXT;
+ALTER TABLE "Interview" ADD COLUMN IF NOT EXISTS "recordingState" "RecordingState";
+ALTER TABLE "Interview" ADD COLUMN IF NOT EXISTS "recordingManifestHash" TEXT;
+ALTER TABLE "Interview" ADD COLUMN IF NOT EXISTS "reconnectToken" TEXT;
+ALTER TABLE "Interview" ADD COLUMN IF NOT EXISTS "accommodations" JSONB;
+ALTER TABLE "Interview" ADD COLUMN IF NOT EXISTS "retakeOfInterviewId" TEXT;
+ALTER TABLE "Interview" ADD COLUMN IF NOT EXISTS "readinessVerified" BOOLEAN DEFAULT false;
+ALTER TABLE "Interview" ADD COLUMN IF NOT EXISTS "companyId" TEXT;
+ALTER TABLE "Interview" ADD COLUMN IF NOT EXISTS "recruiterObjectives" JSONB;
+ALTER TABLE "Interview" ADD COLUMN IF NOT EXISTS "hmNotes" JSONB;
+ALTER TABLE "Interview" ADD COLUMN IF NOT EXISTS "candidateSelfAssessment" JSONB;
+ALTER TABLE "Interview" ADD COLUMN IF NOT EXISTS "coverageMap" JSONB;
+ALTER TABLE "Interview" ADD COLUMN IF NOT EXISTS "evidenceBundle" JSONB;
+ALTER TABLE "Interview" ADD COLUMN IF NOT EXISTS "legalHold" BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE "Interview" ADD COLUMN IF NOT EXISTS "legalHoldReason" TEXT;
+ALTER TABLE "Interview" ADD COLUMN IF NOT EXISTS "legalHoldSetBy" TEXT;
+ALTER TABLE "Interview" ADD COLUMN IF NOT EXISTS "legalHoldSetAt" TIMESTAMP(3);
+
+-- InterviewReport table — add all columns that may be missing
+ALTER TABLE "InterviewReport" ADD COLUMN IF NOT EXISTS "interviewId" TEXT;
+ALTER TABLE "InterviewReport" ADD COLUMN IF NOT EXISTS "technicalSkills" JSONB;
+ALTER TABLE "InterviewReport" ADD COLUMN IF NOT EXISTS "softSkills" JSONB;
+ALTER TABLE "InterviewReport" ADD COLUMN IF NOT EXISTS "domainExpertise" DOUBLE PRECISION;
+ALTER TABLE "InterviewReport" ADD COLUMN IF NOT EXISTS "clarityStructure" DOUBLE PRECISION;
+ALTER TABLE "InterviewReport" ADD COLUMN IF NOT EXISTS "problemSolving" DOUBLE PRECISION;
+ALTER TABLE "InterviewReport" ADD COLUMN IF NOT EXISTS "communicationScore" DOUBLE PRECISION;
+ALTER TABLE "InterviewReport" ADD COLUMN IF NOT EXISTS "measurableImpact" DOUBLE PRECISION;
+ALTER TABLE "InterviewReport" ADD COLUMN IF NOT EXISTS "summary" TEXT;
+ALTER TABLE "InterviewReport" ADD COLUMN IF NOT EXISTS "strengths" JSONB;
+ALTER TABLE "InterviewReport" ADD COLUMN IF NOT EXISTS "areasToImprove" JSONB;
+ALTER TABLE "InterviewReport" ADD COLUMN IF NOT EXISTS "recommendation" TEXT;
+ALTER TABLE "InterviewReport" ADD COLUMN IF NOT EXISTS "hiringAdvice" TEXT;
+ALTER TABLE "InterviewReport" ADD COLUMN IF NOT EXISTS "overallScore" DOUBLE PRECISION;
+ALTER TABLE "InterviewReport" ADD COLUMN IF NOT EXISTS "professionalExperience" DOUBLE PRECISION;
+ALTER TABLE "InterviewReport" ADD COLUMN IF NOT EXISTS "roleFit" DOUBLE PRECISION;
+ALTER TABLE "InterviewReport" ADD COLUMN IF NOT EXISTS "culturalFit" DOUBLE PRECISION;
+ALTER TABLE "InterviewReport" ADD COLUMN IF NOT EXISTS "thinkingJudgment" DOUBLE PRECISION;
+ALTER TABLE "InterviewReport" ADD COLUMN IF NOT EXISTS "confidenceLevel" TEXT;
+ALTER TABLE "InterviewReport" ADD COLUMN IF NOT EXISTS "headline" TEXT;
+ALTER TABLE "InterviewReport" ADD COLUMN IF NOT EXISTS "riskSignals" JSONB;
+ALTER TABLE "InterviewReport" ADD COLUMN IF NOT EXISTS "hypothesisOutcomes" JSONB;
+ALTER TABLE "InterviewReport" ADD COLUMN IF NOT EXISTS "evidenceHighlights" JSONB;
+ALTER TABLE "InterviewReport" ADD COLUMN IF NOT EXISTS "rubricSnapshot" JSONB;
+ALTER TABLE "InterviewReport" ADD COLUMN IF NOT EXISTS "jobMatchScore" DOUBLE PRECISION;
+ALTER TABLE "InterviewReport" ADD COLUMN IF NOT EXISTS "requirementMatches" JSONB;
+ALTER TABLE "InterviewReport" ADD COLUMN IF NOT EXISTS "environmentFitNotes" TEXT;
+ALTER TABLE "InterviewReport" ADD COLUMN IF NOT EXISTS "candidateSelfAssessment" JSONB;
+ALTER TABLE "InterviewReport" ADD COLUMN IF NOT EXISTS "integrityScore" DOUBLE PRECISION;
+ALTER TABLE "InterviewReport" ADD COLUMN IF NOT EXISTS "integrityFlags" JSONB;
+ALTER TABLE "InterviewReport" ADD COLUMN IF NOT EXISTS "scorerModelVersion" TEXT;
+ALTER TABLE "InterviewReport" ADD COLUMN IF NOT EXISTS "scorerPromptVersion" TEXT;
+ALTER TABLE "InterviewReport" ADD COLUMN IF NOT EXISTS "rubricVersion" TEXT;
+ALTER TABLE "InterviewReport" ADD COLUMN IF NOT EXISTS "evidenceHash" TEXT;
+ALTER TABLE "InterviewReport" ADD COLUMN IF NOT EXISTS "reviewStatus" "ReviewStatus" DEFAULT 'PENDING_REVIEW';
+ALTER TABLE "InterviewReport" ADD COLUMN IF NOT EXISTS "reviewedAt" TIMESTAMP(3);
+ALTER TABLE "InterviewReport" ADD COLUMN IF NOT EXISTS "reviewedBy" TEXT;
+ALTER TABLE "InterviewReport" ADD COLUMN IF NOT EXISTS "shareToken" TEXT;
+ALTER TABLE "InterviewReport" ADD COLUMN IF NOT EXISTS "shareExpiresAt" TIMESTAMP(3);
+ALTER TABLE "InterviewReport" ADD COLUMN IF NOT EXISTS "recipientEmail" TEXT;
+ALTER TABLE "InterviewReport" ADD COLUMN IF NOT EXISTS "sharePurpose" TEXT;
+ALTER TABLE "InterviewReport" ADD COLUMN IF NOT EXISTS "shareRevoked" BOOLEAN DEFAULT false;
+
+-- ============================================
 -- DONE: All Prisma schema objects synced
 -- ============================================
