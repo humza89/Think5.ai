@@ -177,9 +177,10 @@ export default function CandidatesPage() {
     try {
       const response = await fetch("/api/candidates");
       if (response.ok) {
-        const data = await response.json();
-        setCandidates(data);
-        setTotal(data.length);
+        const result = await response.json();
+        const list = Array.isArray(result) ? result : result.data ?? [];
+        setCandidates(list);
+        setTotal(result.pagination?.total ?? list.length);
       }
     } catch (error) {
       console.error("Error fetching candidates:", error);
