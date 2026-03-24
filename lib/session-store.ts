@@ -212,3 +212,54 @@ export async function tryRestoreSession(
     return null;
   }
 }
+
+/**
+ * Record a heartbeat for an active voice session.
+ * Used to detect stale sessions and monitor liveness.
+ */
+export async function recordHeartbeat(interviewId: string): Promise<void> {
+  const redis = await getRedis();
+  if (redis) {
+    await redis.set(`voice-heartbeat:${interviewId}`, Date.now().toString(), { ex: 30 });
+  }
+}
+
+/**
+ * Check if a voice session is still alive (heartbeat within last 30s).
+ */
+export async function isSessionAlive(interviewId: string): Promise<boolean> {
+  const redis = await getRedis();
+  if (!redis) return false;
+  const val = await redis.get(`voice-heartbeat:${interviewId}`);
+  return !!val;
+}
+
+/**
+ * Acquire an exclusive session lock to prevent duplicate sessions.
+ * Uses Redis SETNX with 60s TTL.
+ */
+export async function acquireSessionLock(interviewId: string): Promise<boolean> {
+  const redis = await getRedis();
+  if (!redis) return true; // Allow if Redis not available
+  const key = `voice-lock:${interviewId}`;
+  const result = await redis.set(key, Date.now().toString(), { nx: true, ex: 60 });
+  return result === "OK";
+}
+
+/**
+ * Release the session lock.
+ */
+export async function releaseSessionLock(interviewId: string): Promise<void> {
+  const redis = await getRedis();
+  if (!redis) return;
+  await redis.del(`voice-lock:${interviewId}`);
+}
+
+/**
+ * Refresh the session lock TTL (call during heartbeat).
+ */
+export async function refreshSessionLock(interviewId: string): Promise<void> {
+  const redis = await getRedis();
+  if (!redis) return;
+  await redis.expire(`voice-lock:${interviewId}`, 60);
+}

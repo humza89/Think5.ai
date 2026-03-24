@@ -31,7 +31,7 @@ import { planToSystemContext } from "@/lib/interview-planner";
 import { generateReportInBackground } from "@/lib/report-generator";
 import { checkCandidateEligibility } from "@/lib/interview-eligibility";
 import { logInterviewActivity, getClientIp } from "@/lib/interview-audit";
-import { saveSessionState, deleteSessionState, generateReconnectToken, validateReconnectToken, refreshSessionTTL, tryRestoreSession, getSessionState, type SessionState } from "@/lib/session-store";
+import { saveSessionState, deleteSessionState, generateReconnectToken, validateReconnectToken, refreshSessionTTL, tryRestoreSession, getSessionState, recordHeartbeat, acquireSessionLock, releaseSessionLock, refreshSessionLock, type SessionState } from "@/lib/session-store";
 import { persistProctoringEvents } from "@/lib/proctoring-normalizer";
 import { isValidTransition } from "@/lib/interview-state-machine";
 import * as Sentry from "@sentry/nextjs";
@@ -211,7 +211,7 @@ export async function POST(
         const restored = await tryRestoreAndReconnect(id, interview);
         if (!restored) {
           return Response.json(
-            { error: "Session expired. Please use your reconnect token to resume.", reconnectRequired: true },
+            { error: "Session expired. Voice reconnection failed.", reconnectRequired: true, fallbackMode: "text" },
             { status: 410 }
           );
         }
@@ -229,7 +229,7 @@ export async function POST(
         const restored = await tryRestoreAndReconnect(id, interview);
         if (!restored) {
           return Response.json(
-            { error: "Session expired. Please use your reconnect token to resume.", reconnectRequired: true },
+            { error: "Session expired. Voice reconnection failed.", reconnectRequired: true, fallbackMode: "text" },
             { status: 410 }
           );
         }
@@ -238,6 +238,16 @@ export async function POST(
 
       sendText(session.geminiSession, message);
       return Response.json({ ok: true });
+    }
+
+    // ── Heartbeat ──
+    if (type === "heartbeat") {
+      await recordHeartbeat(id);
+      const session = activeSessions.get(id);
+      if (session) {
+        await refreshSessionLock(id);
+      }
+      return Response.json({ ok: true, serverTime: Date.now() });
     }
 
     // ── Poll for responses ──
@@ -348,11 +358,22 @@ export async function GET(
 
 // ── Transcript Checkpointing ────────────────────────────────────────────
 
-const CHECKPOINT_INTERVAL = 3; // Aggressive checkpointing for session recovery
+const CHECKPOINT_INTERVAL = 1; // Checkpoint every message for maximum durability
+
+// Debounce tracking for checkpoint — skip if <200ms since last
+const lastCheckpointTimeMap = new Map<string, number>();
 
 function maybeCheckpointTranscript(session: ActiveVoiceSession) {
   const transcript = session.geminiSession.transcript;
-  if (transcript.length > 0 && transcript.length % CHECKPOINT_INTERVAL === 0) {
+  if (transcript.length === 0) return;
+
+  // Debounce: skip if less than 200ms since last checkpoint for this session
+  const now = Date.now();
+  const lastTime = lastCheckpointTimeMap.get(session.interviewId) || 0;
+  if (now - lastTime < 200) return;
+  lastCheckpointTimeMap.set(session.interviewId, now);
+
+  if (transcript.length % CHECKPOINT_INTERVAL === 0) {
     // Fire-and-forget: persist transcript without blocking the response
     prisma.interview
       .update({
@@ -387,6 +408,15 @@ async function startVoiceInterview(
   // Check if session already exists
   if (activeSessions.has(interviewId)) {
     return Response.json({ ok: true, message: "Session already active" });
+  }
+
+  // Acquire session lock to prevent duplicate sessions
+  const lockAcquired = await acquireSessionLock(interviewId);
+  if (!lockAcquired) {
+    return Response.json(
+      { error: "Interview session is already active on another connection", reconnectRequired: true },
+      { status: 409 }
+    );
   }
 
   // Build system prompt with interview plan
@@ -559,6 +589,10 @@ async function endVoiceInterview(interviewId: string) {
   // Cleanup
   activeSessions.delete(interviewId);
 
+  // Release session lock and clean up Redis state
+  await releaseSessionLock(interviewId);
+  await deleteSessionState(interviewId);
+
   return Response.json({ ok: true, message: "Interview ended" });
 }
 
@@ -690,6 +724,7 @@ async function tryRestoreAndReconnect(
   } catch (error) {
     Sentry.captureException(error, { tags: { component: "voice_cold_start_recovery" }, extra: { interviewId } });
     console.error(`[${interviewId}] Cold-start recovery failed:`, error);
+    // Return null - caller should offer text fallback
     return null;
   }
 }

@@ -23,14 +23,14 @@ import {
   User,
   Clock,
   MessageSquare,
-  Wifi,
-  WifiOff,
   AlertTriangle,
   Maximize2,
   Volume2,
   RefreshCw,
   Pause,
   Play,
+  Loader2,
+  CheckCircle2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
@@ -40,6 +40,8 @@ import {
   type AISpeakingState,
   type TranscriptEntry,
 } from "@/hooks/useVoiceInterview";
+import { NetworkQualityIndicator } from "@/components/interview/NetworkQualityIndicator";
+import { classifyError } from "@/lib/error-classification";
 
 // ── Props ──────────────────────────────────────────────────────────────
 
@@ -87,6 +89,16 @@ export function VoiceInterviewRoom({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const transcriptEndRef = useRef<HTMLDivElement>(null);
 
+  // Accessibility: screen reader announcements
+  const [srAnnouncement, setSrAnnouncement] = useState("");
+  // Accessibility: reduced motion preference
+  const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
+  // Progressive degradation tracking
+  const [degradationBannerShown, setDegradationBannerShown] = useState(false);
+  const degradationTimerRef = useRef<NodeJS.Timeout | null>(null);
+  // Auto-save draft
+  const draftKeyRef = useRef(`draft-response:${interviewId}`);
+
   // Voice interview hook
   const {
     interviewState,
@@ -119,6 +131,113 @@ export function VoiceInterviewRoom({
       }, 3000);
     },
   });
+
+  // ── Reduced Motion Detection ────────────────────────────────────
+  useEffect(() => {
+    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
+    setPrefersReducedMotion(mq.matches);
+    const handler = (e: MediaQueryListEvent) => setPrefersReducedMotion(e.matches);
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
+  }, []);
+
+  // ── Screen Reader Announcements ───────────────────────────────
+  useEffect(() => {
+    if (interviewState === "IN_PROGRESS") setSrAnnouncement("Interview started. Aria is ready.");
+    else if (interviewState === "COMPLETED") setSrAnnouncement("Interview completed. Report is being generated.");
+  }, [interviewState]);
+
+  useEffect(() => {
+    if (aiState === "speaking") setSrAnnouncement("Aria is speaking.");
+    else if (aiState === "listening") setSrAnnouncement("Aria is listening. You may respond now.");
+    else if (aiState === "thinking") setSrAnnouncement("Aria is thinking.");
+  }, [aiState]);
+
+  useEffect(() => {
+    if (isPaused) setSrAnnouncement("Interview paused.");
+  }, [isPaused]);
+
+  useEffect(() => {
+    if (connectionQuality === "poor") setSrAnnouncement("Connection quality is poor. Responses may be delayed.");
+  }, [connectionQuality]);
+
+  useEffect(() => {
+    if (recordingWarning) setSrAnnouncement("Warning: Recording may be incomplete due to upload issues.");
+  }, [recordingWarning]);
+
+  // ── Keyboard Shortcuts ────────────────────────────────────────
+  useEffect(() => {
+    if (interviewState !== "IN_PROGRESS") return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't trigger shortcuts when typing in input/textarea
+      const tag = (e.target as HTMLElement)?.tagName?.toLowerCase();
+      if (tag === "input" || tag === "textarea") return;
+
+      switch (e.key) {
+        case " ": // Space = toggle mic
+          e.preventDefault();
+          toggleMic();
+          break;
+        case "Escape": // Escape = end interview confirmation
+          e.preventDefault();
+          if (confirm("Are you sure you want to end the interview?")) {
+            endInterview();
+          }
+          break;
+        case "t":
+        case "T": // T = toggle text input
+          e.preventDefault();
+          setShowTextInput((prev) => !prev);
+          break;
+        case "p":
+        case "P": // P = pause/resume
+          e.preventDefault();
+          if (isPaused) resumeInterview();
+          else pauseInterview();
+          break;
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [interviewState, isPaused, toggleMic, endInterview, pauseInterview, resumeInterview]);
+
+  // ── Progressive Degradation Tracking ──────────────────────────
+  useEffect(() => {
+    if (connectionQuality === "fair" || connectionQuality === "poor") {
+      if (!degradationTimerRef.current) {
+        degradationTimerRef.current = setTimeout(() => {
+          setDegradationBannerShown(true);
+        }, 10000); // Show after 10s of degraded quality
+      }
+    } else {
+      if (degradationTimerRef.current) {
+        clearTimeout(degradationTimerRef.current);
+        degradationTimerRef.current = null;
+      }
+      setDegradationBannerShown(false);
+    }
+    return () => {
+      if (degradationTimerRef.current) clearTimeout(degradationTimerRef.current);
+    };
+  }, [connectionQuality]);
+
+  // ── Auto-Save Draft Responses ─────────────────────────────────
+  useEffect(() => {
+    if (!showTextInput) return;
+    // Restore draft on mount
+    const saved = localStorage.getItem(draftKeyRef.current);
+    if (saved && !textInput) setTextInput(saved);
+  }, [showTextInput]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!showTextInput || !textInput) return;
+    const timeout = setTimeout(() => {
+      localStorage.setItem(draftKeyRef.current, textInput);
+    }, 500);
+    return () => clearTimeout(timeout);
+  }, [textInput, showTextInput]);
 
   // ── Camera Setup ─────────────────────────────────────────────────
 
@@ -290,6 +409,7 @@ export function VoiceInterviewRoom({
     if (!textInput.trim()) return;
     sendTextMessage(textInput.trim());
     setTextInput("");
+    localStorage.removeItem(draftKeyRef.current);
   };
 
   // ── Fullscreen ───────────────────────────────────────────────────
@@ -423,22 +543,7 @@ export function VoiceInterviewRoom({
           </Badge>
 
           {/* Connection quality */}
-          <Badge
-            variant="secondary"
-            className={`gap-1 ${
-              connectionQuality === "good"
-                ? "text-green-500"
-                : connectionQuality === "fair"
-                  ? "text-yellow-500"
-                  : "text-red-500"
-            }`}
-          >
-            {connectionQuality === "poor" ? (
-              <WifiOff className="h-3 w-3" />
-            ) : (
-              <Wifi className="h-3 w-3" />
-            )}
-          </Badge>
+          <NetworkQualityIndicator quality={connectionQuality} />
 
           {/* Fullscreen */}
           <Button variant="ghost" size="icon" onClick={toggleFullscreen}>
@@ -463,15 +568,19 @@ export function VoiceInterviewRoom({
 
       {/* ── Reconnection Overlay ── */}
       {voiceReconnecting && (
-        <div className="flex items-center justify-between gap-2 bg-orange-500/10 border-b border-orange-500/20 px-4 py-2 text-sm text-orange-700 dark:text-orange-400">
+        <div
+          className="flex items-center justify-between gap-2 bg-orange-500/10 border-b border-orange-500/20 px-4 py-2 text-sm text-orange-700 dark:text-orange-400"
+          role="alert"
+          aria-live="assertive"
+        >
           <div className="flex items-center gap-2">
-            <RefreshCw className="h-4 w-4 shrink-0 animate-spin" />
+            <RefreshCw className={`h-4 w-4 shrink-0 ${prefersReducedMotion ? "" : "animate-spin"}`} />
             <span>
               Connection lost — reconnecting... Your responses are saved.
             </span>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={reconnect}>
+            <Button variant="outline" size="sm" onClick={reconnect} autoFocus>
               Retry Now
             </Button>
             <Button
@@ -487,14 +596,19 @@ export function VoiceInterviewRoom({
 
       {/* ── Pause Overlay ── */}
       {isPaused && (
-        <div className="absolute inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm">
+        <div
+          className="absolute inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Interview paused"
+        >
           <Card className="max-w-sm p-8 text-center">
             <Pause className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
             <h2 className="text-xl font-semibold mb-2">Interview Paused</h2>
             <p className="text-sm text-muted-foreground mb-6">
               Your progress is saved. The interview will auto-cancel if paused for more than 10 minutes.
             </p>
-            <Button onClick={resumeInterview} className="w-full" size="lg">
+            <Button onClick={resumeInterview} className="w-full" size="lg" autoFocus>
               <Play className="h-4 w-4 mr-2" />
               Resume Interview
             </Button>
@@ -504,11 +618,39 @@ export function VoiceInterviewRoom({
 
       {/* ── Recording Warning ── */}
       {recordingWarning && (
-        <div className="flex items-center gap-2 bg-yellow-500/10 border-b border-yellow-500/20 px-4 py-2 text-sm text-yellow-700 dark:text-yellow-400">
+        <div className="flex items-center gap-2 bg-yellow-500/10 border-b border-yellow-500/20 px-4 py-2 text-sm text-yellow-700 dark:text-yellow-400" role="alert">
           <AlertTriangle className="h-4 w-4 shrink-0" />
           Recording may be incomplete due to upload issues
         </div>
       )}
+
+      {/* ── Progressive Degradation Banners ── */}
+      {degradationBannerShown && connectionQuality === "fair" && (
+        <div className="flex items-center gap-2 bg-amber-500/10 border-b border-amber-500/20 px-4 py-2 text-sm text-amber-700 dark:text-amber-400" role="alert">
+          <AlertTriangle className="h-4 w-4 shrink-0" />
+          Your connection quality has decreased. Audio may be slightly delayed.
+        </div>
+      )}
+      {degradationBannerShown && connectionQuality === "poor" && (
+        <div className="flex items-center justify-between bg-orange-500/10 border-b border-orange-500/20 px-4 py-2 text-sm text-orange-700 dark:text-orange-400" role="alert">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="h-4 w-4 shrink-0" />
+            Connection is unstable. Consider switching to text mode for a better experience.
+          </div>
+          <Button variant="outline" size="sm" onClick={() => setShowTextInput(true)}>
+            Switch to Text
+          </Button>
+        </div>
+      )}
+
+      {/* ── Screen Reader Announcements (visually hidden) ── */}
+      <div
+        aria-live="assertive"
+        aria-atomic="true"
+        className="sr-only"
+      >
+        {srAnnouncement}
+      </div>
 
       {/* ── Main Content ── */}
       <div className="flex flex-1 overflow-hidden">
@@ -517,7 +659,7 @@ export function VoiceInterviewRoom({
           <div className="flex flex-1 gap-4">
             {/* AI Avatar Panel */}
             <div className="flex flex-1 flex-col items-center justify-center rounded-xl bg-gradient-to-br from-primary/5 to-primary/10 border">
-              <AIAvatar state={aiState} />
+              <AIAvatar state={aiState} reducedMotion={prefersReducedMotion} />
               <p className="mt-3 text-sm font-medium">Aria</p>
               <p className="text-xs text-muted-foreground">
                 {aiState === "speaking"
@@ -626,7 +768,12 @@ export function VoiceInterviewRoom({
           <div className="border-b px-4 py-3">
             <h3 className="text-sm font-medium">Live Transcript</h3>
           </div>
-          <div className="flex-1 overflow-y-auto p-4 space-y-3">
+          <div
+            className="flex-1 overflow-y-auto p-4 space-y-3"
+            role="log"
+            aria-live="polite"
+            aria-label="Interview transcript"
+          >
             {transcript.map((entry, i) => (
               <TranscriptBubble key={i} entry={entry} />
             ))}
@@ -650,22 +797,25 @@ export function VoiceInterviewRoom({
 
 // ── AI Avatar Component ────────────────────────────────────────────────
 
-function AIAvatar({ state }: { state: AISpeakingState }) {
+function AIAvatar({ state, reducedMotion = false }: { state: AISpeakingState; reducedMotion?: boolean }) {
   return (
-    <div className="relative">
+    <div className="relative" role="img" aria-label={`AI interviewer status: ${state}`}>
       {/* Outer ring animation */}
-      <div
-        className={`absolute inset-0 rounded-full transition-all duration-500 ${
-          state === "speaking"
-            ? "animate-ping bg-primary/20"
-            : state === "listening"
-              ? "animate-pulse bg-blue-500/10"
-              : state === "thinking"
-                ? "animate-pulse bg-yellow-500/10"
-                : ""
-        }`}
-        style={{ transform: "scale(1.3)" }}
-      />
+      {!reducedMotion && (
+        <div
+          className={`absolute inset-0 rounded-full transition-all duration-500 ${
+            state === "speaking"
+              ? "animate-ping bg-primary/20"
+              : state === "listening"
+                ? "animate-pulse bg-blue-500/10"
+                : state === "thinking"
+                  ? "animate-pulse bg-yellow-500/10"
+                  : ""
+          }`}
+          style={{ transform: "scale(1.3)" }}
+          aria-hidden="true"
+        />
+      )}
 
       {/* Main avatar circle */}
       <div
@@ -680,9 +830,13 @@ function AIAvatar({ state }: { state: AISpeakingState }) {
         }`}
       >
         {state === "speaking" ? (
-          <Volume2 className="h-10 w-10 text-primary animate-pulse" />
+          <Volume2 className={`h-10 w-10 text-primary ${reducedMotion ? "" : "animate-pulse"}`} />
         ) : state === "thinking" ? (
-          <div className="h-10 w-10 animate-spin rounded-full border-4 border-muted border-t-primary" />
+          reducedMotion ? (
+            <Loader2 className="h-10 w-10 text-primary" />
+          ) : (
+            <div className="h-10 w-10 animate-spin rounded-full border-4 border-muted border-t-primary" />
+          )
         ) : (
           <Bot className="h-10 w-10 text-primary" />
         )}
@@ -699,11 +853,15 @@ function TranscriptBubble({ entry }: { entry: TranscriptEntry }) {
   const isInterviewer = entry.role === "interviewer";
 
   return (
-    <div className={`flex gap-2 ${isInterviewer ? "" : "flex-row-reverse"}`}>
+    <div
+      className={`flex gap-2 ${isInterviewer ? "" : "flex-row-reverse"}`}
+      aria-label={`${isInterviewer ? "Aria" : "You"} said: ${entry.content}`}
+    >
       <div
         className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${
           isInterviewer ? "bg-primary/10" : "bg-muted"
         }`}
+        aria-hidden="true"
       >
         {isInterviewer ? (
           <Bot className="h-3 w-3 text-primary" />

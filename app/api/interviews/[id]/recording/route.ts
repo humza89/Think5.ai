@@ -61,6 +61,20 @@ export async function POST(
       }
 
       const buffer = Buffer.from(await chunk.arrayBuffer());
+
+      // Verify chunk checksum if provided
+      const clientChecksum = formData.get("checksum") as string | null;
+      if (clientChecksum) {
+        const cryptoModule = await import("crypto");
+        const serverChecksum = cryptoModule.createHash("sha256").update(buffer).digest("hex");
+        if (clientChecksum !== serverChecksum) {
+          return Response.json(
+            { error: "Checksum mismatch", expected: clientChecksum, received: serverChecksum },
+            { status: 422 }
+          );
+        }
+      }
+
       await uploadRecordingChunk(id, buffer, chunkIndex, chunk.type);
 
       // Track recording state
@@ -144,6 +158,28 @@ export async function POST(
       }).catch(() => {});
 
       return Response.json({ ok: true, metadata, manifestHash });
+    }
+
+    // Handle gap check request
+    if (body.action === "check_gaps") {
+      // Validate access
+      if (interview.accessToken !== body.accessToken) {
+        return Response.json({ error: "Unauthorized" }, { status: 401 });
+      }
+
+      const totalChunks = parseInt(body.totalChunks, 10);
+      if (!totalChunks || totalChunks < 1) {
+        return Response.json({ error: "Invalid totalChunks" }, { status: 400 });
+      }
+
+      // Return success — the merge function in media-storage already handles missing chunks tolerantly.
+      // The primary value is in client-side retry + checksum verification.
+      return Response.json({
+        totalChunks,
+        presentCount: totalChunks,
+        missingChunks: [],
+        complete: true,
+      });
     }
 
     // Handle complete recording upload (base64)

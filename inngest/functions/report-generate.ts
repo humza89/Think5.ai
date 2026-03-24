@@ -24,12 +24,22 @@ export const reportGenerate = inngest.createFunction(
   async ({ event, step }: any) => {
     const { interviewId } = event.data;
 
-    // Step 1: Generate the report
+    // Step 1: Generate the report (with SLO tracking)
     await step.run("generate-report", async () => {
       const { generateReportInBackground } = await import(
         "@/lib/report-generator"
       );
-      await generateReportInBackground(interviewId);
+      const { recordSLOEvent } = await import("@/lib/slo-monitor");
+      const start = Date.now();
+      try {
+        await generateReportInBackground(interviewId);
+        const durationMs = Date.now() - start;
+        await recordSLOEvent("report.generation.time_p95", durationMs <= 120000, durationMs);
+      } catch (err) {
+        const durationMs = Date.now() - start;
+        await recordSLOEvent("report.generation.time_p95", false, durationMs);
+        throw err;
+      }
       return { interviewId };
     });
 

@@ -55,6 +55,8 @@ export interface UseVoiceInterviewReturn {
   connectionQuality: "good" | "fair" | "poor";
   isReconnecting: boolean;
   isPaused: boolean;
+  fallbackToText: boolean;
+  reconnectPhase: "checking" | "restoring" | "verifying" | null;
 
   // Actions
   startInterview: () => Promise<void>;
@@ -84,6 +86,8 @@ export function useVoiceInterview(
   const [isMicEnabled, setIsMicEnabled] = useState(true);
   const [isReconnecting, setIsReconnecting] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
+  const [fallbackToText, setFallbackToText] = useState(false);
+  const [reconnectPhase, setReconnectPhase] = useState<"checking" | "restoring" | "verifying" | null>(null);
 
   // Refs
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -198,7 +202,9 @@ export function useVoiceInterview(
   const attemptReconnect = useCallback(async () => {
     if (reconnectAttemptRef.current >= maxReconnectAttempts) {
       setIsReconnecting(false);
+      setReconnectPhase(null);
       setInterviewState("ERROR");
+      setFallbackToText(true);
       onError?.("Connection lost after multiple attempts. You can switch to text mode.");
       return;
     }
@@ -210,10 +216,13 @@ export function useVoiceInterview(
     await new Promise((resolve) => setTimeout(resolve, delay));
 
     try {
+      setReconnectPhase("checking");
       const result = await postToVoice({
         action: "reconnect",
         reconnectToken: reconnectTokenRef.current,
       });
+
+      setReconnectPhase("restoring");
 
       if (result.transcript) {
         setTranscript(result.transcript);
@@ -226,13 +235,25 @@ export function useVoiceInterview(
       if (sseAbortRef.current) {
         sseAbortRef.current.abort();
       }
+
+      setReconnectPhase("verifying");
       connectSSE();
 
       reconnectAttemptRef.current = 0;
       setIsReconnecting(false);
+      setReconnectPhase(null);
       setConnectionQuality("good");
       setIsConnected(true);
-    } catch {
+    } catch (err: any) {
+      // Check if error response indicates fallback mode
+      if (err?.message?.includes("Voice reconnection failed")) {
+        setFallbackToText(true);
+        setIsReconnecting(false);
+        setReconnectPhase(null);
+        setInterviewState("ERROR");
+        onError?.("Voice session expired. Switching to text mode.");
+        return;
+      }
       // Retry
       attemptReconnect();
     }
@@ -488,6 +509,34 @@ export function useVoiceInterview(
     };
   }, []);
 
+  // ── Heartbeat ────────────────────────────────────────────────────
+  const heartbeatRttRef = useRef<number[]>([]);
+
+  useEffect(() => {
+    if (interviewState !== "IN_PROGRESS" || isPaused) return;
+
+    const interval = setInterval(async () => {
+      try {
+        const start = Date.now();
+        await postToVoice({ type: "heartbeat" });
+        const rtt = Date.now() - start;
+
+        // Rolling average of last 5 RTTs
+        heartbeatRttRef.current.push(rtt);
+        if (heartbeatRttRef.current.length > 5) heartbeatRttRef.current.shift();
+        const avgRtt = heartbeatRttRef.current.reduce((a, b) => a + b, 0) / heartbeatRttRef.current.length;
+
+        if (avgRtt > 500) setConnectionQuality("poor");
+        else if (avgRtt > 200) setConnectionQuality("fair");
+        else setConnectionQuality("good");
+      } catch {
+        setConnectionQuality("poor");
+      }
+    }, 10000);
+
+    return () => clearInterval(interval);
+  }, [interviewState, isPaused, postToVoice]);
+
   return {
     interviewState,
     aiState,
@@ -497,6 +546,8 @@ export function useVoiceInterview(
     connectionQuality,
     isReconnecting,
     isPaused,
+    fallbackToText,
+    reconnectPhase,
     startInterview,
     endInterview,
     sendTextMessage,

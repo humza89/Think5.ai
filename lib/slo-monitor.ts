@@ -1,0 +1,231 @@
+/**
+ * SLO Monitor — Service Level Objective tracking
+ *
+ * Records SLO events to Redis sorted sets and computes
+ * real-time compliance metrics for interview-critical paths.
+ */
+
+// Lazy Redis init (same pattern as session-store.ts)
+let redisClient: any = null;
+
+async function getRedis() {
+  if (redisClient) return redisClient;
+  const url = process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  if (!url || !token) return null;
+  try {
+    const { Redis } = await import("@upstash/redis");
+    redisClient = new Redis({ url, token });
+    return redisClient;
+  } catch {
+    return null;
+  }
+}
+
+export interface SLODefinition {
+  name: string;
+  target: number; // e.g. 0.995 for 99.5%
+  windowHours: number;
+  description: string;
+  unit: "rate" | "latency_ms";
+  latencyThresholdMs?: number; // For latency SLOs
+}
+
+export const SLO_DEFINITIONS: SLODefinition[] = [
+  {
+    name: "interview.start.success_rate",
+    target: 0.995,
+    windowHours: 24,
+    description: "Interview session start success rate",
+    unit: "rate",
+  },
+  {
+    name: "transcript.checkpoint.latency_p99",
+    target: 0.99,
+    windowHours: 24,
+    description: "Transcript checkpoint latency under 500ms",
+    unit: "latency_ms",
+    latencyThresholdMs: 500,
+  },
+  {
+    name: "report.generation.time_p95",
+    target: 0.95,
+    windowHours: 24,
+    description: "Report generation under 120 seconds",
+    unit: "latency_ms",
+    latencyThresholdMs: 120000,
+  },
+  {
+    name: "recording.upload.success_rate",
+    target: 0.99,
+    windowHours: 24,
+    description: "Recording chunk upload success rate",
+    unit: "rate",
+  },
+];
+
+/**
+ * Record an SLO event (success or failure).
+ * For latency SLOs, success is determined by whether durationMs is under threshold.
+ */
+export async function recordSLOEvent(
+  sloName: string,
+  success: boolean,
+  durationMs?: number
+): Promise<void> {
+  const redis = await getRedis();
+  if (!redis) return;
+
+  try {
+    const now = Date.now();
+    const dateKey = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+    const key = `slo:${sloName}:${dateKey}`;
+
+    // Store as score=timestamp, member="{success}:{durationMs}:{uuid}"
+    const uuid = Math.random().toString(36).slice(2, 10);
+    const member = `${success ? 1 : 0}:${durationMs ?? 0}:${uuid}`;
+
+    await redis.zadd(key, { score: now, member });
+    // Set TTL to 48 hours to cover the SLO window plus buffer
+    await redis.expire(key, 48 * 3600);
+  } catch (err) {
+    console.warn(`[SLO] Failed to record event for ${sloName}:`, err);
+  }
+}
+
+export interface SLOStatus {
+  name: string;
+  description: string;
+  target: number;
+  current: number;
+  totalEvents: number;
+  successEvents: number;
+  errorBudgetRemaining: number; // percentage of allowed failures remaining
+  breached: boolean;
+}
+
+/**
+ * Get current SLO status for a specific SLO.
+ */
+export async function getSLOStatus(sloName: string): Promise<SLOStatus | null> {
+  const def = SLO_DEFINITIONS.find((d) => d.name === sloName);
+  if (!def) return null;
+
+  const redis = await getRedis();
+  if (!redis) {
+    return {
+      name: sloName,
+      description: def.description,
+      target: def.target,
+      current: 1,
+      totalEvents: 0,
+      successEvents: 0,
+      errorBudgetRemaining: 100,
+      breached: false,
+    };
+  }
+
+  try {
+    // Query events from the window
+    const now = Date.now();
+    const windowStart = now - def.windowHours * 3600 * 1000;
+
+    // Get today and yesterday's keys (covers 24h window)
+    const today = new Date().toISOString().slice(0, 10);
+    const yesterday = new Date(now - 86400000).toISOString().slice(0, 10);
+
+    const [todayMembers, yesterdayMembers] = await Promise.all([
+      redis.zrangebyscore(`slo:${sloName}:${today}`, windowStart, now) as Promise<string[]>,
+      redis.zrangebyscore(`slo:${sloName}:${yesterday}`, windowStart, now) as Promise<string[]>,
+    ]);
+
+    const allMembers = [...(todayMembers || []), ...(yesterdayMembers || [])];
+    const totalEvents = allMembers.length;
+
+    if (totalEvents === 0) {
+      return {
+        name: sloName,
+        description: def.description,
+        target: def.target,
+        current: 1,
+        totalEvents: 0,
+        successEvents: 0,
+        errorBudgetRemaining: 100,
+        breached: false,
+      };
+    }
+
+    const successEvents = allMembers.filter((m: string) => m.startsWith("1:")).length;
+    const current = successEvents / totalEvents;
+
+    // Error budget: how much of the allowed failure rate remains
+    const allowedFailureRate = 1 - def.target;
+    const actualFailureRate = 1 - current;
+    const errorBudgetRemaining = allowedFailureRate > 0
+      ? Math.max(0, ((allowedFailureRate - actualFailureRate) / allowedFailureRate) * 100)
+      : (actualFailureRate === 0 ? 100 : 0);
+
+    return {
+      name: sloName,
+      description: def.description,
+      target: def.target,
+      current,
+      totalEvents,
+      successEvents,
+      errorBudgetRemaining,
+      breached: current < def.target,
+    };
+  } catch (err) {
+    console.warn(`[SLO] Failed to get status for ${sloName}:`, err);
+    return null;
+  }
+}
+
+/**
+ * Check all SLOs and return a full report.
+ */
+export async function checkAllSLOs(): Promise<SLOStatus[]> {
+  const results: SLOStatus[] = [];
+  for (const def of SLO_DEFINITIONS) {
+    const status = await getSLOStatus(def.name);
+    if (status) results.push(status);
+  }
+  return results;
+}
+
+/**
+ * Check SLOs and alert via Sentry if any are breached.
+ */
+export async function checkAndAlertSLOs(): Promise<void> {
+  try {
+    const Sentry = await import("@sentry/nextjs");
+    const statuses = await checkAllSLOs();
+
+    for (const status of statuses) {
+      if (status.totalEvents === 0) continue;
+
+      if (status.breached) {
+        if (status.errorBudgetRemaining <= 0) {
+          Sentry.captureMessage(
+            `[SLO BREACH] ${status.name}: ${(status.current * 100).toFixed(1)}% (target: ${(status.target * 100).toFixed(1)}%) — error budget exhausted`,
+            "error"
+          );
+        } else if (status.errorBudgetRemaining < 10) {
+          Sentry.captureMessage(
+            `[SLO WARNING] ${status.name}: ${(status.current * 100).toFixed(1)}% (target: ${(status.target * 100).toFixed(1)}%) — ${status.errorBudgetRemaining.toFixed(0)}% error budget remaining`,
+            "warning"
+          );
+        }
+      }
+
+      // Add as breadcrumb for context
+      Sentry.addBreadcrumb({
+        category: "slo",
+        message: `${status.name}: ${(status.current * 100).toFixed(1)}% (${status.totalEvents} events)`,
+        level: status.breached ? "warning" : "info",
+      });
+    }
+  } catch (err) {
+    console.error("[SLO] Alert check failed:", err);
+  }
+}

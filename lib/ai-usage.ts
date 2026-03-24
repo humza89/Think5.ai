@@ -57,6 +57,18 @@ export async function logAIUsage(input: UsageLogInput): Promise<void> {
         metadata: input.metadata || null,
       },
     });
+
+    // Run anomaly detection periodically
+    logCounter++;
+    if (logCounter % 10 === 0 && input.companyId) {
+      detectAnomalousUsage(input.companyId).then((result) => {
+        if (result.anomalous) {
+          console.warn(
+            `[AI Anomaly] Company ${input.companyId}: $${result.currentDailySpend.toFixed(2)} today vs $${result.avgDailySpend.toFixed(2)} avg (${result.ratio.toFixed(1)}x)`
+          );
+        }
+      }).catch(() => {});
+    }
   } catch (error) {
     // Non-blocking — don't fail operations for usage logging
     console.error("AI usage logging failed:", error);
@@ -150,6 +162,20 @@ export async function enforceBudgetGate(
       };
     }
 
+    // Check rate limit
+    const rateCheck = await checkAIRateLimit(companyId);
+    if (!rateCheck.allowed) {
+      return {
+        allowed: false,
+        reason: `AI operation rate limit exceeded. ${rateCheck.remaining} of ${rateCheck.limit} operations remaining this hour.`,
+        spend: result.currentSpend,
+        budget,
+      };
+    }
+
+    // Check budget alerts (non-blocking)
+    checkBudgetAlerts(companyId, result.utilizationPercent, result.currentSpend, budget).catch(() => {});
+
     return { allowed: true, spend: result.currentSpend, budget };
   } catch {
     // If budget check fails, allow the operation (fail-open)
@@ -205,4 +231,151 @@ export async function getUsageStats(options?: {
     })),
     totalCost,
   };
+}
+
+// ── Anomaly Detection ──────────────────────────────────────────────────
+
+let logCounter = 0;
+
+/**
+ * Detect anomalous AI usage by comparing today's spend to 7-day average.
+ * Flags as anomalous if today exceeds 2x the daily average.
+ */
+export async function detectAnomalousUsage(companyId: string): Promise<{
+  anomalous: boolean;
+  currentDailySpend: number;
+  avgDailySpend: number;
+  ratio: number;
+}> {
+  try {
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const weekAgo = new Date(todayStart.getTime() - 7 * 24 * 60 * 60 * 1000);
+
+    const [todayResult, weekResult] = await Promise.all([
+      prisma.aIUsageLog.aggregate({
+        where: { companyId, createdAt: { gte: todayStart } },
+        _sum: { estimatedCost: true },
+      }),
+      prisma.aIUsageLog.aggregate({
+        where: { companyId, createdAt: { gte: weekAgo, lt: todayStart } },
+        _sum: { estimatedCost: true },
+      }),
+    ]);
+
+    const currentDailySpend = todayResult._sum.estimatedCost || 0;
+    const weekTotal = weekResult._sum.estimatedCost || 0;
+    const avgDailySpend = weekTotal / 7;
+    const ratio = avgDailySpend > 0 ? currentDailySpend / avgDailySpend : 0;
+
+    return {
+      anomalous: ratio > 2 && currentDailySpend > 1, // Only flag if >$1 and >2x average
+      currentDailySpend,
+      avgDailySpend,
+      ratio,
+    };
+  } catch {
+    return { anomalous: false, currentDailySpend: 0, avgDailySpend: 0, ratio: 0 };
+  }
+}
+
+/**
+ * Check and send budget alert notifications at threshold crossings.
+ * Deduplicates alerts per company/threshold/month using Redis.
+ */
+export async function checkBudgetAlerts(
+  companyId: string,
+  utilizationPercent: number,
+  currentSpend: number,
+  budget: number
+): Promise<void> {
+  const thresholds = [80, 90, 100];
+  const month = new Date().toISOString().slice(0, 7); // YYYY-MM
+
+  for (const threshold of thresholds) {
+    if (utilizationPercent >= threshold) {
+      try {
+        // Dedup via Redis
+        let alreadySent = false;
+        try {
+          const url = process.env.UPSTASH_REDIS_REST_URL;
+          const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+          if (url && token) {
+            const { Redis } = await import("@upstash/redis");
+            const redis = new Redis({ url, token });
+            const dedupKey = `budget-alert:${companyId}:${threshold}:${month}`;
+            const existing = await redis.get(dedupKey);
+            if (existing) {
+              alreadySent = true;
+            } else {
+              await redis.set(dedupKey, "1", { ex: 30 * 24 * 3600 }); // 30 day TTL
+            }
+          }
+        } catch {
+          // Redis not available — proceed without dedup
+        }
+
+        if (!alreadySent) {
+          // Send in-app notification to company admins
+          try {
+            const { createNotification } = await import("@/lib/realtime-notify");
+            // Find admin users for this company
+            const admins = await prisma.recruiter.findMany({
+              where: { companyId, role: "admin" },
+              select: { supabaseUserId: true },
+            });
+            for (const admin of admins) {
+              if (admin.supabaseUserId) {
+                await createNotification({
+                  userId: admin.supabaseUserId,
+                  type: "SYSTEM",
+                  title: `AI Budget ${threshold >= 100 ? "Exceeded" : "Warning"}`,
+                  message: `AI spending has reached ${utilizationPercent}% of monthly budget ($${currentSpend.toFixed(2)} / $${budget.toFixed(2)}).`,
+                  data: { companyId, threshold, utilizationPercent },
+                });
+              }
+            }
+          } catch {
+            // Notification delivery is best-effort
+          }
+
+          // Dispatch webhook
+          try {
+            const { dispatchWebhooks } = await import("@/lib/webhook-dispatch");
+            await dispatchWebhooks("ai.budget.warning", companyId, {
+              threshold,
+              utilizationPercent,
+              currentSpend,
+              budget,
+              month,
+            });
+          } catch {
+            // Webhook dispatch is best-effort
+          }
+        }
+      } catch {
+        // Alert delivery failed — non-blocking
+      }
+    }
+  }
+}
+
+/**
+ * Per-tenant AI operation rate limiting.
+ * Default: 100 AI operations per hour per company.
+ */
+export async function checkAIRateLimit(companyId: string): Promise<{
+  allowed: boolean;
+  remaining: number;
+  limit: number;
+}> {
+  const limit = 100;
+  try {
+    const { checkRateLimit } = await import("@/lib/rate-limit");
+    const result = await checkRateLimit(`ai-ops:${companyId}`, { maxRequests: limit, windowMs: 3600000 });
+    return { allowed: result.allowed, remaining: result.remaining, limit };
+  } catch {
+    // Fail open
+    return { allowed: true, remaining: limit, limit };
+  }
 }
