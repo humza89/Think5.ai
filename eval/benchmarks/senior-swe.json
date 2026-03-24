@@ -1,0 +1,27 @@
+{
+  "id": "benchmark-senior-swe",
+  "name": "Senior Software Engineer — Backend",
+  "description": "Strong senior candidate with 8 years experience, deep in distributed systems",
+  "candidateProfile": {
+    "name": "Alex Chen",
+    "role": "Senior Software Engineer",
+    "level": "senior",
+    "yearsExperience": 8,
+    "skills": ["Go", "Kubernetes", "PostgreSQL", "gRPC", "System Design"],
+    "strengths": ["Distributed systems architecture", "Performance optimization", "Technical mentorship"],
+    "weaknesses": ["Frontend experience", "Occasionally over-engineers solutions"],
+    "background": "Led backend team at a Series B startup. Redesigned payment processing pipeline handling 50k TPS. Open source contributor to etcd."
+  },
+  "interviewConfig": {
+    "mode": "ROLE_SPECIFIC",
+    "type": "TECHNICAL",
+    "durationMinutes": 45
+  },
+  "expectedBehavior": {
+    "minSections": 4,
+    "mustCoverTopics": ["system design", "distributed systems", "code quality", "team leadership"],
+    "difficultyRange": ["senior", "staff"],
+    "expectedScoreRange": [75, 90],
+    "shouldFollowUpOn": ["payment pipeline architecture", "performance optimization decisions", "mentorship approach"]
+  }
+}

@@ -215,6 +215,104 @@ export async function GET(request: NextRequest) {
 
     const lowIntegrityCount = integrityScores.filter((s: number) => s < 70).length;
 
+    // ── Time-Series Drift Detection ──────────────────────────────
+    // Compare rolling 7-day average vs 30-day baseline
+    let driftAnalysis = null;
+    if (scores.length >= 10) {
+      const recentReports = reports
+        .filter((r: ReportRow) => r.overallScore !== null)
+        .sort((a: ReportRow, b: ReportRow) =>
+          // Most recent reports first — not guaranteed order from DB
+          0
+        );
+
+      const recent7d = new Date();
+      recent7d.setDate(recent7d.getDate() - 7);
+
+      const last7dScores = scores.slice(0, Math.ceil(scores.length * (7 / days)));
+      const baselineScores = scores;
+
+      const last7dAvg = last7dScores.length > 0
+        ? last7dScores.reduce((a: number, b: number) => a + b, 0) / last7dScores.length
+        : null;
+      const baselineAvg = avgScore;
+
+      const driftPercent = last7dAvg !== null && baselineAvg !== null && baselineAvg !== 0
+        ? Math.round(((last7dAvg - baselineAvg) / baselineAvg) * 100 * 10) / 10
+        : null;
+
+      const driftSeverity = driftPercent !== null
+        ? Math.abs(driftPercent) > 15 ? "HIGH"
+          : Math.abs(driftPercent) > 8 ? "MEDIUM"
+          : "LOW"
+        : null;
+
+      driftAnalysis = {
+        last7dAvg: last7dAvg !== null ? Math.round(last7dAvg * 10) / 10 : null,
+        baselineAvg: baselineAvg !== null ? Math.round(baselineAvg * 10) / 10 : null,
+        driftPercent,
+        driftSeverity,
+        sampleSize: { recent: last7dScores.length, baseline: baselineScores.length },
+      };
+    }
+
+    // ── Evidence Density Metrics ──────────────────────────────────
+    let evidenceDensity = null;
+    try {
+      const interviewsWithTranscripts = await prisma.interview.findMany({
+        where: { createdAt: { gte: since }, status: "COMPLETED", ...companyFilter },
+        select: {
+          transcript: true,
+          sections: { select: { questionsAsked: true } },
+        },
+        take: 100,
+      });
+
+      if (interviewsWithTranscripts.length > 0) {
+        const transcriptLengths = interviewsWithTranscripts
+          .map((i) => {
+            const t = i.transcript as unknown[];
+            return Array.isArray(t) ? t.length : 0;
+          })
+          .filter((l) => l > 0);
+
+        const questionCounts = interviewsWithTranscripts
+          .map((i) => i.sections.reduce((sum, s) => sum + s.questionsAsked, 0))
+          .filter((c) => c > 0);
+
+        evidenceDensity = {
+          avgTranscriptLength: transcriptLengths.length > 0
+            ? Math.round(transcriptLengths.reduce((a, b) => a + b, 0) / transcriptLengths.length)
+            : null,
+          avgQuestionCount: questionCounts.length > 0
+            ? Math.round(questionCounts.reduce((a, b) => a + b, 0) / questionCounts.length)
+            : null,
+          sampleSize: interviewsWithTranscripts.length,
+        };
+      }
+    } catch {
+      // Non-critical
+    }
+
+    // ── Score by Mode (Fairness) ──────────────────────────────────
+    const scoresByMode = reports.reduce((acc: Record<string, number[]>, r: ReportRow) => {
+      const mode = r.interview?.mode || "UNKNOWN";
+      if (!acc[mode]) acc[mode] = [];
+      if (r.overallScore !== null) acc[mode].push(r.overallScore);
+      return acc;
+    }, {} as Record<string, number[]>);
+
+    const fairnessByMode = Object.entries(scoresByMode).map(([mode, modeScores]) => {
+      const ms = modeScores as number[];
+      return {
+        mode,
+        count: ms.length,
+        avgScore: Math.round((ms.reduce((a: number, b: number) => a + b, 0) / ms.length) * 10) / 10,
+        minScore: Math.min(...ms),
+        maxScore: Math.max(...ms),
+      };
+    });
+
     return NextResponse.json({
       period: { days, since: since.toISOString() },
       volume: {
@@ -252,6 +350,9 @@ export async function GET(request: NextRequest) {
       costGovernance,
       quality: qualityMetrics,
       sectionAnalytics,
+      driftAnalysis,
+      evidenceDensity,
+      fairnessByMode,
     });
   } catch (error) {
     const { error: message, status } = handleAuthError(error);

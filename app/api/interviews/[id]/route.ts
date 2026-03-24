@@ -5,6 +5,8 @@ import {
   handleAuthError,
 } from "@/lib/auth";
 import { isValidTransition, getAllowedTransitions } from "@/lib/interview-state-machine";
+import { inngest } from "@/inngest/client";
+import { cascadeInterviewStatus } from "@/lib/invitation-lifecycle";
 
 // GET - Get interview details with report
 export async function GET(
@@ -139,6 +141,24 @@ export async function PATCH(
         },
       },
     });
+
+    // Cascade interview status to invitation lifecycle
+    if (newStatus) {
+      cascadeInterviewStatus(id, newStatus).catch(console.error);
+    }
+
+    // Dispatch Inngest job when interview completes
+    if (newStatus === "COMPLETED") {
+      inngest
+        .send({ name: "interview/completed", data: { interviewId: id } })
+        .catch((err: unknown) => {
+          // Fall back to in-process if Inngest unavailable
+          console.error("Inngest dispatch failed, falling back:", err);
+          import("@/lib/report-generator").then(({ generateReportInBackground }) =>
+            generateReportInBackground(id).catch(console.error)
+          );
+        });
+    }
 
     return NextResponse.json(updated);
   } catch (error) {

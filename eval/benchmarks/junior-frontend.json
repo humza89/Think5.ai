@@ -1,0 +1,27 @@
+{
+  "id": "benchmark-junior-frontend",
+  "name": "Junior Frontend Developer",
+  "description": "Early career candidate with bootcamp background, strong fundamentals",
+  "candidateProfile": {
+    "name": "Jordan Rivera",
+    "role": "Junior Frontend Developer",
+    "level": "junior",
+    "yearsExperience": 1,
+    "skills": ["React", "TypeScript", "CSS", "HTML", "Git"],
+    "strengths": ["Quick learner", "Strong CSS skills", "Good communication"],
+    "weaknesses": ["Limited production experience", "No testing experience", "No system design exposure"],
+    "background": "Graduated from coding bootcamp 8 months ago. Built 3 portfolio projects. Contributing to a small open source React component library."
+  },
+  "interviewConfig": {
+    "mode": "GENERAL_PROFILE",
+    "type": "TECHNICAL",
+    "durationMinutes": 30
+  },
+  "expectedBehavior": {
+    "minSections": 3,
+    "mustCoverTopics": ["React fundamentals", "CSS/styling", "problem solving approach"],
+    "difficultyRange": ["junior", "mid"],
+    "expectedScoreRange": [55, 75],
+    "shouldFollowUpOn": ["portfolio projects", "learning approach", "collaboration style"]
+  }
+}

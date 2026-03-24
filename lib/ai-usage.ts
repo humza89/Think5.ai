@@ -114,6 +114,50 @@ export async function checkBudgetThreshold(companyId: string, options?: {
 }
 
 /**
+ * Enforce budget gate before creating a new interview.
+ * Returns { allowed: true } or { allowed: false, reason } if over budget.
+ * Admin override can be passed to bypass the check.
+ */
+export async function enforceBudgetGate(
+  companyId: string,
+  options?: { adminOverride?: boolean }
+): Promise<{ allowed: boolean; reason?: string; spend?: number; budget?: number }> {
+  if (options?.adminOverride) {
+    return { allowed: true };
+  }
+
+  try {
+    // Get company budget
+    const company = await prisma.client.findUnique({
+      where: { id: companyId },
+      select: { monthlyAiBudgetUsd: true },
+    });
+
+    const budget = company?.monthlyAiBudgetUsd;
+    if (!budget) {
+      // No budget set — allow by default
+      return { allowed: true };
+    }
+
+    const result = await checkBudgetThreshold(companyId, { budgetUsd: budget });
+
+    if (result.overBudget) {
+      return {
+        allowed: false,
+        reason: `Monthly AI budget exceeded: $${result.currentSpend.toFixed(2)} / $${budget.toFixed(2)} (${result.utilizationPercent}%). Contact admin for override.`,
+        spend: result.currentSpend,
+        budget,
+      };
+    }
+
+    return { allowed: true, spend: result.currentSpend, budget };
+  } catch {
+    // If budget check fails, allow the operation (fail-open)
+    return { allowed: true };
+  }
+}
+
+/**
  * Get aggregated AI usage stats for a given time period.
  */
 export async function getUsageStats(options?: {

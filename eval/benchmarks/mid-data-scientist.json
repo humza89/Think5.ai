@@ -1,0 +1,27 @@
+{
+  "id": "benchmark-mid-data-scientist",
+  "name": "Mid-Level Data Scientist",
+  "description": "Solid mid-level candidate transitioning from academia to industry",
+  "candidateProfile": {
+    "name": "Priya Patel",
+    "role": "Data Scientist",
+    "level": "mid",
+    "yearsExperience": 3,
+    "skills": ["Python", "PyTorch", "SQL", "Statistics", "A/B Testing", "MLOps"],
+    "strengths": ["Strong statistical foundation", "Published ML research", "Good at explaining complex concepts"],
+    "weaknesses": ["Limited production ML deployment", "New to MLOps tooling", "Tends to over-focus on model accuracy vs business impact"],
+    "background": "PhD dropout (completed MS) in computational statistics. 2 years at a mid-size e-commerce company building recommendation models. Published 2 papers on causal inference."
+  },
+  "interviewConfig": {
+    "mode": "ROLE_SPECIFIC",
+    "type": "TECHNICAL",
+    "durationMinutes": 40
+  },
+  "expectedBehavior": {
+    "minSections": 4,
+    "mustCoverTopics": ["ML fundamentals", "statistics", "production deployment", "business impact"],
+    "difficultyRange": ["mid", "senior"],
+    "expectedScoreRange": [65, 82],
+    "shouldFollowUpOn": ["recommendation model architecture", "A/B testing methodology", "transition from academia"]
+  }
+}

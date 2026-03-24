@@ -110,13 +110,18 @@ enum ApplicationStatus {
 }
 
 enum InvitationStatus {
+  CREATED
   PENDING
   SENT
+  DELIVERED
   OPENED
   ACCEPTED
-  COMPLETED
   EXPIRED
+  REVOKED
   DECLINED
+  INTERVIEW_STARTED
+  INTERVIEW_COMPLETED
+  ABANDONED
 }
 
 enum NotificationType {
@@ -374,6 +379,8 @@ model Client {
   retentionPolicy  RetentionPolicy?
   ssoConfig        SSOConfig?
   hmMemberships    HiringManagerMembership[]
+  // Cost governance
+  monthlyAiBudgetUsd Float?  // Per-company monthly AI budget cap (USD)
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 }
@@ -684,6 +691,11 @@ model Interview {
   hypotheses      InterviewHypothesis[]
   sections        InterviewSection[]
 
+  // First-class evidence bundle
+  evidenceBundleRecord EvidenceBundle?
+  // Screen capture sessions
+  screenCaptures  ScreenCaptureSession[]
+
   createdAt       DateTime          @default(now())
   updatedAt       DateTime          @updatedAt
 
@@ -693,6 +705,47 @@ model Interview {
   @@index([jobId])
   @@index([mode])
   @@index([reconnectToken])
+}
+
+// ============================================
+// Evidence Bundle — Canonical Audit Artifact
+// ============================================
+
+model EvidenceBundle {
+  id                String    @id @default(uuid())
+  interviewId       String    @unique
+  interview         Interview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+  version           String    @default("1.0")
+  compiledAt        DateTime
+  artifactManifest  Json      // Links to transcript, recording, plan
+  scores            Json      // All dimension scores
+  evidenceItems     Json      // Highlights, risk signals, hypothesis outcomes
+  versioning        Json      // Scorer model, prompt, rubric versions
+  consent           Json?     // Consent state at time of compilation
+  integrityHash     String    // SHA-256 of entire bundle
+  exportedAt        DateTime?
+  exportFormat      String?   // "pdf" | "json"
+  legalHold         Boolean   @default(false)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+}
+
+model ScreenCaptureSession {
+  id              String    @id @default(uuid())
+  interviewId     String
+  interview       Interview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+  captureType     String    @default("screen_share") // "screen_share" | "application_window"
+  startedAt       DateTime  @default(now())
+  endedAt         DateTime?
+  thumbnailUrls   Json?     // Periodic screenshot URLs
+  recordingUrl    String?   // R2 URL for screen recording
+  recordingSize   Int?
+  consentGiven    Boolean   @default(false)
+  status          String    @default("active") // active, paused, ended, failed
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([interviewId])
 }
 
 model InterviewReport {
@@ -767,6 +820,7 @@ model InterviewReport {
   shareExpiresAt  DateTime?
   recipientEmail  String?   // Who the report was shared with
   sharePurpose    String?   // Reason for sharing
+  shareScopes     Json?     // Allowed data scopes: ["scores", "summary", "strengths", ...]
   shareRevoked    Boolean   @default(false)
 
   // Relations
@@ -805,6 +859,8 @@ model InterviewTemplate {
   retakePolicy    Json?        // {allowed, cooldownDays, maxRetakes}
   // Pre-interview readiness check requirement
   readinessCheckRequired Boolean @default(false)
+  // Screen share requirement
+  screenShareRequired    Boolean @default(false)
 
   // Approval workflow
   approvedBy      String?       // userId of the admin who approved
@@ -817,16 +873,39 @@ model InterviewTemplate {
   companyId       String?
   company         Client?   @relation(fields: [companyId], references: [id])
 
+  // Shadow testing and deprecation
+  isShadow            Boolean   @default(false) // Shadow mode: generates reports but hides from recruiters
+  deprecatedAt        DateTime?
+  deprecationReason   String?   @db.Text
+
   jobs            Job[]
   interviews      Interview[]
   invitations     InterviewInvitation[]
   skillModules    InterviewTemplateModule[]
+  versions        InterviewTemplateVersion[]
 
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
   @@index([recruiterId])
   @@index([companyId])
+}
+
+model InterviewTemplateVersion {
+  id              String    @id @default(uuid())
+  templateId      String
+  template        InterviewTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  version         Int
+  snapshot        Json      // Full template config snapshot at this version
+  changeNotes     String?   @db.Text
+  promotedBy      String?   // userId who promoted this version
+  promotedAt      DateTime  @default(now())
+  isShadow        Boolean   @default(false) // Shadow testing version
+  isActive        Boolean   @default(false) // Currently active version
+  createdAt       DateTime  @default(now())
+
+  @@unique([templateId, version])
+  @@index([templateId])
 }
 
 // ============================================
@@ -879,10 +958,13 @@ model InterviewInvitation {
   token           String           @unique
   status          InvitationStatus @default(PENDING)
   sentAt          DateTime?
+  deliveredAt     DateTime?
   expiresAt       DateTime
   openedAt        DateTime?
   acceptedAt      DateTime?
   completedAt     DateTime?
+  revokedAt       DateTime?
+  revokedBy       String?
   reminderCount   Int              @default(0)
   lastReminderAt  DateTime?
   email           String?          // for passive profile invitations
@@ -988,6 +1070,8 @@ model InterviewSection {
   plannedDuration Int                    // minutes
   actualDuration  Int?                   // minutes (filled after section completes)
   coverageScore   Float?                 // 0-100 (how well was this section covered)
+  evidenceSufficiency String?            // SUFFICIENT | INSUFFICIENT | PARTIAL
+  objectivesCovered   Json?              // [{objective, covered: bool, evidenceSnippet}]
   startedAt       DateTime?
   endedAt         DateTime?
   questionsAsked  Int       @default(0)
@@ -1335,6 +1419,7 @@ model RetentionPolicy {
   transcriptDays    Int      @default(365)
   candidateDataDays Int      @default(730)
   isDefault         Boolean  @default(false)
+  metadata          Json?    // {allowedDomains: string[], maxShareDays: number, ...}
   companyId         String?  @unique
   company           Client?  @relation(fields: [companyId], references: [id], onDelete: Cascade)
   createdAt         DateTime @default(now())

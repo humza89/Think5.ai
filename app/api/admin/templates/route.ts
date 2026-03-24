@@ -40,11 +40,35 @@ export async function PATCH(request: NextRequest) {
     const user = await requireRole(["admin"]);
 
     const body = await request.json();
-    const { templateId, status: newStatus, approvalNotes } = body as {
+    const { templateId, status: newStatus, approvalNotes, isShadow, deprecate } = body as {
       templateId: string;
-      status: "DRAFT" | "PENDING_APPROVAL" | "ACTIVE" | "ARCHIVED";
+      status?: "DRAFT" | "PENDING_APPROVAL" | "ACTIVE" | "ARCHIVED";
       approvalNotes?: string;
+      isShadow?: boolean;
+      deprecate?: { reason: string };
     };
+
+    // Handle shadow toggle (no status change required)
+    if (isShadow !== undefined && !newStatus) {
+      const updated = await prisma.interviewTemplate.update({
+        where: { id: templateId },
+        data: { isShadow },
+      });
+      return NextResponse.json({ template: updated });
+    }
+
+    // Handle deprecation
+    if (deprecate && !newStatus) {
+      const updated = await prisma.interviewTemplate.update({
+        where: { id: templateId },
+        data: {
+          status: "ARCHIVED",
+          deprecatedAt: new Date(),
+          deprecationReason: deprecate.reason,
+        },
+      });
+      return NextResponse.json({ template: updated });
+    }
 
     if (!templateId || !newStatus) {
       return NextResponse.json(
@@ -89,13 +113,63 @@ export async function PATCH(request: NextRequest) {
     // Build update data
     const updateData: Record<string, unknown> = { status: newStatus };
 
-    // If approving (PENDING_APPROVAL → ACTIVE), record approval metadata
+    // If approving (PENDING_APPROVAL → ACTIVE), record approval metadata + snapshot version
     if (template.status === "PENDING_APPROVAL" && newStatus === "ACTIVE") {
       const { user: currentUser } = await getAuthenticatedUser();
+      const newVersion = (template.version || 1) + 1;
       updateData.approvedBy = currentUser?.id || "admin";
       updateData.approvedAt = new Date();
       updateData.approvalNotes = approvalNotes || null;
-      updateData.version = (template.version || 1) + 1;
+      updateData.version = newVersion;
+
+      // Snapshot the full template config into version history
+      const fullTemplate = await prisma.interviewTemplate.findUnique({
+        where: { id: templateId },
+        include: { skillModules: { include: { module: true } } },
+      });
+
+      if (fullTemplate) {
+        // Deactivate previous active version
+        await prisma.interviewTemplateVersion.updateMany({
+          where: { templateId, isActive: true },
+          data: { isActive: false },
+        });
+
+        // Create version snapshot
+        await prisma.interviewTemplateVersion.create({
+          data: {
+            templateId,
+            version: newVersion,
+            snapshot: {
+              name: fullTemplate.name,
+              description: fullTemplate.description,
+              roleType: fullTemplate.roleType,
+              durationMinutes: fullTemplate.durationMinutes,
+              questions: fullTemplate.questions,
+              aiConfig: fullTemplate.aiConfig,
+              mode: fullTemplate.mode,
+              strategicObjectives: fullTemplate.strategicObjectives,
+              customScreeningQuestions: fullTemplate.customScreeningQuestions,
+              scoringWeights: fullTemplate.scoringWeights,
+              maxDurationMinutes: fullTemplate.maxDurationMinutes,
+              minDurationMinutes: fullTemplate.minDurationMinutes,
+              candidateReportPolicy: fullTemplate.candidateReportPolicy,
+              retakePolicy: fullTemplate.retakePolicy,
+              readinessCheckRequired: fullTemplate.readinessCheckRequired,
+              skillModules: fullTemplate.skillModules.map((sm: { moduleId: string; order: number; module: { name: string; category: string } }) => ({
+                moduleId: sm.moduleId,
+                order: sm.order,
+                moduleName: sm.module.name,
+                moduleCategory: sm.module.category,
+              })),
+            },
+            changeNotes: approvalNotes || null,
+            promotedBy: currentUser?.id || "admin",
+            isActive: true,
+            isShadow: fullTemplate.isShadow ?? false,
+          },
+        });
+      }
     }
 
     // If rejecting (PENDING_APPROVAL → DRAFT), clear approval fields

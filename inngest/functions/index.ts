@@ -1,0 +1,9 @@
+/**
+ * Inngest Function Registry
+ *
+ * Export all Inngest functions here for the serve handler.
+ */
+
+export { reportGenerate } from "./report-generate";
+export { recordingProcess } from "./recording-process";
+export { retentionCleanup } from "./retention-cleanup";

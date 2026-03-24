@@ -15,14 +15,42 @@ export async function POST(
     await requireInterviewAccess(id);
 
     const body = await request.json().catch(() => ({}));
-    const { recipientEmail, purpose } = body as { recipientEmail?: string; purpose?: string };
+    const { recipientEmail, purpose, expiryDays, allowedScopes } = body as {
+      recipientEmail?: string;
+      purpose?: string;
+      expiryDays?: number;
+      allowedScopes?: string[];
+    };
 
-    const interview = await prisma.interview.findUnique({
+    // Validate email domain against tenant sharing policy if configured
+    if (recipientEmail) {
+      const interview = await prisma.interview.findUnique({
+        where: { id },
+        select: { companyId: true },
+      });
+      if (interview?.companyId) {
+        const policy = await prisma.retentionPolicy.findUnique({
+          where: { companyId: interview.companyId },
+        });
+        const sharingPolicy = policy?.metadata as { allowedDomains?: string[] } | null;
+        if (sharingPolicy?.allowedDomains?.length) {
+          const emailDomain = recipientEmail.split("@")[1]?.toLowerCase();
+          if (!sharingPolicy.allowedDomains.includes(emailDomain)) {
+            return NextResponse.json(
+              { error: `Sharing restricted to these domains: ${sharingPolicy.allowedDomains.join(", ")}` },
+              { status: 403 }
+            );
+          }
+        }
+      }
+    }
+
+    const interviewData = await prisma.interview.findUnique({
       where: { id },
       select: { report: { select: { id: true, shareToken: true, shareRevoked: true } } },
     });
 
-    if (!interview?.report) {
+    if (!interviewData?.report) {
       return NextResponse.json(
         { error: "Report not found" },
         { status: 404 }
@@ -30,20 +58,22 @@ export async function POST(
     }
 
     // Reuse existing token if present and not revoked, otherwise generate new
-    let shareToken = interview.report.shareRevoked ? null : interview.report.shareToken;
+    let shareToken = interviewData.report.shareRevoked ? null : interviewData.report.shareToken;
     if (!shareToken) {
       shareToken = randomUUID();
       const shareExpiresAt = new Date();
-      shareExpiresAt.setDate(shareExpiresAt.getDate() + 30); // 30-day expiry
+      const days = Math.min(expiryDays || 30, 90); // Max 90 days
+      shareExpiresAt.setDate(shareExpiresAt.getDate() + days);
 
       await prisma.interviewReport.update({
-        where: { id: interview.report.id },
+        where: { id: interviewData.report.id },
         data: {
           shareToken,
           shareExpiresAt,
           shareRevoked: false,
           ...(recipientEmail && { recipientEmail }),
           ...(purpose && { sharePurpose: purpose }),
+          ...(allowedScopes && { shareScopes: allowedScopes }),
         },
       });
     }
@@ -59,7 +89,7 @@ export async function POST(
         action: "report.shared",
         userId: user.id,
         userRole: "recruiter",
-        metadata: { recipientEmail, purpose },
+        metadata: { recipientEmail, purpose, expiryDays, allowedScopes },
         ipAddress: getClientIp(request.headers),
       }).catch(() => {});
     } catch {
