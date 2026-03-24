@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Plus, ExternalLink, FileText } from "lucide-react";
+import { Plus, ExternalLink, FileText, Send } from "lucide-react";
 import { ScheduleInterviewDialog } from "@/components/interview/ScheduleInterviewDialog";
 import Link from "next/link";
 
@@ -102,7 +102,7 @@ export default function InterviewsClient({
       ) : (
         <div className="space-y-4">
           {interviews.map((interview) => (
-            <InterviewCard key={interview.id} interview={interview} />
+            <InterviewCard key={interview.id} interview={interview} candidateEmail={candidateEmail} />
           ))}
         </div>
       )}
@@ -120,13 +120,37 @@ export default function InterviewsClient({
   );
 }
 
-function InterviewCard({ interview }: { interview: Interview }) {
+function InterviewCard({ interview, candidateEmail }: { interview: Interview; candidateEmail: string }) {
   const [expanded, setExpanded] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [sent, setSent] = useState(false);
   const typeLabel = interview.type
     .replace(/_/g, " ")
     .replace(/\b\w/g, (c) => c.toUpperCase());
 
   const statusClass = STATUS_STYLES[interview.status] || STATUS_STYLES.PENDING;
+
+  const handleResendInvite = async () => {
+    setSending(true);
+    try {
+      const res = await fetch(`/api/interviews/${interview.id}/invite`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: candidateEmail }),
+      });
+      if (res.ok) {
+        setSent(true);
+        setTimeout(() => setSent(false), 3000);
+      } else {
+        const data = await res.json().catch(() => ({}));
+        alert(data.error || "Failed to send invite");
+      }
+    } catch {
+      alert("Failed to send invite");
+    } finally {
+      setSending(false);
+    }
+  };
 
   return (
     <div className="border rounded-lg p-4 bg-white hover:shadow-sm transition-shadow">
@@ -142,6 +166,19 @@ function InterviewCard({ interview }: { interview: Interview }) {
         </div>
 
         <div className="flex items-center gap-3">
+          {/* Resend invite for pending interviews */}
+          {interview.status === "PENDING" && candidateEmail && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleResendInvite}
+              disabled={sending || sent}
+            >
+              <Send className="w-4 h-4 mr-1" />
+              {sent ? "Sent!" : sending ? "Sending..." : "Resend Invite"}
+            </Button>
+          )}
+
           {/* Overall score */}
           {interview.report?.overallScore != null && (
             <div className="flex items-center gap-2">
