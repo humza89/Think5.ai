@@ -90,6 +90,11 @@ export async function POST(
             aiConfig: true,
             durationMinutes: true,
             readinessCheckRequired: true,
+            screenShareRequired: true,
+            mode: true,
+            candidateReportPolicy: true,
+            retakePolicy: true,
+            maxDurationMinutes: true,
           },
         },
         job: {
@@ -203,6 +208,12 @@ export async function POST(
         : (aiConfig.proctoringLevel as string) || "strict",
       pastePolicy: aiConfig.pastePolicy || "block",
       maxPasteWarnings: aiConfig.maxPasteWarnings || 3,
+      // Template-level config for interview room
+      screenShareRequired: interview.template?.screenShareRequired || false,
+      templateMode: interview.template?.mode || null,
+      candidateReportPolicy: interview.template?.candidateReportPolicy || null,
+      retakePolicy: interview.template?.retakePolicy || null,
+      maxDurationMinutes: interview.template?.maxDurationMinutes || interview.template?.durationMinutes || 30,
       // Include transcript for message restoration on resume
       ...(interview.status === "IN_PROGRESS" && interview.transcript
         ? { transcript: interview.transcript }

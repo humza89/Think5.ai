@@ -8,7 +8,7 @@
 "use client";
 
 import { useEffect, useState, use } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 
 interface InterviewStatus {
   id: string;
@@ -31,6 +31,8 @@ export default function ReconnectPage({
 }) {
   const { id } = use(params);
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const token = searchParams.get("token") || "";
   const [status, setStatus] = useState<InterviewStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [retryCountdown, setRetryCountdown] = useState(10);
@@ -112,7 +114,7 @@ export default function ReconnectPage({
       });
 
       if (res.ok) {
-        router.push(`/interview/${id}`);
+        router.push(`/interview/${id}${token ? `?token=${token}` : ""}`);
       } else {
         setError("Could not reconnect. The interview may have expired.");
         setIsRetrying(false);

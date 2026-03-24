@@ -268,6 +268,13 @@ export async function generateReportInBackground(
           });
         }
       }
+      // After creating sections, validate coverage against planned objectives
+      try {
+        const { validateSectionCoverage } = await import("@/lib/section-coverage");
+        await validateSectionCoverage(interviewId);
+      } catch (coverageError) {
+        console.error("Section coverage validation failed:", coverageError);
+      }
     } catch (sectionError) {
       // Non-critical — don't fail report generation for section scoring
       console.error("Section scoring failed:", sectionError);

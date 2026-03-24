@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { notFound, redirect } from "next/navigation";
-import { requireInterviewAccess, AuthError } from "@/lib/auth";
+import { requireInterviewAccess, AuthError, getAuthenticatedUser } from "@/lib/auth";
 import { InterviewReportViewer } from "@/components/interview/InterviewReportViewer";
 import Link from "next/link";
 
@@ -34,11 +34,26 @@ export default async function ReportPage({
         },
       },
       report: true,
+      template: {
+        select: { isShadow: true },
+      },
     },
   });
 
   if (!interview || !interview.report) {
     return notFound();
+  }
+
+  // Shadow template reports are only visible to admins
+  if (interview.template?.isShadow) {
+    try {
+      const { profile } = await getAuthenticatedUser();
+      if (profile?.role !== "admin") {
+        return notFound();
+      }
+    } catch {
+      return notFound();
+    }
   }
 
   const report = interview.report;

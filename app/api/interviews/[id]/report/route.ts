@@ -40,6 +40,9 @@ export async function GET(
                 currentCompany: true,
               },
             },
+            template: {
+              select: { isShadow: true },
+            },
           },
         },
       },
@@ -50,6 +53,17 @@ export async function GET(
         { error: "Report not found for this interview" },
         { status: 404 }
       );
+    }
+
+    // Shadow template reports are only visible to admins
+    if (report.interview?.template?.isShadow) {
+      const { profile } = await getAuthenticatedUser();
+      if (profile?.role !== "admin") {
+        return NextResponse.json(
+          { error: "Report not found for this interview" },
+          { status: 404 }
+        );
+      }
     }
 
     // Add review banner for pending reviews

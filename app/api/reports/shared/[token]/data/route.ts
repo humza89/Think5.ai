@@ -24,6 +24,7 @@ export async function GET(
         shareRevoked: true,
         shareExpiresAt: true,
         recipientEmail: true,
+        shareScopes: true,
         overallScore: true,
         recommendation: true,
         summary: true,
@@ -65,12 +66,20 @@ export async function GET(
                 currentTitle: true,
               },
             },
+            template: {
+              select: { isShadow: true },
+            },
           },
         },
       },
     });
 
     if (!report) {
+      return NextResponse.json({ error: "Report not found" }, { status: 404 });
+    }
+
+    // Block sharing of shadow template reports
+    if (report.interview?.template?.isShadow) {
       return NextResponse.json({ error: "Report not found" }, { status: 404 });
     }
 

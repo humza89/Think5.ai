@@ -81,10 +81,24 @@ async function evaluateInterviewPlan(
     const { generateInterviewPlan } = await import("@/lib/interview-planner");
 
     // Generate the interview plan for the benchmark candidate
-    const plan = await generateInterviewPlan({
-      candidateProfile: benchmark.candidateProfile,
-      interviewConfig: benchmark.interviewConfig,
-    });
+    const candidateProfile = benchmark.candidateProfile;
+    const plan = await generateInterviewPlan(
+      {
+        fullName: candidateProfile.name,
+        currentTitle: candidateProfile.role,
+        currentCompany: null,
+        skills: candidateProfile.skills,
+        experienceYears: candidateProfile.yearsExperience,
+        resumeText: candidateProfile.background,
+      },
+      {
+        title: candidateProfile.role,
+        skillsRequired: candidateProfile.skills,
+        skillsPreferred: [],
+      },
+      [],
+      { mode: benchmark.interviewConfig.mode as any }
+    );
 
     if (!plan) {
       errors.push("Interview plan generation returned null");

@@ -10,6 +10,7 @@ import {
 import { scopeQuery } from "@/lib/tenant-context";
 import { computeJsonHash } from "@/lib/versioning";
 import { captureTemplateSnapshot } from "@/lib/template-snapshot";
+import { enforceBudgetGate } from "@/lib/ai-usage";
 
 // POST - Schedule an interview for a candidate
 export async function POST(request: NextRequest) {
@@ -84,6 +85,20 @@ export async function POST(request: NextRequest) {
         profile.email,
         `${profile.first_name} ${profile.last_name}`
       );
+    }
+
+    // Budget enforcement: block non-practice interviews if company exceeds AI budget
+    if (!isPractice && recruiter.companyId) {
+      const isAdmin = profile.role === "admin";
+      const budgetResult = await enforceBudgetGate(recruiter.companyId, {
+        adminOverride: isAdmin,
+      });
+      if (!budgetResult.allowed) {
+        return NextResponse.json(
+          { error: budgetResult.reason, spend: budgetResult.spend, budget: budgetResult.budget },
+          { status: 402 }
+        );
+      }
     }
 
     // Verify candidate exists
@@ -260,6 +275,29 @@ export async function POST(request: NextRequest) {
         },
       },
     });
+
+    // Auto-create invitation record so cascadeInterviewStatus has a target
+    try {
+      const invitation = await prisma.interviewInvitation.create({
+        data: {
+          interviewId: interview.id,
+          candidateId,
+          templateId: templateId || null,
+          status: "ACCEPTED",
+          acceptedAt: new Date(),
+          sentAt: new Date(),
+          expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
+        },
+      });
+      // Link invitation back to interview
+      await prisma.interview.update({
+        where: { id: interview.id },
+        data: { invitationId: invitation.id },
+      });
+    } catch (invErr) {
+      // Non-critical — don't fail interview creation for invitation tracking
+      console.error("Auto-invitation creation failed:", invErr);
+    }
 
     return NextResponse.json(interview, { status: 201 });
   } catch (error) {

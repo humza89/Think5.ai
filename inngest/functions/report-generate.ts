@@ -33,7 +33,15 @@ export const reportGenerate = inngest.createFunction(
       return { interviewId };
     });
 
-    // Step 2: Compile evidence bundle (after report succeeds)
+    // Step 2: Validate section coverage against planned objectives
+    await step.run("validate-section-coverage", async () => {
+      const { validateSectionCoverage } = await import(
+        "@/lib/section-coverage"
+      );
+      await validateSectionCoverage(interviewId);
+    });
+
+    // Step 3: Compile evidence bundle
     await step.run("compile-evidence-bundle", async () => {
       const { compileEvidenceBundle } = await import(
         "@/lib/evidence-bundle-compiler"
@@ -41,7 +49,7 @@ export const reportGenerate = inngest.createFunction(
       await compileEvidenceBundle(interviewId);
     });
 
-    // Step 3: Compute quality metrics
+    // Step 4: Compute quality metrics
     await step.run("compute-quality-metrics", async () => {
       const { computeQualityMetrics } = await import(
         "@/lib/quality-metrics"
@@ -49,7 +57,7 @@ export const reportGenerate = inngest.createFunction(
       await computeQualityMetrics(interviewId);
     });
 
-    // Step 4: Send notification emails
+    // Step 5: Send notification emails
     await step.run("send-notifications", async () => {
       const { sendInterviewNotifications } = await import(
         "@/lib/interview-notifications"

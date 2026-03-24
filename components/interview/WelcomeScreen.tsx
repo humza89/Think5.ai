@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Video,
+  Monitor,
   MessageSquare,
   Clock,
   CheckCircle,
@@ -13,6 +14,7 @@ import {
   BarChart3,
   AlertTriangle,
 } from "lucide-react";
+import ArtifactNotice from "@/components/interview/ArtifactNotice";
 
 interface WelcomeScreenProps {
   candidateName: string;
@@ -21,6 +23,18 @@ interface WelcomeScreenProps {
   onRequestWebcam: () => void;
   onStart: (consent: { consentRecording: boolean; consentProctoring: boolean; consentPrivacy: boolean }) => void;
   isStarting: boolean;
+  screenShareRequired?: boolean;
+  screenShareActive?: boolean;
+  onRequestScreenShare?: () => void;
+  mode?: string | null;
+  templateConfig?: {
+    screenShareRequired?: boolean;
+    readinessCheckRequired?: boolean;
+    durationMinutes?: number;
+    retakePolicy?: Record<string, unknown>;
+    candidateReportPolicy?: Record<string, boolean>;
+  };
+  isPractice?: boolean;
 }
 
 export function WelcomeScreen({
@@ -30,12 +44,20 @@ export function WelcomeScreen({
   onRequestWebcam,
   onStart,
   isStarting,
+  screenShareRequired = false,
+  screenShareActive = false,
+  onRequestScreenShare,
+  mode,
+  templateConfig,
+  isPractice = false,
 }: WelcomeScreenProps) {
   const [consentRecording, setConsentRecording] = useState<boolean>(false);
   const [consentProctoring, setConsentProctoring] = useState<boolean>(false);
   const [consentPrivacy, setConsentPrivacy] = useState<boolean>(false);
+  const [artifactAcknowledged, setArtifactAcknowledged] = useState<boolean>(!templateConfig);
 
-  const allConsented = consentRecording && consentProctoring && consentPrivacy;
+  const allConsented = consentRecording && consentProctoring && consentPrivacy && artifactAcknowledged;
+  const screenShareReady = !screenShareRequired || screenShareActive;
   const typeLabel = interviewType
     .replace(/_/g, " ")
     .replace(/\b\w/g, (c) => c.toUpperCase());
@@ -146,6 +168,56 @@ export function WelcomeScreen({
           </div>
         </div>
 
+        {/* Screen Share (if required by template) */}
+        {screenShareRequired && (
+          <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 mb-6">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <Monitor className="w-5 h-5 text-zinc-500" />
+                <div>
+                  <p className="text-zinc-300 font-medium">Screen Sharing</p>
+                  <p className="text-zinc-500 text-sm">
+                    Required — your screen will be monitored during the interview
+                  </p>
+                </div>
+              </div>
+              {screenShareActive ? (
+                <div className="flex items-center gap-2 text-green-500">
+                  <div className="w-2 h-2 rounded-full bg-green-500" />
+                  <span className="text-sm font-medium">Active</span>
+                </div>
+              ) : (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={onRequestScreenShare}
+                  className="border-zinc-700 text-zinc-300 hover:bg-zinc-800"
+                >
+                  Enable
+                </Button>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Artifact Notice (mode-specific recording details) */}
+        {templateConfig && (
+          <div className="mb-6">
+            <ArtifactNotice
+              mode={mode || interviewType}
+              templateConfig={{
+                screenShareRequired: templateConfig.screenShareRequired,
+                readinessCheckRequired: templateConfig.readinessCheckRequired,
+                durationMinutes: templateConfig.durationMinutes,
+                retakePolicy: templateConfig.retakePolicy as any,
+                candidateReportPolicy: templateConfig.candidateReportPolicy as any,
+              }}
+              isPractice={isPractice}
+              onAcknowledge={() => setArtifactAcknowledged(true)}
+            />
+          </div>
+        )}
+
         {/* Integrity monitoring notice */}
         <div className="bg-amber-500/5 border border-amber-500/20 rounded-xl p-4 mb-8">
           <div className="flex items-start gap-3">
@@ -233,7 +305,7 @@ export function WelcomeScreen({
         {/* Start button */}
         <Button
           onClick={() => onStart({ consentRecording, consentProctoring, consentPrivacy })}
-          disabled={isStarting || !allConsented}
+          disabled={isStarting || !allConsented || !screenShareReady}
           className="w-full h-12 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 text-white font-semibold text-base disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {isStarting ? (

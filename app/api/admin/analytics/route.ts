@@ -269,23 +269,24 @@ export async function GET(request: NextRequest) {
       });
 
       if (interviewsWithTranscripts.length > 0) {
+        type TranscriptRow = { transcript: unknown; sections: { questionsAsked: number }[] };
         const transcriptLengths = interviewsWithTranscripts
-          .map((i) => {
+          .map((i: TranscriptRow) => {
             const t = i.transcript as unknown[];
             return Array.isArray(t) ? t.length : 0;
           })
-          .filter((l) => l > 0);
+          .filter((l: number) => l > 0);
 
         const questionCounts = interviewsWithTranscripts
-          .map((i) => i.sections.reduce((sum, s) => sum + s.questionsAsked, 0))
-          .filter((c) => c > 0);
+          .map((i: TranscriptRow) => i.sections.reduce((sum: number, s: { questionsAsked: number }) => sum + s.questionsAsked, 0))
+          .filter((c: number) => c > 0);
 
         evidenceDensity = {
           avgTranscriptLength: transcriptLengths.length > 0
-            ? Math.round(transcriptLengths.reduce((a, b) => a + b, 0) / transcriptLengths.length)
+            ? Math.round(transcriptLengths.reduce((a: number, b: number) => a + b, 0) / transcriptLengths.length)
             : null,
           avgQuestionCount: questionCounts.length > 0
-            ? Math.round(questionCounts.reduce((a, b) => a + b, 0) / questionCounts.length)
+            ? Math.round(questionCounts.reduce((a: number, b: number) => a + b, 0) / questionCounts.length)
             : null,
           sampleSize: interviewsWithTranscripts.length,
         };

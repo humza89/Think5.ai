@@ -13,6 +13,7 @@ import { InterviewComplete } from "@/components/interview/InterviewComplete";
 import { ProctoringOverlay } from "@/components/interview/ProctoringOverlay";
 import { VoiceInterviewRoom } from "@/components/interview/VoiceInterviewRoom";
 import { InterviewPreCheck } from "@/components/interview/InterviewPreCheck";
+import { useScreenCapture } from "@/hooks/useScreenCapture";
 
 type InterviewStage =
   | "LOADING"
@@ -40,6 +41,10 @@ interface InterviewMeta {
   maxPasteWarnings?: number;
   readinessRequired?: boolean;
   readinessVerified?: boolean;
+  screenShareRequired?: boolean;
+  templateMode?: string | null;
+  candidateReportPolicy?: Record<string, boolean> | null;
+  isPractice?: boolean;
 }
 
 const MAX_DURATION_MS = 45 * 60 * 1000; // 45 minutes
@@ -60,6 +65,7 @@ export default function InterviewRoom() {
   const session = useInterviewSession({ interviewId, accessToken });
   const proctoring = useProctoring(proctoringConfig);
   const voice = useVoiceInput();
+  const screenCapture = useScreenCapture({ interviewId });
   const webcamVideoRef = useRef<HTMLVideoElement>(null);
 
   // Validate access on mount
@@ -135,11 +141,16 @@ export default function InterviewRoom() {
       // Non-blocking: consent is recorded best-effort
     }
 
+    // Start screen capture if required by template
+    if (meta?.screenShareRequired && !screenCapture.isActive) {
+      await screenCapture.startCapture();
+    }
+
     setStage("ACTIVE");
     proctoring.startMonitoring();
     await proctoring.requestFullscreen();
     await session.startInterview();
-  }, [session, proctoring, interviewId, accessToken]);
+  }, [session, proctoring, screenCapture, meta, interviewId, accessToken]);
 
   // Handle resume from interrupted session
   const handleResume = useCallback(() => {
@@ -157,12 +168,13 @@ export default function InterviewRoom() {
     setStage("CLOSING");
     await session.endInterview(proctoring.integrityEvents);
     proctoring.stopWebcam();
+    screenCapture.stopCapture();
     // Exit fullscreen
     if (document.fullscreenElement) {
       document.exitFullscreen().catch(() => {});
     }
     setStage("COMPLETE");
-  }, [session, proctoring]);
+  }, [session, proctoring, screenCapture]);
 
   const handleEndCancel = useCallback(() => {
     setShowEndConfirm(false);
@@ -287,6 +299,13 @@ export default function InterviewRoom() {
           <p className="text-zinc-600 text-xs text-center mt-4">
             Your previous conversation will be loaded automatically.
           </p>
+
+          <a
+            href={`/interview/reconnect/${interviewId}${accessToken ? `?token=${accessToken}` : ""}`}
+            className="block text-center text-xs text-zinc-500 hover:text-zinc-400 underline mt-3"
+          >
+            Having trouble? Get reconnection help
+          </a>
         </div>
       </div>
     );
@@ -326,6 +345,16 @@ export default function InterviewRoom() {
         onRequestWebcam={proctoring.requestWebcam}
         onStart={handleStart}
         isStarting={session.isStreaming}
+        screenShareRequired={meta.screenShareRequired}
+        screenShareActive={screenCapture.isActive}
+        onRequestScreenShare={screenCapture.startCapture}
+        mode={meta.templateMode}
+        templateConfig={meta.screenShareRequired || meta.candidateReportPolicy ? {
+          screenShareRequired: meta.screenShareRequired,
+          durationMinutes: meta.durationMinutes,
+          candidateReportPolicy: meta.candidateReportPolicy || undefined,
+        } : undefined}
+        isPractice={meta.isPractice}
       />
     );
   }
