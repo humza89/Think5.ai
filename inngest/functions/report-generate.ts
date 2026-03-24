@@ -65,6 +65,28 @@ export const reportGenerate = inngest.createFunction(
       await sendInterviewNotifications(interviewId);
     });
 
+    // Step 6: Create in-app notifications
+    await step.run("create-in-app-notifications", async () => {
+      const { notifyReportReady } = await import("@/lib/realtime-notify");
+      await notifyReportReady(interviewId);
+    });
+
+    // Step 7: Dispatch webhooks to external systems
+    await step.run("dispatch-webhooks", async () => {
+      const { dispatchWebhooks } = await import("@/lib/webhook-dispatch");
+      const { prisma } = await import("@/lib/prisma");
+      const interview = await prisma.interview.findUnique({
+        where: { id: interviewId },
+        select: { companyId: true, candidateId: true },
+      });
+      if (interview?.companyId) {
+        await dispatchWebhooks("report.ready", interview.companyId, {
+          interviewId,
+          candidateId: interview.candidateId,
+        });
+      }
+    });
+
     return { interviewId, status: "complete" };
   }
 );

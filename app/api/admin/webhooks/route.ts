@@ -1,0 +1,106 @@
+/**
+ * Webhook Management API
+ *
+ * GET  /api/admin/webhooks — List webhooks for admin's company
+ * POST /api/admin/webhooks — Create a new webhook endpoint
+ */
+
+import { NextRequest, NextResponse } from "next/server";
+import { requireRole, handleAuthError } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
+import crypto from "crypto";
+
+export async function GET() {
+  try {
+    await requireRole(["admin"]);
+
+    const webhooks = await prisma.webhookEndpoint.findMany({
+      orderBy: { createdAt: "desc" },
+      include: {
+        _count: { select: { deliveries: true } },
+      },
+    });
+
+    return NextResponse.json({ webhooks });
+  } catch (error) {
+    const { error: message, status } = handleAuthError(error);
+    return NextResponse.json({ error: message }, { status });
+  }
+}
+
+export async function POST(req: NextRequest) {
+  try {
+    await requireRole(["admin"]);
+
+    const { companyId, url, events } = await req.json();
+
+    if (!companyId || !url || !events) {
+      return NextResponse.json(
+        { error: "Missing required fields: companyId, url, events" },
+        { status: 400 }
+      );
+    }
+
+    if (!Array.isArray(events) || events.length === 0) {
+      return NextResponse.json(
+        { error: "events must be a non-empty array" },
+        { status: 400 }
+      );
+    }
+
+    const validEvents = [
+      "interview.completed",
+      "report.ready",
+      "invitation.accepted",
+    ];
+    const invalidEvents = events.filter(
+      (e: string) => !validEvents.includes(e)
+    );
+    if (invalidEvents.length > 0) {
+      return NextResponse.json(
+        {
+          error: `Invalid events: ${invalidEvents.join(", ")}. Valid events: ${validEvents.join(", ")}`,
+        },
+        { status: 400 }
+      );
+    }
+
+    // Validate URL
+    try {
+      new URL(url);
+    } catch {
+      return NextResponse.json(
+        { error: "Invalid URL format" },
+        { status: 400 }
+      );
+    }
+
+    const secret = crypto.randomBytes(32).toString("hex");
+
+    const webhook = await prisma.webhookEndpoint.create({
+      data: {
+        companyId,
+        url,
+        events,
+        secret,
+      },
+    });
+
+    return NextResponse.json(
+      {
+        webhook: {
+          id: webhook.id,
+          url: webhook.url,
+          events: webhook.events,
+          secret: webhook.secret, // Only shown once on creation
+          isActive: webhook.isActive,
+          createdAt: webhook.createdAt,
+        },
+      },
+      { status: 201 }
+    );
+  } catch (error) {
+    const { error: message, status } = handleAuthError(error);
+    return NextResponse.json({ error: message }, { status });
+  }
+}

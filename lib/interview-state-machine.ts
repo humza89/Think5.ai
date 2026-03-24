@@ -7,6 +7,7 @@
  * Transition diagram:
  *   CREATED → PLAN_GENERATED → PENDING → IN_PROGRESS → COMPLETED → REPORT_GENERATING → REPORT_READY
  *                                    ↘ EXPIRED        ↘ DISCONNECTED ↗                ↘ REPORT_FAILED → REPORT_GENERATING
+ *                                                     ↘ PAUSED → IN_PROGRESS
  *                              (any non-terminal) → CANCELLED
  */
 
@@ -16,6 +17,7 @@ type InterviewStatus =
   | "PLAN_GENERATED"
   | "PENDING"
   | "IN_PROGRESS"
+  | "PAUSED"
   | "DISCONNECTED"
   | "COMPLETED"
   | "CANCELLED"
@@ -28,7 +30,8 @@ const VALID_TRANSITIONS: Record<InterviewStatus, InterviewStatus[]> = {
   CREATED: ["PLAN_GENERATED", "PENDING", "CANCELLED"],
   PLAN_GENERATED: ["PENDING", "CANCELLED"],
   PENDING: ["IN_PROGRESS", "CANCELLED", "EXPIRED"],
-  IN_PROGRESS: ["COMPLETED", "DISCONNECTED", "CANCELLED"],
+  IN_PROGRESS: ["COMPLETED", "DISCONNECTED", "PAUSED", "CANCELLED"],
+  PAUSED: ["IN_PROGRESS", "CANCELLED"],
   DISCONNECTED: ["IN_PROGRESS", "COMPLETED", "CANCELLED"],
   COMPLETED: ["REPORT_GENERATING"],
   CANCELLED: [],

@@ -29,6 +29,7 @@ enum InterviewStatus {
   PLAN_GENERATED
   PENDING
   IN_PROGRESS
+  PAUSED
   DISCONNECTED
   COMPLETED
   CANCELLED
@@ -379,6 +380,7 @@ model Client {
   retentionPolicy  RetentionPolicy?
   ssoConfig        SSOConfig?
   hmMemberships    HiringManagerMembership[]
+  webhookEndpoints WebhookEndpoint[]
   // Cost governance
   monthlyAiBudgetUsd Float?  // Per-company monthly AI budget cap (USD)
   createdAt        DateTime @default(now())
@@ -671,6 +673,10 @@ model Interview {
   candidateSelfAssessment Json?     // Post-interview self-assessment responses
   coverageMap         Json?         // Per-section coverage percentages
   evidenceBundle      Json?         // Compiled evidence bundle for recruiter
+
+  // Pause tracking
+  pausedAt              DateTime?
+  totalPauseDurationMs  Int       @default(0)
 
   // Legal hold — prevents retention enforcement from deleting data
   legalHold        Boolean   @default(false)
@@ -1440,4 +1446,39 @@ model SSOConfig {
   updatedAt   DateTime @updatedAt
 
   @@index([domain])
+}
+
+// ============================================
+// Webhook System — External Event Dispatch
+// ============================================
+
+model WebhookEndpoint {
+  id        String   @id @default(uuid())
+  companyId String
+  company   Client   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  url       String
+  events    Json     @default("[]") // ["interview.completed", "report.ready", "invitation.accepted"]
+  secret    String   // HMAC-SHA256 signing key
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  deliveries WebhookDelivery[]
+
+  @@index([companyId, isActive])
+}
+
+model WebhookDelivery {
+  id         String   @id @default(uuid())
+  endpointId String
+  endpoint   WebhookEndpoint @relation(fields: [endpointId], references: [id], onDelete: Cascade)
+  event      String
+  payload    Json
+  statusCode Int?
+  attempts   Int      @default(0)
+  lastError  String?  @db.Text
+  createdAt  DateTime @default(now())
+
+  @@index([endpointId])
+  @@index([event])
 }

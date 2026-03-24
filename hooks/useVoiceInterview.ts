@@ -53,6 +53,8 @@ export interface UseVoiceInterviewReturn {
   isConnected: boolean;
   questionCount: number;
   connectionQuality: "good" | "fair" | "poor";
+  isReconnecting: boolean;
+  isPaused: boolean;
 
   // Actions
   startInterview: () => Promise<void>;
@@ -60,6 +62,9 @@ export interface UseVoiceInterviewReturn {
   sendTextMessage: (text: string) => void;
   toggleMic: () => void;
   isMicEnabled: boolean;
+  reconnect: () => Promise<void>;
+  pauseInterview: () => Promise<void>;
+  resumeInterview: () => Promise<void>;
 }
 
 // ── Hook ───────────────────────────────────────────────────────────────
@@ -77,6 +82,8 @@ export function useVoiceInterview(
   const [questionCount, setQuestionCount] = useState(0);
   const [connectionQuality, setConnectionQuality] = useState<"good" | "fair" | "poor">("good");
   const [isMicEnabled, setIsMicEnabled] = useState(true);
+  const [isReconnecting, setIsReconnecting] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
 
   // Refs
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -87,6 +94,8 @@ export function useVoiceInterview(
   const sseAbortRef = useRef<AbortController | null>(null);
   const reconnectTokenRef = useRef<string | null>(null);
   const isMicEnabledRef = useRef(true);
+  const reconnectAttemptRef = useRef(0);
+  const maxReconnectAttempts = 3;
 
   // Keep ref in sync with state for use in audio callback
   useEffect(() => {
@@ -178,9 +187,61 @@ export function useVoiceInterview(
         console.error("SSE connection error:", err);
         setConnectionQuality("poor");
         setIsConnected(false);
+        // Attempt automatic reconnection
+        attemptReconnect();
       }
     })();
   }, [voiceApiUrl, accessToken]);
+
+  // ── Reconnection Logic ──────────────────────────────────────────────
+
+  const attemptReconnect = useCallback(async () => {
+    if (reconnectAttemptRef.current >= maxReconnectAttempts) {
+      setIsReconnecting(false);
+      setInterviewState("ERROR");
+      onError?.("Connection lost after multiple attempts. You can switch to text mode.");
+      return;
+    }
+
+    setIsReconnecting(true);
+    reconnectAttemptRef.current++;
+    const delay = 1000 * Math.pow(2, reconnectAttemptRef.current - 1); // 1s, 2s, 4s
+
+    await new Promise((resolve) => setTimeout(resolve, delay));
+
+    try {
+      const result = await postToVoice({
+        action: "reconnect",
+        reconnectToken: reconnectTokenRef.current,
+      });
+
+      if (result.transcript) {
+        setTranscript(result.transcript);
+      }
+      if (result.reconnectToken) {
+        reconnectTokenRef.current = result.reconnectToken;
+      }
+
+      // Re-establish SSE
+      if (sseAbortRef.current) {
+        sseAbortRef.current.abort();
+      }
+      connectSSE();
+
+      reconnectAttemptRef.current = 0;
+      setIsReconnecting(false);
+      setConnectionQuality("good");
+      setIsConnected(true);
+    } catch {
+      // Retry
+      attemptReconnect();
+    }
+  }, [postToVoice, connectSSE, onError]);
+
+  const reconnect = useCallback(async () => {
+    reconnectAttemptRef.current = 0;
+    await attemptReconnect();
+  }, [attemptReconnect]);
 
   // ── Server Message Handler ───────────────────────────────────────
 
@@ -354,6 +415,49 @@ export function useVoiceInterview(
     });
   }, []);
 
+  // ── Pause/Resume ────────────────────────────────────────────────
+
+  const pauseInterview = useCallback(async () => {
+    try {
+      await fetch(`/api/interviews/${interviewId}/pause`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "pause", accessToken }),
+      });
+      setIsPaused(true);
+      // Mute mic
+      if (mediaStreamRef.current) {
+        mediaStreamRef.current.getAudioTracks().forEach((t) => (t.enabled = false));
+      }
+      playbackQueueRef.current = [];
+    } catch (err) {
+      onError?.(err instanceof Error ? err.message : "Failed to pause");
+    }
+  }, [interviewId, accessToken, onError]);
+
+  const resumeInterview = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/interviews/${interviewId}/pause`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "resume", accessToken }),
+      });
+      const data = await res.json();
+      if (data.status === "CANCELLED") {
+        setInterviewState("ERROR");
+        onError?.("Interview was cancelled due to exceeding pause time limit.");
+        return;
+      }
+      setIsPaused(false);
+      // Re-enable mic
+      if (mediaStreamRef.current) {
+        mediaStreamRef.current.getAudioTracks().forEach((t) => (t.enabled = isMicEnabledRef.current));
+      }
+    } catch (err) {
+      onError?.(err instanceof Error ? err.message : "Failed to resume");
+    }
+  }, [interviewId, accessToken, onError]);
+
   // ── Cleanup ──────────────────────────────────────────────────────
 
   useEffect(() => {
@@ -391,11 +495,16 @@ export function useVoiceInterview(
     isConnected,
     questionCount,
     connectionQuality,
+    isReconnecting,
+    isPaused,
     startInterview,
     endInterview,
     sendTextMessage,
     toggleMic,
     isMicEnabled,
+    reconnect,
+    pauseInterview,
+    resumeInterview,
   };
 }
 

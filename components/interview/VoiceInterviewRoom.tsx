@@ -29,6 +29,8 @@ import {
   Maximize2,
   Volume2,
   RefreshCw,
+  Pause,
+  Play,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
@@ -93,11 +95,16 @@ export function VoiceInterviewRoom({
     isConnected,
     questionCount,
     connectionQuality,
+    isReconnecting: voiceReconnecting,
+    isPaused,
     startInterview,
     endInterview,
     sendTextMessage,
     toggleMic,
     isMicEnabled,
+    reconnect,
+    pauseInterview,
+    resumeInterview,
   } = useVoiceInterview({
     interviewId,
     accessToken,
@@ -455,13 +462,43 @@ export function VoiceInterviewRoom({
       </header>
 
       {/* ── Reconnection Overlay ── */}
-      {isReconnecting && (
-        <div className="flex items-center gap-2 bg-orange-500/10 border-b border-orange-500/20 px-4 py-2 text-sm text-orange-700 dark:text-orange-400">
-          <RefreshCw className="h-4 w-4 shrink-0 animate-spin" />
-          <span>
-            Connection lost — reconnecting{reconnectAttempt > 1 ? ` (attempt ${reconnectAttempt})` : ""}...
-            Your responses are saved.
-          </span>
+      {voiceReconnecting && (
+        <div className="flex items-center justify-between gap-2 bg-orange-500/10 border-b border-orange-500/20 px-4 py-2 text-sm text-orange-700 dark:text-orange-400">
+          <div className="flex items-center gap-2">
+            <RefreshCw className="h-4 w-4 shrink-0 animate-spin" />
+            <span>
+              Connection lost — reconnecting... Your responses are saved.
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={reconnect}>
+              Retry Now
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowTextInput(true)}
+            >
+              Switch to Text
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Pause Overlay ── */}
+      {isPaused && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm">
+          <Card className="max-w-sm p-8 text-center">
+            <Pause className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
+            <h2 className="text-xl font-semibold mb-2">Interview Paused</h2>
+            <p className="text-sm text-muted-foreground mb-6">
+              Your progress is saved. The interview will auto-cancel if paused for more than 10 minutes.
+            </p>
+            <Button onClick={resumeInterview} className="w-full" size="lg">
+              <Play className="h-4 w-4 mr-2" />
+              Resume Interview
+            </Button>
+          </Card>
         </div>
       )}
 
@@ -555,6 +592,16 @@ export function VoiceInterviewRoom({
               title="Text input (accessibility fallback)"
             >
               <MessageSquare className="h-5 w-5" />
+            </Button>
+
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-12 w-12 rounded-full"
+              onClick={pauseInterview}
+              title="Pause interview"
+            >
+              <Pause className="h-5 w-5" />
             </Button>
           </div>
 

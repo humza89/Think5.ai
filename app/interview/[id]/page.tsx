@@ -14,6 +14,7 @@ import { ProctoringOverlay } from "@/components/interview/ProctoringOverlay";
 import { VoiceInterviewRoom } from "@/components/interview/VoiceInterviewRoom";
 import { InterviewPreCheck } from "@/components/interview/InterviewPreCheck";
 import { useScreenCapture } from "@/hooks/useScreenCapture";
+import { useMediaRecording } from "@/hooks/useMediaRecording";
 
 type InterviewStage =
   | "LOADING"
@@ -66,6 +67,12 @@ export default function InterviewRoom() {
   const proctoring = useProctoring(proctoringConfig);
   const voice = useVoiceInput();
   const screenCapture = useScreenCapture({ interviewId });
+  const recording = useMediaRecording({
+    interviewId,
+    accessToken,
+    stream: proctoring.webcamStream ?? null,
+  });
+  const [isPaused, setIsPaused] = useState(false);
   const webcamVideoRef = useRef<HTMLVideoElement>(null);
 
   // Validate access on mount
@@ -150,7 +157,11 @@ export default function InterviewRoom() {
     proctoring.startMonitoring();
     await proctoring.requestFullscreen();
     await session.startInterview();
-  }, [session, proctoring, screenCapture, meta, interviewId, accessToken]);
+    // Start recording if webcam is active and consent given
+    if (consent.consentRecording && proctoring.webcamStream) {
+      recording.startRecording();
+    }
+  }, [session, proctoring, screenCapture, recording, meta, interviewId, accessToken]);
 
   // Handle resume from interrupted session
   const handleResume = useCallback(() => {
@@ -167,6 +178,9 @@ export default function InterviewRoom() {
     setShowEndConfirm(false);
     setStage("CLOSING");
     await session.endInterview(proctoring.integrityEvents);
+    // Finalize recording
+    const elapsed = meta?.duration ? Math.round((Date.now() - (meta.duration ?? 0)) / 1000) : 0;
+    await recording.finalizeRecording(elapsed);
     proctoring.stopWebcam();
     screenCapture.stopCapture();
     // Exit fullscreen
@@ -174,7 +188,39 @@ export default function InterviewRoom() {
       document.exitFullscreen().catch(() => {});
     }
     setStage("COMPLETE");
-  }, [session, proctoring, screenCapture]);
+  }, [session, proctoring, screenCapture, recording, meta]);
+
+  // Pause/Resume handlers for text interview mode
+  const handlePause = useCallback(async () => {
+    try {
+      await fetch(`/api/interviews/${interviewId}/pause`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "pause", accessToken }),
+      });
+      setIsPaused(true);
+    } catch {
+      // Non-blocking
+    }
+  }, [interviewId, accessToken]);
+
+  const handleResumePause = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/interviews/${interviewId}/pause`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "resume", accessToken }),
+      });
+      const data = await res.json();
+      if (data.status === "CANCELLED") {
+        setStage("COMPLETE");
+        return;
+      }
+      setIsPaused(false);
+    } catch {
+      // Non-blocking
+    }
+  }, [interviewId, accessToken]);
 
   const handleEndCancel = useCallback(() => {
     setShowEndConfirm(false);
@@ -382,7 +428,34 @@ export default function InterviewRoom() {
         pasteBlocked={proctoring.pasteBlocked}
         onEndInterview={handleEndRequest}
         onRequestFullscreen={proctoring.requestFullscreen}
+        onPause={handlePause}
       />
+
+      {/* Recording warning */}
+      {recording.recordingWarning && (
+        <div className="flex items-center gap-2 bg-yellow-500/10 border-b border-yellow-500/20 px-4 py-2 text-sm text-yellow-400">
+          Recording may be incomplete due to upload issues
+        </div>
+      )}
+
+      {/* Pause overlay */}
+      {isPaused && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-zinc-950/80 backdrop-blur-sm">
+          <div className="bg-zinc-900 border border-zinc-700 rounded-2xl p-8 max-w-sm text-center">
+            <div className="text-4xl mb-4">⏸</div>
+            <h2 className="text-xl font-bold text-white mb-2">Interview Paused</h2>
+            <p className="text-zinc-400 text-sm mb-6">
+              Your progress is saved. The interview will auto-cancel if paused for more than 10 minutes.
+            </p>
+            <button
+              onClick={handleResumePause}
+              className="w-full px-4 py-3 rounded-lg bg-violet-600 hover:bg-violet-700 text-white font-medium transition-colors"
+            >
+              Resume Interview
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="flex-1 flex overflow-hidden">
         {/* Aria panel — left side */}

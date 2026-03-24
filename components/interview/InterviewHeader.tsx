@@ -23,6 +23,7 @@ interface InterviewHeaderProps {
   pasteBlocked: boolean;
   onEndInterview: () => void;
   onRequestFullscreen: () => void;
+  onPause?: () => void;
 }
 
 const MAX_DURATION_SECONDS = 45 * 60; // 45 minutes
@@ -38,6 +39,7 @@ export function InterviewHeader({
   pasteBlocked,
   onEndInterview,
   onRequestFullscreen,
+  onPause,
 }: InterviewHeaderProps) {
   const [elapsed, setElapsed] = useState(0);
 
@@ -141,6 +143,18 @@ export function InterviewHeader({
             </div>
           )}
         </div>
+
+        {/* Pause interview */}
+        {isActive && onPause && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onPause}
+            className="border-zinc-700 text-zinc-300 hover:bg-zinc-800"
+          >
+            Pause
+          </Button>
+        )}
 
         {/* End interview */}
         {isActive && (
