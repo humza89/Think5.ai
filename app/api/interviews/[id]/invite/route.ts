@@ -70,19 +70,24 @@ export async function POST(
     const token = crypto.randomBytes(32).toString("hex");
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
-    await prisma.interviewInvitation.create({
+    const invitation = await prisma.interviewInvitation.create({
       data: {
         recruiterId,
         candidateId: interview.candidate.id,
         jobId: interview.jobId || undefined,
         templateId: interview.templateId || undefined,
-        interviewId: id,
         email: candidateEmail,
         token,
         status: "SENT",
         sentAt: new Date(),
         expiresAt,
       },
+    });
+
+    // Link invitation to interview
+    await prisma.interview.update({
+      where: { id },
+      data: { invitationId: invitation.id },
     });
 
     // Build canonical accept URL
