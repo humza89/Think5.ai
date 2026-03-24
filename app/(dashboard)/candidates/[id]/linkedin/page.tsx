@@ -77,12 +77,32 @@ export default async function LinkedInTab({ params }: { params: Promise<{ id: st
   const { id } = await params;
   const candidate = await prisma.candidate.findUnique({
     where: { id },
+    include: {
+      candidateExperiences: { orderBy: { startDate: "desc" } },
+      candidateEducation: { orderBy: { startDate: "desc" } },
+    },
   });
 
   if (!candidate) return null;
 
-  const experiences = candidate.experiences as any[] || [];
-  const education = candidate.education as any[] || [];
+  // Use JSON fields first (from LinkedIn import), fall back to relational tables (from onboarding)
+  const experiences: any[] = (candidate.experiences as any[]) ??
+    candidate.candidateExperiences.map((exp: any) => ({
+      title: exp.title,
+      company: exp.company,
+      startDate: exp.startDate ? exp.startDate.toISOString().slice(0, 7) : '',
+      endDate: exp.isCurrent ? 'Present' : (exp.endDate ? exp.endDate.toISOString().slice(0, 7) : ''),
+      location: exp.location,
+      description: exp.description,
+    }));
+  const education: any[] = (candidate.education as any[]) ??
+    candidate.candidateEducation.map((edu: any) => ({
+      school: edu.institution,
+      degree: edu.degree,
+      field: edu.field,
+      startDate: edu.startDate ? edu.startDate.toISOString().slice(0, 7) : '',
+      endDate: edu.endDate ? edu.endDate.toISOString().slice(0, 7) : '',
+    }));
   const skills = candidate.skills as string[] || [];
   const groupedExperiences = groupExperiencesByCompany(experiences);
 

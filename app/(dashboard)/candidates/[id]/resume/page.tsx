@@ -30,19 +30,31 @@ export default async function ResumeTab({ params }: { params: Promise<{ id: stri
               </p>
             </div>
           ) : (
-            <object
-              data={`${resumeUrl}#toolbar=0&navpanes=0&scrollbar=1`}
-              type="application/pdf"
-              className="w-full h-full"
-              style={{ minHeight: 'calc(100vh - 200px)' }}
-            >
-              <embed
-                src={`${resumeUrl}#toolbar=0&navpanes=0&scrollbar=1`}
-                type="application/pdf"
-                className="w-full h-full"
-                style={{ minHeight: 'calc(100vh - 200px)' }}
+            <div className="h-full flex flex-col">
+              <div className="px-6 py-2 flex items-center gap-3 bg-white border-b">
+                <a
+                  href={resumeUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-sm text-blue-600 hover:underline"
+                >
+                  Open in new tab
+                </a>
+                <a
+                  href={resumeUrl}
+                  download
+                  className="text-sm text-blue-600 hover:underline"
+                >
+                  Download
+                </a>
+              </div>
+              <iframe
+                src={resumeUrl}
+                className="w-full flex-1"
+                style={{ minHeight: 'calc(100vh - 250px)' }}
+                title="Resume"
               />
-            </object>
+            </div>
           )}
         </div>
       </div>
