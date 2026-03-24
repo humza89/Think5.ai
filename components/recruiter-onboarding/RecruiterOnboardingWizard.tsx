@@ -69,11 +69,13 @@ export function RecruiterOnboardingWizard({
         case 1:
           stepData = data.company;
           break;
-        case 2:
+        case 2: {
+          const invitations = data.teamInvitations ?? [];
           stepData = {
-            invitations: data.teamInvitations.filter((inv) => inv.email.trim()),
-            skip: data.teamInvitations.length === 0 || !data.teamInvitations.some((inv) => inv.email.trim()),
+            invitations: invitations.filter((inv) => inv.email.trim()),
+            skip: invitations.length === 0 || !invitations.some((inv) => inv.email.trim()),
           };
+        }
           break;
         case 3:
           stepData = data.hiringPreferences;

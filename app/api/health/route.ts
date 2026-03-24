@@ -36,6 +36,23 @@ export async function GET() {
   checks.openai = process.env.OPENAI_API_KEY ? "configured" : "missing";
   checks.resend = process.env.RESEND_API_KEY ? "configured" : "missing";
 
+  // Recording storage metrics
+  let storageMetrics: Record<string, unknown> = {};
+  try {
+    const recordingCount = await prisma.interview.count({
+      where: { recordingUrl: { not: null } },
+    });
+    const totalInterviews = await prisma.interview.count();
+    storageMetrics = {
+      totalInterviews,
+      recordingsCount: recordingCount,
+      estimatedStorageGb: +(recordingCount * 0.05).toFixed(2), // ~50MB per recording
+      estimatedMonthlyCostUsd: +(recordingCount * 0.05 * 0.015).toFixed(4), // $0.015/GB R2
+    };
+  } catch {
+    storageMetrics = { error: "unable_to_query" };
+  }
+
   // SLO status
   let sloStatus: unknown[] = [];
   try {
@@ -52,6 +69,7 @@ export async function GET() {
       status: allHealthy ? "healthy" : "degraded",
       timestamp: new Date().toISOString(),
       checks,
+      storage: storageMetrics,
       slos: sloStatus,
     },
     { status: allHealthy ? 200 : 503 }

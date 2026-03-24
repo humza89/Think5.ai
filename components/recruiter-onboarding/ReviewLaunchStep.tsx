@@ -96,9 +96,9 @@ export function ReviewLaunchStep({ data, onAcknowledge }: ReviewLaunchStepProps)
           <Users className="w-4 h-4 text-primary" />
           <h3 className="font-medium text-foreground">Team Invitations</h3>
         </div>
-        {data.teamInvitations.length > 0 ? (
+        {(data.teamInvitations ?? []).length > 0 ? (
           <div className="space-y-2">
-            {data.teamInvitations.map((inv, i) => (
+            {(data.teamInvitations ?? []).map((inv, i) => (
               <div key={i} className="flex items-center justify-between text-sm">
                 <span className="text-foreground">{inv.email}</span>
                 <Badge variant="outline" className="text-xs">
@@ -121,9 +121,9 @@ export function ReviewLaunchStep({ data, onAcknowledge }: ReviewLaunchStepProps)
         <div className="space-y-3 text-sm">
           <div>
             <span className="text-muted-foreground">Evaluation Criteria:</span>
-            {data.hiringPreferences.evaluationCriteria.length > 0 ? (
+            {(data.hiringPreferences?.evaluationCriteria ?? []).length > 0 ? (
               <div className="flex flex-wrap gap-1.5 mt-1.5">
-                {data.hiringPreferences.evaluationCriteria.map((c, i) => (
+                {(data.hiringPreferences?.evaluationCriteria ?? []).map((c, i) => (
                   <Badge key={i} variant="secondary" className="text-xs">{c}</Badge>
                 ))}
               </div>
@@ -133,9 +133,9 @@ export function ReviewLaunchStep({ data, onAcknowledge }: ReviewLaunchStepProps)
           </div>
           <div>
             <span className="text-muted-foreground">Preferred Attributes:</span>
-            {data.hiringPreferences.preferredAttributes.length > 0 ? (
+            {(data.hiringPreferences?.preferredAttributes ?? []).length > 0 ? (
               <div className="flex flex-wrap gap-1.5 mt-1.5">
-                {data.hiringPreferences.preferredAttributes.map((a, i) => (
+                {(data.hiringPreferences?.preferredAttributes ?? []).map((a, i) => (
                   <Badge key={i} variant="secondary" className="text-xs">{a}</Badge>
                 ))}
               </div>

@@ -363,6 +363,68 @@ export async function deleteRecording(interviewId: string): Promise<void> {
   }
 }
 
+// ── R2 Lifecycle / Cost Optimization ─────────────────────────────────
+//
+// R2 supports Infrequent Access (IA) storage class at $0.01/GB/mo
+// (vs $0.015/GB/mo Standard) — 33% savings for older recordings.
+//
+// Configure via Cloudflare Dashboard → R2 → Bucket Settings → Lifecycle Rules:
+//   Rule: "Transition to IA after 30 days"
+//   - Scope: prefix "recordings/"
+//   - Action: Transition to Infrequent Access after 30 days
+//
+// Or via the Cloudflare API:
+//   PUT /accounts/{account_id}/r2/buckets/{bucket_name}/lifecycle
+//   Body: { "rules": [{ "id": "archive-recordings", "enabled": true,
+//           "conditions": { "prefix": "recordings/", "age_days": 30 },
+//           "actions": { "transition_to_ia": true } }] }
+//
+// Note: IA has a minimum storage duration of 30 days and minimum object
+// size of 128KB. Recordings exceed both thresholds.
+
+/**
+ * Apply lifecycle rules to the R2 bucket via Cloudflare API.
+ * Call once during setup (idempotent).
+ */
+export async function applyR2LifecycleRules(): Promise<{ success: boolean; error?: string }> {
+  const accountId = R2_ACCOUNT_ID;
+  const apiToken = process.env.CLOUDFLARE_API_TOKEN;
+
+  if (!accountId || !apiToken) {
+    return { success: false, error: "CLOUDFLARE_API_TOKEN or R2_ACCOUNT_ID not configured" };
+  }
+
+  const url = `https://api.cloudflare.com/client/v4/accounts/${accountId}/r2/buckets/${R2_BUCKET_NAME}/lifecycle`;
+
+  const res = await fetch(url, {
+    method: "PUT",
+    headers: {
+      Authorization: `Bearer ${apiToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      rules: [
+        {
+          id: "archive-recordings-30d",
+          enabled: true,
+          conditions: { prefix: "recordings/" },
+          actions: {
+            type: "TransitionToInfrequentAccess",
+            transition_to_ia: { days: 30 },
+          },
+        },
+      ],
+    }),
+  });
+
+  if (!res.ok) {
+    const body = await res.text();
+    return { success: false, error: `Cloudflare API error ${res.status}: ${body}` };
+  }
+
+  return { success: true };
+}
+
 // ── Helpers ────────────────────────────────────────────────────────────
 
 function getExtension(mimeType: string): string {

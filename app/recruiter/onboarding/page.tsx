@@ -70,7 +70,7 @@ export default function RecruiterOnboardingPage() {
                 headquarters: resp.company.headquarters || "",
               }
             : { mode: null },
-          teamInvitations: resp.teamInvitations.map((inv) => ({
+          teamInvitations: (resp.teamInvitations ?? []).map((inv) => ({
             email: inv.email,
             name: inv.name || "",
             role: inv.role,

@@ -39,33 +39,36 @@ export function HiringPreferencesStep({ data, onChange }: HiringPreferencesStepP
   const [criteriaInput, setCriteriaInput] = useState("");
   const [attributeInput, setAttributeInput] = useState("");
 
+  const criteria = data.evaluationCriteria ?? [];
+  const attributes = data.preferredAttributes ?? [];
+
   const addCriteria = (value: string) => {
     const trimmed = value.trim();
-    if (!trimmed || data.evaluationCriteria.includes(trimmed)) return;
-    if (data.evaluationCriteria.length >= 20) return;
-    onChange({ ...data, evaluationCriteria: [...data.evaluationCriteria, trimmed] });
+    if (!trimmed || criteria.includes(trimmed)) return;
+    if (criteria.length >= 20) return;
+    onChange({ ...data, evaluationCriteria: [...criteria, trimmed] });
     setCriteriaInput("");
   };
 
   const removeCriteria = (index: number) => {
     onChange({
       ...data,
-      evaluationCriteria: data.evaluationCriteria.filter((_, i) => i !== index),
+      evaluationCriteria: criteria.filter((_, i) => i !== index),
     });
   };
 
   const addAttribute = (value: string) => {
     const trimmed = value.trim();
-    if (!trimmed || data.preferredAttributes.includes(trimmed)) return;
-    if (data.preferredAttributes.length >= 20) return;
-    onChange({ ...data, preferredAttributes: [...data.preferredAttributes, trimmed] });
+    if (!trimmed || attributes.includes(trimmed)) return;
+    if (attributes.length >= 20) return;
+    onChange({ ...data, preferredAttributes: [...attributes, trimmed] });
     setAttributeInput("");
   };
 
   const removeAttribute = (index: number) => {
     onChange({
       ...data,
-      preferredAttributes: data.preferredAttributes.filter((_, i) => i !== index),
+      preferredAttributes: attributes.filter((_, i) => i !== index),
     });
   };
 
@@ -104,9 +107,9 @@ export function HiringPreferencesStep({ data, onChange }: HiringPreferencesStepP
           </Button>
         </div>
 
-        {data.evaluationCriteria.length > 0 && (
+        {criteria.length > 0 && (
           <div className="flex flex-wrap gap-2">
-            {data.evaluationCriteria.map((criteria, i) => (
+            {criteria.map((criteria, i) => (
               <Badge key={i} variant="secondary" className="pl-3 pr-1 py-1.5">
                 {criteria}
                 <button
@@ -123,7 +126,7 @@ export function HiringPreferencesStep({ data, onChange }: HiringPreferencesStepP
         <div>
           <p className="text-xs text-muted-foreground mb-2">Suggestions:</p>
           <div className="flex flex-wrap gap-1.5">
-            {SUGGESTED_CRITERIA.filter((s) => !data.evaluationCriteria.includes(s)).map(
+            {SUGGESTED_CRITERIA.filter((s) => !criteria.includes(s)).map(
               (suggestion) => (
                 <button
                   key={suggestion}
@@ -163,9 +166,9 @@ export function HiringPreferencesStep({ data, onChange }: HiringPreferencesStepP
           </Button>
         </div>
 
-        {data.preferredAttributes.length > 0 && (
+        {attributes.length > 0 && (
           <div className="flex flex-wrap gap-2">
-            {data.preferredAttributes.map((attr, i) => (
+            {attributes.map((attr, i) => (
               <Badge key={i} variant="secondary" className="pl-3 pr-1 py-1.5">
                 {attr}
                 <button
@@ -182,7 +185,7 @@ export function HiringPreferencesStep({ data, onChange }: HiringPreferencesStepP
         <div>
           <p className="text-xs text-muted-foreground mb-2">Suggestions:</p>
           <div className="flex flex-wrap gap-1.5">
-            {SUGGESTED_ATTRIBUTES.filter((s) => !data.preferredAttributes.includes(s)).map(
+            {SUGGESTED_ATTRIBUTES.filter((s) => !attributes.includes(s)).map(
               (suggestion) => (
                 <button
                   key={suggestion}

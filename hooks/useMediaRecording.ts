@@ -100,6 +100,7 @@ export function useMediaRecording({
       try {
         recorder = new MediaRecorder(stream, {
           mimeType: "video/webm;codecs=vp9",
+          videoBitsPerSecond: 1_500_000, // 1.5 Mbps — ~50% smaller files at 720p
         });
       } catch {
         recorder = new MediaRecorder(stream);
