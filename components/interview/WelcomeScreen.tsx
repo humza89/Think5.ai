@@ -160,7 +160,7 @@ export function WelcomeScreen({
                 variant="outline"
                 size="sm"
                 onClick={onRequestWebcam}
-                className="border-zinc-700 text-zinc-300 hover:bg-zinc-800"
+                className="border-zinc-600 text-zinc-900 bg-zinc-200 hover:bg-zinc-300"
               >
                 Enable
               </Button>
@@ -191,7 +191,7 @@ export function WelcomeScreen({
                   variant="outline"
                   size="sm"
                   onClick={onRequestScreenShare}
-                  className="border-zinc-700 text-zinc-300 hover:bg-zinc-800"
+                  className="border-zinc-600 text-zinc-900 bg-zinc-200 hover:bg-zinc-300"
                 >
                   Enable
                 </Button>
