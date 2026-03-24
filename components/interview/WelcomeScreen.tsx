@@ -26,6 +26,7 @@ interface WelcomeScreenProps {
   screenShareRequired?: boolean;
   screenShareActive?: boolean;
   onRequestScreenShare?: () => void;
+  voiceProvider?: string | null;
   mode?: string | null;
   templateConfig?: {
     screenShareRequired?: boolean;
@@ -47,6 +48,7 @@ export function WelcomeScreen({
   screenShareRequired = false,
   screenShareActive = false,
   onRequestScreenShare,
+  voiceProvider,
   mode,
   templateConfig,
   isPractice = false,
@@ -88,7 +90,7 @@ export function WelcomeScreen({
           </div>
           <div className="flex items-center gap-3 text-zinc-300">
             <MessageSquare className="w-5 h-5 text-zinc-500 shrink-0" />
-            <span>Text-based conversation (voice input optional)</span>
+            <span>{voiceProvider === "gemini-live" ? "Real-time voice conversation with Aria" : "Text-based conversation (voice input optional)"}</span>
           </div>
           <div className="flex items-center gap-3 text-zinc-300">
             <CheckCircle className="w-5 h-5 text-zinc-500 shrink-0" />

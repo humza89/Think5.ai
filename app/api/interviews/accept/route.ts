@@ -87,7 +87,7 @@ export async function POST(request: NextRequest) {
         type: "TECHNICAL",
         mode: "GENERAL_PROFILE",
         status: "PENDING",
-        voiceProvider: "text-sse",
+        voiceProvider: "gemini-live",
         accessToken,
         accessTokenExpiresAt,
         companyId: invitation.recruiter?.companyId || undefined,

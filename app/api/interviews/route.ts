@@ -29,7 +29,7 @@ export async function POST(request: NextRequest) {
       candidateId,
       type = "TECHNICAL",
       mode = "GENERAL_PROFILE",
-      voiceProvider = "text-sse",
+      voiceProvider = "gemini-live",
       templateId,
       jobId,
       isPractice = false,

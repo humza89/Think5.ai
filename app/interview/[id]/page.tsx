@@ -401,6 +401,7 @@ export default function InterviewRoom() {
           candidateReportPolicy: meta.candidateReportPolicy || undefined,
         } : undefined}
         isPractice={meta.isPractice}
+        voiceProvider={meta.voiceProvider}
       />
     );
   }
