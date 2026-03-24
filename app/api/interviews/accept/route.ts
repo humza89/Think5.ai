@@ -46,6 +46,20 @@ export async function POST(request: NextRequest) {
 
     // If interview already exists (from a previous acceptance), return it
     if (invitation.interview) {
+      let { accessToken: existingToken } = invitation.interview;
+
+      // If the interview was created without an accessToken (scheduled by recruiter),
+      // generate one now so the candidate can access the interview room
+      if (!existingToken) {
+        const newToken = randomUUID();
+        const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+        await prisma.interview.update({
+          where: { id: invitation.interview.id },
+          data: { accessToken: newToken, accessTokenExpiresAt: expiresAt },
+        });
+        existingToken = newToken;
+      }
+
       // Update invitation status
       if (invitation.status !== "ACCEPTED") {
         await prisma.interviewInvitation.update({
@@ -56,7 +70,7 @@ export async function POST(request: NextRequest) {
 
       return NextResponse.json({
         interviewId: invitation.interview.id,
-        accessToken: invitation.interview.accessToken,
+        accessToken: existingToken,
       });
     }
 
