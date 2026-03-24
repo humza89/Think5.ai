@@ -10,9 +10,16 @@ export default async function InterviewsTab({
 }) {
   const { id } = await params;
 
-  const interviews = await prisma.interview.findMany({
+  const rawInterviews = await prisma.interview.findMany({
     where: { candidateId: id },
-    include: {
+    select: {
+      id: true,
+      type: true,
+      status: true,
+      createdAt: true,
+      startedAt: true,
+      completedAt: true,
+      invitedEmail: true,
       report: {
         select: {
           id: true,
@@ -29,6 +36,14 @@ export default async function InterviewsTab({
     },
     orderBy: { createdAt: "desc" },
   });
+
+  // Serialize dates for client component
+  const interviews = rawInterviews.map((i: (typeof rawInterviews)[number]) => ({
+    ...i,
+    createdAt: i.createdAt.toISOString(),
+    startedAt: i.startedAt?.toISOString() ?? null,
+    completedAt: i.completedAt?.toISOString() ?? null,
+  }));
 
   const candidate = await prisma.candidate.findUnique({
     where: { id },
