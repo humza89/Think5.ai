@@ -215,6 +215,18 @@ export async function requireCandidateAccess(candidateId: string) {
     }
 
     if (candidate.recruiterId !== recruiter.id) {
+      // Allow recruiters to claim self-onboarded candidates (owned by system recruiter)
+      const systemRecruiter = await prisma.recruiter.findFirst({
+        where: { email: "system@think5.ai" },
+        select: { id: true },
+      });
+      if (systemRecruiter && candidate.recruiterId === systemRecruiter.id) {
+        await prisma.candidate.update({
+          where: { id: candidateId },
+          data: { recruiterId: recruiter.id },
+        });
+        return { user, profile, recruiter };
+      }
       throw new AuthError('Forbidden: you do not own this candidate', 403);
     }
 
