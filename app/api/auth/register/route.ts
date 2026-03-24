@@ -5,6 +5,7 @@ import { sendVerificationEmail } from '@/lib/email/resend';
 import crypto from 'crypto';
 import type { UserRole } from '@/types/supabase';
 import { checkRateLimit } from '@/lib/rate-limit';
+import { logActivity } from '@/lib/activity-log';
 
 interface RegisterRequest {
   email: string;
@@ -196,6 +197,15 @@ export async function POST(request: NextRequest) {
       console.error('Email sending error:', emailError);
       // Don't fail registration if email fails - user can request new one
     }
+
+    logActivity({
+      userId: authData.user.id,
+      userRole: role,
+      action: 'user.registered',
+      entityType: 'User',
+      entityId: authData.user.id,
+      metadata: { email: email.toLowerCase(), role },
+    }).catch(console.error);
 
     return NextResponse.json({
       success: true,

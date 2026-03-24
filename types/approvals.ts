@@ -102,3 +102,46 @@ export interface ApprovalsListResponse {
 }
 
 export type ApprovalActionType = "approved" | "rejected" | "on_hold";
+
+export interface ApprovalRecruiter {
+  id: string;
+  name: string;
+  email: string;
+  phone: string | null;
+  title: string | null;
+  department: string | null;
+  companyId: string | null;
+  company: { id: string; name: string } | null;
+  linkedinUrl: string | null;
+  profileImage: string | null;
+  bio: string | null;
+  onboardingStep: number;
+  onboardingCompleted: boolean;
+  onboardingStatus: string;
+  hiringPreferences: any;
+  createdAt: string;
+}
+
+export interface ApprovalRecruiterDetail extends ApprovalRecruiter {
+  company: {
+    id: string;
+    name: string;
+    industry: string | null;
+    companySize: string | null;
+    website: string | null;
+    description: string | null;
+  } | null;
+}
+
+export interface RecruiterApprovalsListResponse {
+  recruiters: ApprovalRecruiter[];
+  total: number;
+  page: number;
+  totalPages: number;
+  counts: {
+    pending: number;
+    approved: number;
+    rejected: number;
+    all: number;
+  };
+}

@@ -23,12 +23,33 @@ const ACTION_TO_RECRUITER_STATUS: Record<string, RecruiterOnboardingStatus> = {
 };
 
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     await requireRole(["admin"]);
     const { id } = await params;
+    const { searchParams } = new URL(request.url);
+    const type = searchParams.get("type") || "candidate";
+
+    if (type === "recruiter") {
+      const recruiter = await prisma.recruiter.findUnique({
+        where: { id },
+        include: { company: true },
+      });
+
+      if (!recruiter) {
+        return NextResponse.json({ error: "Recruiter not found" }, { status: 404 });
+      }
+
+      return NextResponse.json({
+        ...recruiter,
+        companyDetails: recruiter.company,
+        hiringPreferences: recruiter.hiringPreferences,
+        onboardingCompleted: recruiter.onboardingCompleted,
+        onboardingStatus: recruiter.onboardingStatus,
+      });
+    }
 
     const candidate = await prisma.candidate.findUnique({
       where: { id },

@@ -9,6 +9,7 @@ import {
 } from "@/lib/auth";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { computeCandidateRiskSignals } from "@/lib/admin-risk-scoring";
+import { logActivity } from "@/lib/activity-log";
 
 // Month name/abbreviation → number mapping
 const MONTH_MAP: Record<string, number> = {
@@ -342,11 +343,26 @@ export async function PATCH(req: NextRequest) {
           });
         }
 
+        // Compute total experience duration in years from start/end dates
+        let totalMonths = 0;
+        const now = new Date();
+        for (const exp of experiences) {
+          const start = safeDate(exp.startDate);
+          if (!start || start > now) continue;
+          const end = exp.endDate ? safeDate(exp.endDate) : null;
+          const effectiveEnd = end && end <= now ? end : now;
+          const months =
+            (effectiveEnd.getFullYear() - start.getFullYear()) * 12 +
+            (effectiveEnd.getMonth() - start.getMonth());
+          if (months > 0) totalMonths += months;
+        }
+        const computedYears = totalMonths > 0 ? Math.round(totalMonths / 12) : null;
+
         await prisma.candidate.update({
           where: { id: candidate.id },
           data: {
             onboardingStep: Math.max(candidate.onboardingStep, step),
-            experienceYears: experiences.length > 0 ? experiences.length : null,
+            experienceYears: computedYears,
           },
         });
         break;
@@ -543,6 +559,14 @@ export async function PATCH(req: NextRequest) {
           .from("profiles")
           .update({ onboarding_status: "pending_approval" })
           .eq("id", user.id);
+
+        logActivity({
+          userId: user.id,
+          userRole: 'candidate',
+          action: 'candidate.onboarding.completed',
+          entityType: 'Candidate',
+          entityId: candidate.id,
+        }).catch(console.error);
 
         break;
       }

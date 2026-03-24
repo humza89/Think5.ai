@@ -210,13 +210,13 @@ async function handleRecruiterApprovals({
       }),
       prisma.recruiter.count({ where }),
       prisma.recruiter.count({
-        where: { onboardingCompleted: true, onboardingStatus: "PENDING_APPROVAL" },
+        where: { onboardingCompleted: true, onboardingStatus: "PENDING_APPROVAL", ...(tenantId ? { companyId: tenantId } : {}) },
       }),
       prisma.recruiter.count({
-        where: { onboardingCompleted: true, onboardingStatus: "APPROVED" },
+        where: { onboardingCompleted: true, onboardingStatus: "APPROVED", ...(tenantId ? { companyId: tenantId } : {}) },
       }),
       prisma.recruiter.count({
-        where: { onboardingCompleted: true, onboardingStatus: "REJECTED" },
+        where: { onboardingCompleted: true, onboardingStatus: "REJECTED", ...(tenantId ? { companyId: tenantId } : {}) },
       }),
     ]);
 
