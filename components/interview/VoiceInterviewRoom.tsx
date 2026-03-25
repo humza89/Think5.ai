@@ -246,7 +246,7 @@ export function VoiceInterviewRoom({
     return () => clearTimeout(timeout);
   }, [textInput, showTextInput]);
 
-  // ── Camera Setup ─────────────────────────────────────────────────
+  // ── Camera Setup (mandatory) ────────────────────────────────────
 
   useEffect(() => {
     let currentStream: MediaStream | null = null;
@@ -258,9 +258,7 @@ export function VoiceInterviewRoom({
           audio: false, // Audio is handled by useVoiceInterview
         });
         setStream(currentStream);
-        if (videoRef.current) {
-          videoRef.current.srcObject = currentStream;
-        }
+        setCameraEnabled(true);
 
         // Initialize recording
         const fullStream = await navigator.mediaDevices.getUserMedia({
@@ -295,7 +293,7 @@ export function VoiceInterviewRoom({
           recorder.start(2000);
         }
       } catch {
-        toast.error("Could not access camera. Please check permissions.");
+        toast.error("Camera access is required for this interview. Please enable your camera and refresh.");
       }
     };
 
@@ -310,6 +308,13 @@ export function VoiceInterviewRoom({
       }
     };
   }, []);
+
+  // Bind stream to video element (runs after video element renders)
+  useEffect(() => {
+    if (videoRef.current && stream) {
+      videoRef.current.srcObject = stream;
+    }
+  }, [stream, interviewState]);
 
   // ── Timer ────────────────────────────────────────────────────────
 
@@ -441,53 +446,14 @@ export function VoiceInterviewRoom({
 
   // ── Render ───────────────────────────────────────────────────────
 
-  // Pre-interview state
+  // Connecting state — consent already handled by WelcomeScreen
   if (interviewState === "IDLE" || interviewState === "CONNECTING") {
     return (
       <div className="flex h-screen items-center justify-center bg-background">
-        <Card className="max-w-md p-8 text-center">
-          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-primary/10">
-            <Bot className="h-8 w-8 text-primary" />
-          </div>
-          <h2 className="text-xl font-semibold">Ready to Begin?</h2>
-          <p className="mt-2 text-sm text-muted-foreground">
-            You&apos;ll be speaking with Aria, our AI interviewer, for approximately{" "}
-            {durationMinutes} minutes about the <strong>{jobTitle}</strong> role.
-          </p>
-
-          <div className="mt-4 space-y-2 text-left text-sm text-muted-foreground">
-            <p className="flex items-center gap-2">
-              <Mic className="h-4 w-4" /> Your microphone and camera will be used
-            </p>
-            <p className="flex items-center gap-2">
-              <Video className="h-4 w-4" /> This interview will be recorded
-            </p>
-            <p className="flex items-center gap-2">
-              <MessageSquare className="h-4 w-4" /> Speak naturally — Aria will adapt to you
-            </p>
-          </div>
-
-          <div className="mt-4 rounded-lg bg-muted/50 p-3 text-xs text-muted-foreground">
-            By starting this interview, you consent to audio/video recording,
-            transcription, and AI-based evaluation.
-          </div>
-
-          <Button
-            onClick={startInterview}
-            className="mt-6 w-full"
-            size="lg"
-            disabled={interviewState === "CONNECTING"}
-          >
-            {interviewState === "CONNECTING" ? (
-              <>
-                <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                Connecting...
-              </>
-            ) : (
-              "Start Interview"
-            )}
-          </Button>
-        </Card>
+        <div className="text-center">
+          <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto mb-4" />
+          <p className="text-sm text-muted-foreground">Connecting to Aria...</p>
+        </div>
       </div>
     );
   }
@@ -717,19 +683,6 @@ export function VoiceInterviewRoom({
                 <Mic className="h-5 w-5" />
               ) : (
                 <MicOff className="h-5 w-5" />
-              )}
-            </Button>
-
-            <Button
-              variant={cameraEnabled ? "secondary" : "destructive"}
-              size="icon"
-              className="h-12 w-12 rounded-full"
-              onClick={toggleCamera}
-            >
-              {cameraEnabled ? (
-                <Video className="h-5 w-5" />
-              ) : (
-                <VideoOff className="h-5 w-5" />
               )}
             </Button>
 

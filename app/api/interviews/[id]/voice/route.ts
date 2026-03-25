@@ -507,6 +507,11 @@ async function startVoiceInterview(
       },
     }, callbacks);
 
+    // Trigger Gemini's opening greeting — Gemini Live waits for input before speaking
+    sendText(activeSession.geminiSession,
+      `Begin the interview now. Greet ${interview.candidate.fullName} warmly and introduce yourself as Aria, their AI interviewer.`
+    );
+
     // Generate reconnect token and update interview status
     const reconnToken = generateReconnectToken();
     const currentStatus = interview.status;

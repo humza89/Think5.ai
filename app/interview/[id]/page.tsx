@@ -160,12 +160,16 @@ export default function InterviewRoom() {
     }
 
     setStage("ACTIVE");
-    proctoring.startMonitoring();
-    await proctoring.requestFullscreen();
-    await session.startInterview();
-    // Start recording if webcam is active and consent given
-    if (consent.consentRecording && proctoring.webcamStream) {
-      recording.startRecording();
+
+    // Voice interviews: VoiceInterviewRoom auto-starts and manages its own session
+    if (meta?.voiceProvider !== "gemini-live") {
+      proctoring.startMonitoring();
+      await proctoring.requestFullscreen();
+      await session.startInterview();
+      // Start recording if webcam is active and consent given
+      if (consent.consentRecording && proctoring.webcamStream) {
+        recording.startRecording();
+      }
     }
   }, [session, proctoring, screenCapture, recording, meta, interviewId, accessToken]);
 
