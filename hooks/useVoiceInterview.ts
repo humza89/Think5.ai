@@ -28,6 +28,7 @@ export interface TranscriptEntry {
   role: "interviewer" | "candidate";
   content: string;
   timestamp: string;
+  finalized?: boolean; // true when turn is complete (used to accumulate fragments)
 }
 
 export interface VoiceInterviewConfig {
@@ -99,6 +100,7 @@ export function useVoiceInterview(
   const processorRef = useRef<ScriptProcessorNode | null>(null);
   const reconnectAttemptsRef = useRef(0);
   const maxReconnectAttempts = 3;
+  const currentTurnTextRef = useRef(""); // Accumulates transcript fragments within a turn
 
   // Keep refs in sync
   useEffect(() => { isMicEnabledRef.current = isMicEnabled; }, [isMicEnabled]);
@@ -171,47 +173,61 @@ export function useVoiceInterview(
                 scheduleAudioChunk(audioData);
               }
 
-              // Text transcript
+              // Text transcript — accumulate into current turn (modelTurn text is rare for native audio)
               if (part.text) {
-                const text = part.text as string;
-                const entry: TranscriptEntry = {
-                  role: "interviewer",
-                  content: text,
-                  timestamp: new Date().toISOString(),
-                };
-                setTranscript((prev) => [...prev, entry]);
-                // Count questions
-                if (text.includes("?")) {
-                  setQuestionCount((prev) => prev + 1);
-                }
+                const fragment = part.text as string;
+                // Filter out Gemini's internal thinking/reasoning
+                if (fragment.startsWith("*") || fragment.startsWith("**")) continue;
+                currentTurnTextRef.current += fragment;
               }
             }
           }
         }
 
-        // Turn complete
+        // Output transcription (native audio models send transcript word-by-word here)
+        const outputTranscription = serverContent.outputTranscription as Record<string, unknown> | undefined;
+        if (outputTranscription?.text) {
+          const fragment = outputTranscription.text as string;
+          // Filter out Gemini's internal thinking/reasoning
+          if (!fragment.startsWith("*")) {
+            currentTurnTextRef.current += fragment;
+            // Update transcript with accumulated text (single entry per turn)
+            setTranscript((prev) => {
+              const last = prev[prev.length - 1];
+              if (last && last.role === "interviewer" && !last.finalized) {
+                // Update existing in-progress entry
+                return [...prev.slice(0, -1), { ...last, content: currentTurnTextRef.current }];
+              }
+              // Create new in-progress entry
+              return [...prev, { role: "interviewer" as const, content: currentTurnTextRef.current, timestamp: new Date().toISOString() }];
+            });
+          }
+        }
+
+        // Turn complete — finalize the accumulated transcript entry
         if (serverContent.turnComplete) {
+          if (currentTurnTextRef.current.trim()) {
+            const finalText = currentTurnTextRef.current.trim();
+            setTranscript((prev) => {
+              const last = prev[prev.length - 1];
+              if (last && last.role === "interviewer") {
+                return [...prev.slice(0, -1), { ...last, content: finalText, finalized: true }];
+              }
+              return [...prev, { role: "interviewer" as const, content: finalText, timestamp: new Date().toISOString(), finalized: true }];
+            });
+            // Count questions from the complete sentence
+            if (finalText.includes("?")) {
+              setQuestionCount((prev) => prev + 1);
+            }
+          }
+          currentTurnTextRef.current = "";
           setAiState("listening");
         }
 
         // Interrupted — reset scheduled playback time so new audio starts immediately
         if (serverContent.interrupted) {
           nextPlayTimeRef.current = 0;
-        }
-
-        // Output transcription (native audio models send transcript separately)
-        const outputTranscription = serverContent.outputTranscription as Record<string, unknown> | undefined;
-        if (outputTranscription?.text) {
-          const text = outputTranscription.text as string;
-          const entry: TranscriptEntry = {
-            role: "interviewer",
-            content: text,
-            timestamp: new Date().toISOString(),
-          };
-          setTranscript((prev) => [...prev, entry]);
-          if (text.includes("?")) {
-            setQuestionCount((prev) => prev + 1);
-          }
+          currentTurnTextRef.current = "";
         }
       }
 
