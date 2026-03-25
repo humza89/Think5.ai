@@ -98,6 +98,8 @@ export function useVoiceInterview(
   const questionCountRef = useRef(0);
   const candidateNameRef = useRef("");
   const processorRef = useRef<ScriptProcessorNode | null>(null);
+  const reconnectAttemptsRef = useRef(0);
+  const maxReconnectAttempts = 3;
 
   // Keep refs in sync
   useEffect(() => { isMicEnabledRef.current = isMicEnabled; }, [isMicEnabled]);
@@ -368,7 +370,6 @@ export function useVoiceInterview(
           channelCount: 1,
           echoCancellation: true,
           noiseSuppression: true,
-          autoGainControl: true,
         },
       });
       mediaStreamRef.current = micStream;
@@ -388,37 +389,37 @@ export function useVoiceInterview(
         ws.onopen = () => {
           console.log("[Voice] WebSocket connected, sending setup message...");
 
-          // Build setup message
-          const toolDefs = tools.map((tool: { name: string; description: string; parameters: Record<string, unknown> }) => ({
-            functionDeclarations: [{
-              name: tool.name,
-              description: tool.description,
-              parameters: tool.parameters,
-            }],
+          // Build tool declarations — single object wrapping all declarations
+          const functionDeclarations = tools.map((tool: { name: string; description: string; parameters: Record<string, unknown> }) => ({
+            name: tool.name,
+            description: tool.description,
+            parameters: tool.parameters,
           }));
 
-          const setupMsg = {
+          const setupMsg: Record<string, unknown> = {
             setup: {
               model: model || "models/gemini-2.5-flash-native-audio-latest",
               generationConfig: {
-                responseModalities: ["AUDIO"],
+                responseModalities: ["audio"],
                 speechConfig: {
                   voiceConfig: {
                     prebuiltVoiceConfig: { voiceName: voiceName || "Kore" },
                   },
                 },
-                temperature: 0.7,
               },
               systemInstruction: {
-                role: "system",
                 parts: [{ text: systemPrompt }],
               },
-              outputAudioTranscription: {},
-              tools: toolDefs,
             },
           };
 
-          console.log("[Voice] Setup model:", setupMsg.setup.model);
+          // Only add tools if they exist
+          if (functionDeclarations.length > 0) {
+            (setupMsg.setup as Record<string, unknown>).tools = [{ functionDeclarations }];
+          }
+
+          console.log("[Voice] Setup model:", (setupMsg.setup as Record<string, unknown>).model);
+          console.log("[Voice] Setup message:", JSON.stringify(setupMsg).slice(0, 500));
           ws.send(JSON.stringify(setupMsg));
         };
 
@@ -461,6 +462,30 @@ export function useVoiceInterview(
         console.log("[Voice] WebSocket closed — code:", event.code, "reason:", event.reason);
         setIsConnected(false);
         setConnectionQuality("poor");
+
+        // Auto-reconnect on abnormal closure (1006) with exponential backoff
+        if (event.code === 1006 && reconnectAttemptsRef.current < maxReconnectAttempts) {
+          const attempt = reconnectAttemptsRef.current;
+          const delay = Math.min(1000 * Math.pow(2, attempt), 8000); // 1s, 2s, 4s, max 8s
+          console.log(`[Voice] Abnormal closure — reconnecting in ${delay}ms (attempt ${attempt + 1}/${maxReconnectAttempts})`);
+          reconnectAttemptsRef.current += 1;
+          setIsReconnecting(true);
+          setReconnectPhase("restoring");
+          setTimeout(() => {
+            startInterview().then(() => {
+              reconnectAttemptsRef.current = 0;
+              setIsReconnecting(false);
+              setReconnectPhase(null);
+            }).catch(() => {
+              setIsReconnecting(false);
+              setReconnectPhase(null);
+              if (reconnectAttemptsRef.current >= maxReconnectAttempts) {
+                setFallbackToText(true);
+                onError?.("Connection lost. You can switch to text mode.");
+              }
+            });
+          }, delay);
+        }
       };
 
       // 6. Send greeting trigger (setup is confirmed complete)
@@ -507,6 +532,7 @@ export function useVoiceInterview(
       setInterviewState("IN_PROGRESS");
       setIsConnected(true);
       setAiState("thinking");
+      reconnectAttemptsRef.current = 0; // Reset on successful connection
     } catch (err) {
       console.error("Failed to start voice interview:", err);
       setInterviewState("ERROR");
@@ -591,8 +617,8 @@ export function useVoiceInterview(
   const reconnect = useCallback(async () => {
     setIsReconnecting(true);
     setReconnectPhase("checking");
+    reconnectAttemptsRef.current = 0; // Reset on manual reconnect
     try {
-      // Just restart the whole connection
       await startInterview();
       setIsReconnecting(false);
       setReconnectPhase(null);

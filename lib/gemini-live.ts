@@ -208,38 +208,34 @@ export function closeSession(session: GeminiLiveSession): void {
 // ── Internal Helpers ───────────────────────────────────────────────────
 
 function buildSetupMessage(config: GeminiLiveConfig) {
-  const tools = config.tools?.map((tool) => ({
-    functionDeclarations: [
-      {
-        name: tool.name,
-        description: tool.description,
-        parameters: tool.parameters,
-      },
-    ],
+  const functionDeclarations = config.tools?.map((tool) => ({
+    name: tool.name,
+    description: tool.description,
+    parameters: tool.parameters,
   }));
 
-  return {
-    setup: {
-      model: "models/gemini-2.5-flash-native-audio-latest",
-      generationConfig: {
-        responseModalities: ["AUDIO"],
-        speechConfig: {
-          voiceConfig: {
-            prebuiltVoiceConfig: {
-              voiceName: config.voiceName || "Kore",
-            },
+  const setup: Record<string, unknown> = {
+    model: "models/gemini-2.5-flash-native-audio-latest",
+    generationConfig: {
+      responseModalities: ["audio"],
+      speechConfig: {
+        voiceConfig: {
+          prebuiltVoiceConfig: {
+            voiceName: config.voiceName || "Kore",
           },
         },
-        temperature: config.generationConfig?.temperature ?? 0.7,
       },
-      systemInstruction: {
-        role: "system",
-        parts: [{ text: config.systemInstruction }],
-      },
-      outputAudioTranscription: {},
-      tools: tools || [],
+    },
+    systemInstruction: {
+      parts: [{ text: config.systemInstruction }],
     },
   };
+
+  if (functionDeclarations && functionDeclarations.length > 0) {
+    setup.tools = [{ functionDeclarations }];
+  }
+
+  return { setup };
 }
 
 function handleServerMessage(
