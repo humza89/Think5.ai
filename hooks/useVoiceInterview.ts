@@ -51,6 +51,7 @@ export interface UseVoiceInterviewReturn {
   isPaused: boolean;
   fallbackToText: boolean;
   reconnectPhase: "checking" | "restoring" | "verifying" | null;
+  micIsSilent: boolean;
   startInterview: () => Promise<void>;
   endInterview: () => void;
   sendTextMessage: (text: string) => void;
@@ -85,6 +86,7 @@ export function useVoiceInterview(
   const [isPaused, setIsPaused] = useState(false);
   const [fallbackToText, setFallbackToText] = useState(false);
   const [reconnectPhase, setReconnectPhase] = useState<"checking" | "restoring" | "verifying" | null>(null);
+  const [micIsSilent, setMicIsSilent] = useState(false);
 
   // Refs
   const wsRef = useRef<WebSocket | null>(null);
@@ -103,6 +105,16 @@ export function useVoiceInterview(
   const intentionalCloseRef = useRef(false); // True when we close the WS ourselves
   const currentTurnTextRef = useRef(""); // Accumulates interviewer transcript fragments within a turn
   const currentCandidateTextRef = useRef(""); // Accumulates candidate speech transcription
+
+  // Enterprise resilience refs
+  const isStartingRef = useRef(false); // Mutex: prevents concurrent startInterview() calls
+  const heartbeatIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const lastMessageTimeRef = useRef(Date.now()); // Tracks last message from Gemini
+  const qualityCheckIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const droppedFramesRef = useRef(0); // Consecutive frames dropped due to backpressure
+  const silentFramesRef = useRef(0); // Consecutive silent audio frames
+  const checkpointFailuresRef = useRef(0); // Consecutive checkpoint failures
+  const consecutiveSetupFailuresRef = useRef(0); // Circuit breaker counter
 
   // ── Audio Resource Cleanup Helper ────────────────────────────────────
   // Called before reconnect and on unmount to prevent resource leaks
@@ -130,6 +142,21 @@ export function useVoiceInterview(
     // 4. Reset turn text accumulators
     currentTurnTextRef.current = "";
     currentCandidateTextRef.current = "";
+
+    // 5. Clear heartbeat and quality monitoring intervals
+    if (heartbeatIntervalRef.current) {
+      clearInterval(heartbeatIntervalRef.current);
+      heartbeatIntervalRef.current = null;
+    }
+    if (qualityCheckIntervalRef.current) {
+      clearInterval(qualityCheckIntervalRef.current);
+      qualityCheckIntervalRef.current = null;
+    }
+
+    // 6. Reset monitoring counters
+    droppedFramesRef.current = 0;
+    silentFramesRef.current = 0;
+    setMicIsSilent(false);
   }, []);
 
   // Keep refs in sync
@@ -140,6 +167,18 @@ export function useVoiceInterview(
   // Notify parent on state changes
   useEffect(() => { onStateChange?.(interviewState); }, [interviewState, onStateChange]);
   useEffect(() => { onTranscriptUpdate?.(transcript); }, [transcript, onTranscriptUpdate]);
+
+  // Auto-stop mic when falling back to text mode
+  useEffect(() => {
+    if (fallbackToText) {
+      cleanupAudioResources();
+      if (wsRef.current) {
+        intentionalCloseRef.current = true;
+        try { wsRef.current.close(); } catch { /* ignore */ }
+        wsRef.current = null;
+      }
+    }
+  }, [fallbackToText, cleanupAudioResources]);
 
   // ── Audio Playback (gapless scheduled) ──────────────────────────
 
@@ -360,7 +399,7 @@ export function useVoiceInterview(
 
   const checkpointTranscript = useCallback(async () => {
     try {
-      await fetch(`/api/interviews/${interviewId}/voice`, {
+      const res = await fetch(`/api/interviews/${interviewId}/voice`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -371,15 +410,48 @@ export function useVoiceInterview(
           questionCount: questionCountRef.current,
         }),
       });
+      if (res.ok) {
+        checkpointFailuresRef.current = 0;
+      } else {
+        throw new Error(`Checkpoint HTTP ${res.status}`);
+      }
     } catch {
-      // Silent — checkpoints are best-effort
+      checkpointFailuresRef.current += 1;
+      if (checkpointFailuresRef.current >= 3) {
+        console.warn("[Voice] 3+ consecutive checkpoint failures — progress may not be saving");
+        onError?.("Progress may not be saving — check your connection.");
+      }
     }
-  }, [interviewId, accessToken]);
+  }, [interviewId, accessToken, onError]);
 
   // ── End Interview (internal) ───────────────────────────────────────
 
   const endInterviewInternal = useCallback(async () => {
     setInterviewState("WRAPPING_UP");
+
+    // Flush any pending transcript fragments before saving
+    if (currentTurnTextRef.current.trim()) {
+      const finalText = currentTurnTextRef.current.trim();
+      setTranscript((prev) => {
+        const last = prev[prev.length - 1];
+        if (last && last.role === "interviewer" && !last.finalized) {
+          return [...prev.slice(0, -1), { ...last, content: finalText, finalized: true }];
+        }
+        return [...prev, { role: "interviewer" as const, content: finalText, timestamp: new Date().toISOString(), finalized: true }];
+      });
+      currentTurnTextRef.current = "";
+    }
+    if (currentCandidateTextRef.current.trim()) {
+      const candidateText = currentCandidateTextRef.current.trim();
+      setTranscript((prev) => {
+        const last = prev[prev.length - 1];
+        if (last && last.role === "candidate" && !last.finalized) {
+          return [...prev.slice(0, -1), { ...last, content: candidateText, finalized: true }];
+        }
+        return [...prev, { role: "candidate" as const, content: candidateText, timestamp: new Date().toISOString(), finalized: true }];
+      });
+      currentCandidateTextRef.current = "";
+    }
 
     // Clean up all audio resources
     cleanupAudioResources();
@@ -427,6 +499,13 @@ export function useVoiceInterview(
   // ── Start Interview ────────────────────────────────────────────────
 
   const startInterview = useCallback(async () => {
+    // Mutex: prevent concurrent startInterview() calls
+    if (isStartingRef.current) {
+      console.warn("[Voice] startInterview() already in progress — skipping");
+      return;
+    }
+    isStartingRef.current = true;
+
     try {
       intentionalCloseRef.current = false;
       setInterviewState("CONNECTING");
@@ -444,6 +523,14 @@ export function useVoiceInterview(
         checkpointTimerRef.current = null;
       }
 
+      // Circuit breaker: if 3+ consecutive setup failures, stop retrying
+      if (consecutiveSetupFailuresRef.current >= 3) {
+        console.error("[Voice] Circuit breaker tripped — 3 consecutive setup failures");
+        setFallbackToText(true);
+        onError?.("Voice connection failed repeatedly. Switching to text mode.");
+        return;
+      }
+
       // 1. Get config from server
       const initRes = await fetch(`/api/interviews/${interviewId}/voice-init`, {
         method: "POST",
@@ -452,7 +539,16 @@ export function useVoiceInterview(
       });
 
       if (!initRes.ok) {
+        consecutiveSetupFailuresRef.current += 1;
         const err = await initRes.json().catch(() => ({ error: "Init failed" }));
+        // Permanent failures — don't retry
+        if (initRes.status === 403) {
+          consecutiveSetupFailuresRef.current = 3; // Trip circuit breaker immediately
+          throw new Error("API authorization failed. Check your API key.");
+        }
+        if (initRes.status === 429) {
+          throw new Error("Rate limited — please wait a moment and try again.");
+        }
         throw new Error(err.error || `Init error: ${initRes.status}`);
       }
 
@@ -574,7 +670,10 @@ export function useVoiceInterview(
       });
 
       // 5. Set up persistent message handler (replaces setup handler)
-      ws.onmessage = handleGeminiMessage;
+      ws.onmessage = (event) => {
+        lastMessageTimeRef.current = Date.now(); // Track for heartbeat & quality metrics
+        handleGeminiMessage(event);
+      };
 
       ws.onerror = (event) => {
         console.error("[Voice] WebSocket error:", event);
@@ -600,8 +699,11 @@ export function useVoiceInterview(
         // Auto-reconnect on any unexpected close (session timeout, network drop, etc.)
         if (reconnectAttemptsRef.current < maxReconnectAttempts) {
           const attempt = reconnectAttemptsRef.current;
-          const delay = Math.min(1000 * Math.pow(2, attempt), 8000); // 1s, 2s, 4s, max 8s
-          console.log(`[Voice] Unexpected closure (code ${event.code}) — reconnecting in ${delay}ms (attempt ${attempt + 1}/${maxReconnectAttempts})`);
+          const base = 1000;
+          const exp = Math.pow(2, attempt);
+          const jitter = Math.random() * base; // Add jitter to prevent thundering herd
+          const delay = Math.min(base * exp + jitter, 10000);
+          console.log(`[Voice] Unexpected closure (code ${event.code}) — reconnecting in ${Math.round(delay)}ms (attempt ${attempt + 1}/${maxReconnectAttempts})`);
           reconnectAttemptsRef.current += 1;
           setIsReconnecting(true);
           setReconnectPhase("restoring");
@@ -673,13 +775,46 @@ export function useVoiceInterview(
 
       processor.onaudioprocess = (e) => {
         if (!isMicEnabledRef.current) return;
-        if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+        const ws2 = wsRef.current;
+        if (!ws2 || ws2.readyState !== WebSocket.OPEN) return;
 
         const inputData = e.inputBuffer.getChannelData(0);
+
+        // ── Silence detection ──
+        let sumSquares = 0;
+        for (let i = 0; i < inputData.length; i++) {
+          sumSquares += inputData[i] * inputData[i];
+        }
+        const rms = Math.sqrt(sumSquares / inputData.length);
+        if (rms < 0.005) {
+          silentFramesRef.current += 1;
+          if (silentFramesRef.current >= 30 && !micIsSilent) { // ~3s of silence
+            setMicIsSilent(true);
+          }
+        } else {
+          if (silentFramesRef.current >= 30) {
+            setMicIsSilent(false);
+          }
+          silentFramesRef.current = 0;
+        }
+
+        // ── Backpressure: skip frame if WebSocket buffer is overloaded ──
+        if (ws2.bufferedAmount > 100_000) { // 100KB threshold
+          droppedFramesRef.current += 1;
+          if (droppedFramesRef.current === 10) {
+            setConnectionQuality("fair");
+          } else if (droppedFramesRef.current === 50) {
+            setConnectionQuality("poor");
+            console.warn("[Voice] 50+ consecutive frames dropped — network severely congested");
+          }
+          return; // Drop this frame
+        }
+        droppedFramesRef.current = 0;
+
         const pcm16 = float32ToPCM16(inputData);
         const base64 = arrayBufferToBase64(pcm16.buffer as ArrayBuffer);
 
-        wsRef.current.send(JSON.stringify({
+        ws2.send(JSON.stringify({
           realtimeInput: {
             mediaChunks: [{
               mimeType: "audio/pcm;rate=24000",
@@ -695,16 +830,49 @@ export function useVoiceInterview(
       // 8. Start checkpoint timer
       checkpointTimerRef.current = setInterval(checkpointTranscript, CHECKPOINT_INTERVAL_MS);
 
+      // 9. Start heartbeat — detect dead connections proactively
+      lastMessageTimeRef.current = Date.now();
+      heartbeatIntervalRef.current = setInterval(() => {
+        const ws2 = wsRef.current;
+        if (!ws2 || ws2.readyState !== WebSocket.OPEN) return;
+
+        const silenceMs = Date.now() - lastMessageTimeRef.current;
+        if (silenceMs > 30_000) {
+          // No message from Gemini for 30s — connection is dead
+          console.warn("[Voice] Heartbeat timeout — no server message for 30s, triggering reconnect");
+          intentionalCloseRef.current = false; // Let onclose trigger reconnect
+          ws2.close(4000, "Heartbeat timeout");
+        }
+      }, 20_000); // Check every 20s
+
+      // 10. Start connection quality monitoring
+      qualityCheckIntervalRef.current = setInterval(() => {
+        if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+        const gap = Date.now() - lastMessageTimeRef.current;
+        if (gap < 2_000) {
+          setConnectionQuality("good");
+        } else if (gap < 5_000) {
+          setConnectionQuality("fair");
+        } else {
+          setConnectionQuality("poor");
+        }
+      }, 5_000); // Check every 5s
+
       setInterviewState("IN_PROGRESS");
       setIsConnected(true);
       setAiState("thinking");
+      setConnectionQuality("good");
       reconnectAttemptsRef.current = 0; // Reset on successful connection
+      consecutiveSetupFailuresRef.current = 0; // Reset circuit breaker
     } catch (err) {
       console.error("Failed to start voice interview:", err);
+      consecutiveSetupFailuresRef.current += 1;
       setInterviewState("ERROR");
       onError?.(err instanceof Error ? err.message : "Failed to start interview");
+    } finally {
+      isStartingRef.current = false; // Release mutex
     }
-  }, [interviewId, accessToken, handleGeminiMessage, checkpointTranscript, onError, cleanupAudioResources]);
+  }, [interviewId, accessToken, handleGeminiMessage, checkpointTranscript, onError, cleanupAudioResources, micIsSilent]);
 
   // ── Public Actions ─────────────────────────────────────────────────
 
@@ -829,6 +997,7 @@ export function useVoiceInterview(
     isPaused,
     fallbackToText,
     reconnectPhase,
+    micIsSilent,
     startInterview,
     endInterview,
     sendTextMessage,

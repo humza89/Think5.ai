@@ -117,6 +117,8 @@ export function VoiceInterviewRoom({
     reconnect,
     pauseInterview,
     resumeInterview,
+    fallbackToText,
+    micIsSilent,
   } = useVoiceInterview({
     interviewId,
     accessToken,
@@ -131,6 +133,11 @@ export function VoiceInterviewRoom({
       }, 3000);
     },
   });
+
+  // Auto-show text input when voice falls back to text mode
+  useEffect(() => {
+    if (fallbackToText) setShowTextInput(true);
+  }, [fallbackToText]);
 
   // ── Auto-start: consent already handled by WelcomeScreen ────────
   useEffect(() => {
@@ -613,6 +620,18 @@ export function VoiceInterviewRoom({
           <Button variant="outline" size="sm" onClick={() => setShowTextInput(true)}>
             Switch to Text
           </Button>
+        </div>
+      )}
+      {micIsSilent && isMicEnabled && interviewState === "IN_PROGRESS" && (
+        <div className="flex items-center gap-2 bg-red-500/10 border-b border-red-500/20 px-4 py-2 text-sm text-red-700 dark:text-red-400" role="alert">
+          <AlertTriangle className="h-4 w-4 shrink-0" />
+          Your microphone appears to be muted or not picking up audio. Check your mic settings.
+        </div>
+      )}
+      {fallbackToText && (
+        <div className="flex items-center gap-2 bg-blue-500/10 border-b border-blue-500/20 px-4 py-2 text-sm text-blue-700 dark:text-blue-400" role="alert">
+          <AlertTriangle className="h-4 w-4 shrink-0" />
+          Voice connection lost. You can continue by typing your responses below.
         </div>
       )}
 
