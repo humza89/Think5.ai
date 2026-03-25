@@ -384,7 +384,7 @@ export function useVoiceInterview(
 
           const setupMsg = {
             setup: {
-              model: model || "models/gemini-2.0-flash-exp",
+              model: model || "models/gemini-2.5-flash-native-audio-latest",
               generationConfig: {
                 responseModalities: ["AUDIO", "TEXT"],
                 speechConfig: {
