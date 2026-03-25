@@ -99,7 +99,8 @@ export function useVoiceInterview(
   const candidateNameRef = useRef("");
   const processorRef = useRef<ScriptProcessorNode | null>(null);
   const reconnectAttemptsRef = useRef(0);
-  const maxReconnectAttempts = 3;
+  const maxReconnectAttempts = 5;
+  const intentionalCloseRef = useRef(false); // True when we close the WS ourselves
   const currentTurnTextRef = useRef(""); // Accumulates interviewer transcript fragments within a turn
   const currentCandidateTextRef = useRef(""); // Accumulates candidate speech transcription
 
@@ -352,7 +353,8 @@ export function useVoiceInterview(
   const endInterviewInternal = useCallback(async () => {
     setInterviewState("WRAPPING_UP");
 
-    // Close WebSocket
+    // Close WebSocket (intentional)
+    intentionalCloseRef.current = true;
     if (wsRef.current) {
       wsRef.current.close();
       wsRef.current = null;
@@ -389,6 +391,7 @@ export function useVoiceInterview(
 
   const startInterview = useCallback(async () => {
     try {
+      intentionalCloseRef.current = false;
       setInterviewState("CONNECTING");
 
       // 1. Get config from server
@@ -517,46 +520,89 @@ export function useVoiceInterview(
       };
 
       ws.onclose = (event) => {
-        console.log("[Voice] WebSocket closed — code:", event.code, "reason:", event.reason);
+        console.log("[Voice] WebSocket closed — code:", event.code, "reason:", event.reason, "intentional:", intentionalCloseRef.current);
         setIsConnected(false);
-        setConnectionQuality("poor");
 
-        // Auto-reconnect on abnormal closure (1006) with exponential backoff
-        if (event.code === 1006 && reconnectAttemptsRef.current < maxReconnectAttempts) {
+        // Skip reconnect for intentional closes or permanent failures
+        const permanentFailureCodes = [1007, 1008]; // invalid argument, model not found
+        if (intentionalCloseRef.current || permanentFailureCodes.includes(event.code)) {
+          intentionalCloseRef.current = false;
+          if (permanentFailureCodes.includes(event.code)) {
+            setConnectionQuality("poor");
+            onError?.(`Connection failed permanently (code ${event.code}). Switch to text mode.`);
+            setFallbackToText(true);
+          }
+          return;
+        }
+
+        // Auto-reconnect on any unexpected close (session timeout, network drop, etc.)
+        if (reconnectAttemptsRef.current < maxReconnectAttempts) {
           const attempt = reconnectAttemptsRef.current;
           const delay = Math.min(1000 * Math.pow(2, attempt), 8000); // 1s, 2s, 4s, max 8s
-          console.log(`[Voice] Abnormal closure — reconnecting in ${delay}ms (attempt ${attempt + 1}/${maxReconnectAttempts})`);
+          console.log(`[Voice] Unexpected closure (code ${event.code}) — reconnecting in ${delay}ms (attempt ${attempt + 1}/${maxReconnectAttempts})`);
           reconnectAttemptsRef.current += 1;
           setIsReconnecting(true);
           setReconnectPhase("restoring");
+          // Don't show "poor" quality during reconnect — it's expected
+          setConnectionQuality("fair");
           setTimeout(() => {
             startInterview().then(() => {
               reconnectAttemptsRef.current = 0;
               setIsReconnecting(false);
               setReconnectPhase(null);
+              setConnectionQuality("good");
             }).catch(() => {
               setIsReconnecting(false);
               setReconnectPhase(null);
               if (reconnectAttemptsRef.current >= maxReconnectAttempts) {
+                setConnectionQuality("poor");
                 setFallbackToText(true);
                 onError?.("Connection lost. You can switch to text mode.");
               }
             });
           }, delay);
+        } else {
+          setConnectionQuality("poor");
+          setFallbackToText(true);
+          onError?.("Connection lost after multiple attempts. Switch to text mode.");
         }
       };
 
-      // 6. Send greeting trigger (setup is confirmed complete)
-      console.log("[Voice] Sending greeting trigger...");
-      ws.send(JSON.stringify({
-        clientContent: {
-          turns: [{
-            role: "user",
-            parts: [{ text: `Begin the interview now. Greet ${candidateName} warmly and introduce yourself as Aria, their AI interviewer.` }],
-          }],
-          turnComplete: true,
-        },
-      }));
+      // 6. Send greeting or restore context on reconnect
+      const existingTranscript = transcriptRef.current;
+      if (existingTranscript.length > 0) {
+        // Reconnect: restore conversation context from last few exchanges
+        console.log("[Voice] Reconnecting — restoring transcript context...");
+        const recentEntries = existingTranscript.slice(-6); // Last 3 exchanges
+        const contextTurns = recentEntries.map((entry) => ({
+          role: entry.role === "interviewer" ? "model" : "user",
+          parts: [{ text: entry.content }],
+        }));
+        ws.send(JSON.stringify({
+          clientContent: {
+            turns: [
+              ...contextTurns,
+              {
+                role: "user",
+                parts: [{ text: "Continue the interview seamlessly from where we left off. Do not re-introduce yourself or repeat any questions." }],
+              },
+            ],
+            turnComplete: true,
+          },
+        }));
+      } else {
+        // First connect: send greeting trigger
+        console.log("[Voice] Sending greeting trigger...");
+        ws.send(JSON.stringify({
+          clientContent: {
+            turns: [{
+              role: "user",
+              parts: [{ text: `Begin the interview now. Greet ${candidateName} warmly and introduce yourself as Aria, their AI interviewer.` }],
+            }],
+            turnComplete: true,
+          },
+        }));
+      }
 
       // 7. Start mic audio capture → WebSocket
       const source = audioContext.createMediaStreamSource(micStream);
@@ -692,6 +738,7 @@ export function useVoiceInterview(
 
   useEffect(() => {
     return () => {
+      intentionalCloseRef.current = true;
       if (wsRef.current) {
         wsRef.current.close();
         wsRef.current = null;
