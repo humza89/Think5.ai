@@ -100,7 +100,8 @@ export function useVoiceInterview(
   const processorRef = useRef<ScriptProcessorNode | null>(null);
   const reconnectAttemptsRef = useRef(0);
   const maxReconnectAttempts = 3;
-  const currentTurnTextRef = useRef(""); // Accumulates transcript fragments within a turn
+  const currentTurnTextRef = useRef(""); // Accumulates interviewer transcript fragments within a turn
+  const currentCandidateTextRef = useRef(""); // Accumulates candidate speech transcription
 
   // Keep refs in sync
   useEffect(() => { isMicEnabledRef.current = isMicEnabled; }, [isMicEnabled]);
@@ -160,8 +161,35 @@ export function useVoiceInterview(
       // Server content (audio + text)
       const serverContent = data.serverContent as Record<string, unknown> | undefined;
       if (serverContent) {
+        // Input transcription (candidate's speech → text)
+        const inputTranscription = serverContent.inputTranscription as Record<string, unknown> | undefined;
+        if (inputTranscription?.text) {
+          const fragment = inputTranscription.text as string;
+          currentCandidateTextRef.current += fragment;
+          // Update transcript with accumulated candidate text (single entry per turn)
+          setTranscript((prev) => {
+            const last = prev[prev.length - 1];
+            if (last && last.role === "candidate" && !last.finalized) {
+              return [...prev.slice(0, -1), { ...last, content: currentCandidateTextRef.current }];
+            }
+            return [...prev, { role: "candidate" as const, content: currentCandidateTextRef.current, timestamp: new Date().toISOString() }];
+          });
+        }
+
         const modelTurn = serverContent.modelTurn as Record<string, unknown> | undefined;
         if (modelTurn) {
+          // Finalize any pending candidate text when the model starts responding
+          if (currentCandidateTextRef.current.trim()) {
+            const candidateText = currentCandidateTextRef.current.trim();
+            setTranscript((prev) => {
+              const last = prev[prev.length - 1];
+              if (last && last.role === "candidate") {
+                return [...prev.slice(0, -1), { ...last, content: candidateText, finalized: true }];
+              }
+              return prev;
+            });
+            currentCandidateTextRef.current = "";
+          }
           const parts = modelTurn.parts as Array<Record<string, unknown>> | undefined;
           if (parts) {
             for (const part of parts) {
@@ -431,6 +459,7 @@ export function useVoiceInterview(
                 parts: [{ text: systemPrompt }],
               },
               outputAudioTranscription: {},
+              inputAudioTranscription: {},
             },
           };
 
