@@ -104,6 +104,34 @@ export function useVoiceInterview(
   const currentTurnTextRef = useRef(""); // Accumulates interviewer transcript fragments within a turn
   const currentCandidateTextRef = useRef(""); // Accumulates candidate speech transcription
 
+  // ── Audio Resource Cleanup Helper ────────────────────────────────────
+  // Called before reconnect and on unmount to prevent resource leaks
+  const cleanupAudioResources = useCallback(() => {
+    // 1. Disconnect and destroy ScriptProcessorNode
+    if (processorRef.current) {
+      try {
+        processorRef.current.disconnect();
+        processorRef.current.onaudioprocess = null;
+      } catch { /* already disconnected */ }
+      processorRef.current = null;
+    }
+
+    // 2. Close AudioContext (stops all scheduled playback)
+    if (audioContextRef.current) {
+      try {
+        audioContextRef.current.close();
+      } catch { /* already closed */ }
+      audioContextRef.current = null;
+    }
+
+    // 3. Reset playback timing so new context starts fresh
+    nextPlayTimeRef.current = 0;
+
+    // 4. Reset turn text accumulators
+    currentTurnTextRef.current = "";
+    currentCandidateTextRef.current = "";
+  }, []);
+
   // Keep refs in sync
   useEffect(() => { isMicEnabledRef.current = isMicEnabled; }, [isMicEnabled]);
   useEffect(() => { transcriptRef.current = transcript; }, [transcript]);
@@ -353,11 +381,20 @@ export function useVoiceInterview(
   const endInterviewInternal = useCallback(async () => {
     setInterviewState("WRAPPING_UP");
 
+    // Clean up all audio resources
+    cleanupAudioResources();
+
     // Close WebSocket (intentional)
     intentionalCloseRef.current = true;
     if (wsRef.current) {
-      wsRef.current.close();
+      try { wsRef.current.close(); } catch { /* ignore */ }
       wsRef.current = null;
+    }
+
+    // Stop mic tracks
+    if (mediaStreamRef.current) {
+      mediaStreamRef.current.getTracks().forEach((track) => track.stop());
+      mediaStreamRef.current = null;
     }
 
     // Stop checkpoint timer
@@ -385,7 +422,7 @@ export function useVoiceInterview(
 
     setInterviewState("COMPLETED");
     onInterviewEnd?.();
-  }, [interviewId, accessToken, onInterviewEnd]);
+  }, [interviewId, accessToken, onInterviewEnd, cleanupAudioResources]);
 
   // ── Start Interview ────────────────────────────────────────────────
 
@@ -393,6 +430,19 @@ export function useVoiceInterview(
     try {
       intentionalCloseRef.current = false;
       setInterviewState("CONNECTING");
+
+      // 0. Clean up old audio resources (critical for reconnect)
+      cleanupAudioResources();
+      // Close old WebSocket if still open
+      if (wsRef.current) {
+        try { wsRef.current.close(); } catch { /* ignore */ }
+        wsRef.current = null;
+      }
+      // Clear old checkpoint timer to avoid duplicates
+      if (checkpointTimerRef.current) {
+        clearInterval(checkpointTimerRef.current);
+        checkpointTimerRef.current = null;
+      }
 
       // 1. Get config from server
       const initRes = await fetch(`/api/interviews/${interviewId}/voice-init`, {
@@ -413,17 +463,29 @@ export function useVoiceInterview(
       // 2. Set up audio context for playback
       const audioContext = new AudioContext({ sampleRate: 24000 });
       audioContextRef.current = audioContext;
+      nextPlayTimeRef.current = 0; // Fresh timing for new context
 
-      // 3. Set up mic capture
-      const micStream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          sampleRate: 24000,
-          channelCount: 1,
-          echoCancellation: true,
-          noiseSuppression: true,
-        },
-      });
-      mediaStreamRef.current = micStream;
+      // 3. Reuse existing mic stream if tracks are still active, else request new
+      let micStream: MediaStream;
+      const existingStream = mediaStreamRef.current;
+      const hasActiveTracks = existingStream?.getAudioTracks().some((t) => t.readyState === "live");
+      if (existingStream && hasActiveTracks) {
+        console.log("[Voice] Reusing existing mic stream");
+        micStream = existingStream;
+        // Re-enable tracks in case they were disabled
+        micStream.getAudioTracks().forEach((t) => (t.enabled = true));
+      } else {
+        console.log("[Voice] Requesting new mic stream");
+        micStream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            sampleRate: 24000,
+            channelCount: 1,
+            echoCancellation: true,
+            noiseSuppression: true,
+          },
+        });
+        mediaStreamRef.current = micStream;
+      }
 
       // 4. Connect to Gemini Live WebSocket and wait for setupComplete
       const wsUrl = `${GEMINI_WS_URL}?key=${apiKey}`;
@@ -642,7 +704,7 @@ export function useVoiceInterview(
       setInterviewState("ERROR");
       onError?.(err instanceof Error ? err.message : "Failed to start interview");
     }
-  }, [interviewId, accessToken, handleGeminiMessage, checkpointTranscript, onError]);
+  }, [interviewId, accessToken, handleGeminiMessage, checkpointTranscript, onError, cleanupAudioResources]);
 
   // ── Public Actions ─────────────────────────────────────────────────
 
@@ -740,23 +802,21 @@ export function useVoiceInterview(
     return () => {
       intentionalCloseRef.current = true;
       if (wsRef.current) {
-        wsRef.current.close();
+        try { wsRef.current.close(); } catch { /* ignore */ }
         wsRef.current = null;
       }
       if (checkpointTimerRef.current) {
         clearInterval(checkpointTimerRef.current);
         checkpointTimerRef.current = null;
       }
+      // Stop mic tracks fully on unmount (not just on reconnect)
       if (mediaStreamRef.current) {
         mediaStreamRef.current.getTracks().forEach((track) => track.stop());
         mediaStreamRef.current = null;
       }
-      if (audioContextRef.current) {
-        audioContextRef.current.close();
-        audioContextRef.current = null;
-      }
+      cleanupAudioResources();
     };
-  }, []);
+  }, [cleanupAudioResources]);
 
   return {
     interviewState,
