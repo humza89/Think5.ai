@@ -358,17 +358,22 @@ export function useVoiceInterview(
       });
       mediaStreamRef.current = micStream;
 
-      // 4. Connect to Gemini Live WebSocket
-      const ws = new WebSocket(`${GEMINI_WS_URL}?key=${apiKey}`);
+      // 4. Connect to Gemini Live WebSocket and wait for setupComplete
+      const wsUrl = `${GEMINI_WS_URL}?key=${apiKey}`;
+      console.log("[Voice] Connecting to Gemini Live...");
+      const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
 
       await new Promise<void>((resolve, reject) => {
-        const timeout = setTimeout(() => reject(new Error("WebSocket connection timeout")), 10000);
+        const timeout = setTimeout(() => {
+          console.error("[Voice] Setup timeout — no setupComplete received");
+          reject(new Error("WebSocket setup timeout"));
+        }, 15000);
 
         ws.onopen = () => {
-          clearTimeout(timeout);
+          console.log("[Voice] WebSocket connected, sending setup message...");
 
-          // Send setup message
+          // Build setup message
           const toolDefs = tools.map((tool: { name: string; description: string; parameters: Record<string, unknown> }) => ({
             functionDeclarations: [{
               name: tool.name,
@@ -377,7 +382,7 @@ export function useVoiceInterview(
             }],
           }));
 
-          ws.send(JSON.stringify({
+          const setupMsg = {
             setup: {
               model: model || "models/gemini-2.0-flash-live-001",
               generationConfig: {
@@ -395,35 +400,55 @@ export function useVoiceInterview(
               },
               tools: toolDefs,
             },
-          }));
+          };
 
-          resolve();
+          console.log("[Voice] Setup model:", setupMsg.setup.model);
+          ws.send(JSON.stringify(setupMsg));
         };
 
-        ws.onerror = () => {
+        ws.onmessage = (event) => {
+          try {
+            const data = JSON.parse(typeof event.data === "string" ? event.data : "{}");
+            console.log("[Voice] Setup response:", JSON.stringify(data).slice(0, 200));
+            if (data.setupComplete) {
+              clearTimeout(timeout);
+              console.log("[Voice] Setup complete — Gemini ready");
+              resolve();
+            }
+          } catch (err) {
+            console.error("[Voice] Failed to parse setup response:", err);
+          }
+        };
+
+        ws.onerror = (event) => {
           clearTimeout(timeout);
+          console.error("[Voice] WebSocket error during setup:", event);
           reject(new Error("WebSocket connection failed"));
+        };
+
+        ws.onclose = (event) => {
+          clearTimeout(timeout);
+          console.error("[Voice] WebSocket closed during setup — code:", event.code, "reason:", event.reason);
+          reject(new Error(`WebSocket closed during setup: code ${event.code} ${event.reason || "(no reason)"}`));
         };
       });
 
-      // 5. Set up message handler
+      // 5. Set up persistent message handler (replaces setup handler)
       ws.onmessage = handleGeminiMessage;
 
       ws.onerror = (event) => {
-        console.error("Gemini WebSocket error:", event);
+        console.error("[Voice] WebSocket error:", event);
         setConnectionQuality("poor");
       };
 
-      ws.onclose = () => {
+      ws.onclose = (event) => {
+        console.log("[Voice] WebSocket closed — code:", event.code, "reason:", event.reason);
         setIsConnected(false);
-        if (interviewState !== "WRAPPING_UP" && interviewState !== "COMPLETED") {
-          setConnectionQuality("poor");
-        }
+        setConnectionQuality("poor");
       };
 
-      // 6. Wait a moment for setup to complete, then send greeting trigger
-      await new Promise((resolve) => setTimeout(resolve, 500));
-
+      // 6. Send greeting trigger (setup is confirmed complete)
+      console.log("[Voice] Sending greeting trigger...");
       ws.send(JSON.stringify({
         clientContent: {
           turns: [{
