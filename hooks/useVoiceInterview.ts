@@ -140,9 +140,17 @@ export function useVoiceInterview(
 
   // ── Gemini WebSocket Message Handler ───────────────────────────────
 
-  const handleGeminiMessage = useCallback((event: MessageEvent) => {
+  const handleGeminiMessage = useCallback(async (event: MessageEvent) => {
     try {
-      const data = JSON.parse(typeof event.data === "string" ? event.data : "{}");
+      let text: string;
+      if (typeof event.data === "string") {
+        text = event.data;
+      } else if (event.data instanceof Blob) {
+        text = await event.data.text();
+      } else {
+        return; // Skip unknown data types
+      }
+      const data = JSON.parse(text);
 
       // Setup complete
       if (data.setupComplete) {
@@ -424,9 +432,17 @@ export function useVoiceInterview(
           ws.send(JSON.stringify(setupMsg));
         };
 
-        ws.onmessage = (event) => {
+        ws.onmessage = async (event) => {
           try {
-            const data = JSON.parse(typeof event.data === "string" ? event.data : "{}");
+            let text: string;
+            if (typeof event.data === "string") {
+              text = event.data;
+            } else if (event.data instanceof Blob) {
+              text = await event.data.text();
+            } else {
+              text = "{}";
+            }
+            const data = JSON.parse(text);
             console.log("[Voice] Setup response:", JSON.stringify(data).slice(0, 200));
             if (data.setupComplete) {
               clearTimeout(timeout);
