@@ -1,18 +1,12 @@
 "use client";
 
 /**
- * useVoiceInterview — Real-time voice interview hook
+ * useVoiceInterview — Client-side Gemini Live WebSocket
  *
- * Manages the full audio pipeline for voice interviews:
- * - POST requests to send audio/text/actions to the voice relay endpoint
- * - SSE (EventSource) to receive AI audio/text responses in real-time
- * - Mic capture → PCM 16-bit encoding → POST send
- * - Receive AI audio → decode → AudioContext playback
- * - Transcript state management
- * - Connection quality monitoring
- *
- * Architecture:
- *   Browser → POST /voice (audio chunks + text) → Gemini Live → SSE → Browser
+ * Connects directly to Gemini Live API from the browser.
+ * No server relay — audio streams bidirectionally over WebSocket.
+ * Server is only used for initialization (system prompt) and persistence
+ * (transcript checkpoints, interview end).
  */
 
 import { useState, useCallback, useRef, useEffect } from "react";
@@ -46,7 +40,6 @@ export interface VoiceInterviewConfig {
 }
 
 export interface UseVoiceInterviewReturn {
-  // State
   interviewState: InterviewState;
   aiState: AISpeakingState;
   transcript: TranscriptEntry[];
@@ -57,8 +50,6 @@ export interface UseVoiceInterviewReturn {
   isPaused: boolean;
   fallbackToText: boolean;
   reconnectPhase: "checking" | "restoring" | "verifying" | null;
-
-  // Actions
   startInterview: () => Promise<void>;
   endInterview: () => void;
   sendTextMessage: (text: string) => void;
@@ -68,6 +59,11 @@ export interface UseVoiceInterviewReturn {
   pauseInterview: () => Promise<void>;
   resumeInterview: () => Promise<void>;
 }
+
+// ── Constants ────────────────────────────────────────────────────────────
+
+const GEMINI_WS_URL = "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent";
+const CHECKPOINT_INTERVAL_MS = 30_000; // Save transcript every 30s
 
 // ── Hook ───────────────────────────────────────────────────────────────
 
@@ -90,224 +86,27 @@ export function useVoiceInterview(
   const [reconnectPhase, setReconnectPhase] = useState<"checking" | "restoring" | "verifying" | null>(null);
 
   // Refs
+  const wsRef = useRef<WebSocket | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const playbackQueueRef = useRef<Float32Array[]>([]);
   const isPlayingRef = useRef(false);
-  const pollingRef = useRef<NodeJS.Timeout | null>(null);
-  const sseAbortRef = useRef<AbortController | null>(null);
-  const reconnectTokenRef = useRef<string | null>(null);
   const isMicEnabledRef = useRef(true);
-  const reconnectAttemptRef = useRef(0);
-  const maxReconnectAttempts = 3;
+  const transcriptRef = useRef<TranscriptEntry[]>([]);
+  const moduleScoresRef = useRef<Array<{ module: string; score: number; reason: string }>>([]);
+  const checkpointTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const questionCountRef = useRef(0);
+  const candidateNameRef = useRef("");
+  const processorRef = useRef<ScriptProcessorNode | null>(null);
 
-  // Keep ref in sync with state for use in audio callback
-  useEffect(() => {
-    isMicEnabledRef.current = isMicEnabled;
-  }, [isMicEnabled]);
+  // Keep refs in sync
+  useEffect(() => { isMicEnabledRef.current = isMicEnabled; }, [isMicEnabled]);
+  useEffect(() => { transcriptRef.current = transcript; }, [transcript]);
+  useEffect(() => { questionCountRef.current = questionCount; }, [questionCount]);
 
-  // Update parent on state changes
-  useEffect(() => {
-    onStateChange?.(interviewState);
-  }, [interviewState, onStateChange]);
-
-  useEffect(() => {
-    onTranscriptUpdate?.(transcript);
-  }, [transcript, onTranscriptUpdate]);
-
-  // ── Voice API Helper ─────────────────────────────────────────────
-
-  const voiceApiUrl = `/api/interviews/${interviewId}/voice`;
-
-  const postToVoice = useCallback(async (body: Record<string, unknown>) => {
-    try {
-      const res = await fetch(voiceApiUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...body, accessToken }),
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: "Request failed" }));
-        throw new Error(err.error || `Voice API error: ${res.status}`);
-      }
-      return await res.json();
-    } catch (err) {
-      console.error("Voice API POST failed:", err);
-      throw err;
-    }
-  }, [voiceApiUrl, accessToken]);
-
-  // ── SSE Connection (Server → Client) ──────────────────────────────
-
-  const connectSSE = useCallback(() => {
-    const abort = new AbortController();
-    sseAbortRef.current = abort;
-
-    const sseUrl = `${voiceApiUrl}?token=${encodeURIComponent(accessToken)}`;
-
-    // Use fetch-based SSE for better control over connection lifecycle
-    (async () => {
-      try {
-        const res = await fetch(sseUrl, {
-          signal: abort.signal,
-          headers: { Accept: "text/event-stream" },
-        });
-
-        if (!res.ok || !res.body) {
-          throw new Error(`SSE connection failed: ${res.status}`);
-        }
-
-        setIsConnected(true);
-        setConnectionQuality("good");
-
-        const reader = res.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = "";
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          buffer += decoder.decode(value, { stream: true });
-
-          // Parse SSE data lines
-          const lines = buffer.split("\n");
-          buffer = lines.pop() || ""; // Keep incomplete line in buffer
-
-          for (const line of lines) {
-            if (line.startsWith("data: ")) {
-              const jsonStr = line.slice(6).trim();
-              if (!jsonStr) continue;
-              try {
-                handleServerMessage(JSON.parse(jsonStr));
-              } catch {
-                // Skip malformed JSON
-              }
-            }
-          }
-        }
-      } catch (err: any) {
-        if (err?.name === "AbortError") return; // Expected on cleanup
-        console.error("SSE connection error:", err);
-        setConnectionQuality("poor");
-        setIsConnected(false);
-        // Attempt automatic reconnection
-        attemptReconnect();
-      }
-    })();
-  }, [voiceApiUrl, accessToken]);
-
-  // ── Reconnection Logic ──────────────────────────────────────────────
-
-  const attemptReconnect = useCallback(async () => {
-    if (reconnectAttemptRef.current >= maxReconnectAttempts) {
-      setIsReconnecting(false);
-      setReconnectPhase(null);
-      setInterviewState("ERROR");
-      setFallbackToText(true);
-      onError?.("Connection lost after multiple attempts. You can switch to text mode.");
-      return;
-    }
-
-    setIsReconnecting(true);
-    reconnectAttemptRef.current++;
-    const delay = 1000 * Math.pow(2, reconnectAttemptRef.current - 1); // 1s, 2s, 4s
-
-    await new Promise((resolve) => setTimeout(resolve, delay));
-
-    try {
-      setReconnectPhase("checking");
-      const result = await postToVoice({
-        action: "reconnect",
-        reconnectToken: reconnectTokenRef.current,
-      });
-
-      setReconnectPhase("restoring");
-
-      if (result.transcript) {
-        setTranscript(result.transcript);
-      }
-      if (result.reconnectToken) {
-        reconnectTokenRef.current = result.reconnectToken;
-      }
-
-      // Re-establish SSE
-      if (sseAbortRef.current) {
-        sseAbortRef.current.abort();
-      }
-
-      setReconnectPhase("verifying");
-      connectSSE();
-
-      reconnectAttemptRef.current = 0;
-      setIsReconnecting(false);
-      setReconnectPhase(null);
-      setConnectionQuality("good");
-      setIsConnected(true);
-    } catch (err: any) {
-      // Check if error response indicates fallback mode
-      if (err?.message?.includes("Voice reconnection failed")) {
-        setFallbackToText(true);
-        setIsReconnecting(false);
-        setReconnectPhase(null);
-        setInterviewState("ERROR");
-        onError?.("Voice session expired. Switching to text mode.");
-        return;
-      }
-      // Retry
-      attemptReconnect();
-    }
-  }, [postToVoice, connectSSE, onError]);
-
-  const reconnect = useCallback(async () => {
-    reconnectAttemptRef.current = 0;
-    await attemptReconnect();
-  }, [attemptReconnect]);
-
-  // ── Server Message Handler ───────────────────────────────────────
-
-  const handleServerMessage = useCallback((message: any) => {
-    switch (message.type) {
-      case "audio":
-        // AI audio response — decode and queue for playback
-        setAiState("speaking");
-        const audioData = base64ToFloat32(message.data);
-        playbackQueueRef.current.push(audioData);
-        processPlaybackQueue();
-        break;
-
-      case "text":
-        if (message.text === "__turn_complete__") {
-          setAiState("listening");
-          break;
-        }
-        // Transcript update
-        const entry: TranscriptEntry = {
-          role: (message.role === "interviewer" ? "interviewer" : "candidate") as "interviewer" | "candidate",
-          content: message.text,
-          timestamp: new Date().toISOString(),
-        };
-        setTranscript((prev) => [...prev, entry]);
-        break;
-
-      case "questionCount":
-        setQuestionCount(message.count);
-        break;
-
-      case "toolCall":
-        // UI can react to section changes, difficulty adjustments, etc.
-        break;
-
-      case "interviewEnd":
-        setInterviewState("COMPLETED");
-        onInterviewEnd?.();
-        break;
-
-      case "waiting":
-        // Session not yet active, keep polling
-        break;
-    }
-  }, [onInterviewEnd]);
+  // Notify parent on state changes
+  useEffect(() => { onStateChange?.(interviewState); }, [interviewState, onStateChange]);
+  useEffect(() => { onTranscriptUpdate?.(transcript); }, [transcript, onTranscriptUpdate]);
 
   // ── Audio Playback ───────────────────────────────────────────────
 
@@ -337,92 +136,365 @@ export function useVoiceInterview(
     source.start();
   }, []);
 
-  // ── Audio Capture Setup ──────────────────────────────────────────
+  // ── Gemini WebSocket Message Handler ───────────────────────────────
 
-  const setupAudioCapture = useCallback(async () => {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      audio: {
-        sampleRate: 24000,
-        channelCount: 1,
-        echoCancellation: true,
-        noiseSuppression: true,
-        autoGainControl: true,
-      },
-    });
-    mediaStreamRef.current = stream;
+  const handleGeminiMessage = useCallback((event: MessageEvent) => {
+    try {
+      const data = JSON.parse(typeof event.data === "string" ? event.data : "{}");
 
-    const audioContext = new AudioContext({ sampleRate: 24000 });
-    audioContextRef.current = audioContext;
+      // Setup complete
+      if (data.setupComplete) {
+        return;
+      }
 
-    // Capture mic audio and POST to server
-    const source = audioContext.createMediaStreamSource(stream);
-    const processor = audioContext.createScriptProcessor(4096, 1, 1);
+      // Server content (audio + text)
+      const serverContent = data.serverContent as Record<string, unknown> | undefined;
+      if (serverContent) {
+        const modelTurn = serverContent.modelTurn as Record<string, unknown> | undefined;
+        if (modelTurn) {
+          const parts = modelTurn.parts as Array<Record<string, unknown>> | undefined;
+          if (parts) {
+            for (const part of parts) {
+              // Audio
+              const inlineData = part.inlineData as Record<string, unknown> | undefined;
+              if (inlineData?.data) {
+                setAiState("speaking");
+                const audioData = base64ToFloat32(inlineData.data as string);
+                playbackQueueRef.current.push(audioData);
+                processPlaybackQueue();
+              }
 
-    processor.onaudioprocess = (e) => {
-      if (!isMicEnabledRef.current) return;
+              // Text transcript
+              if (part.text) {
+                const text = part.text as string;
+                const entry: TranscriptEntry = {
+                  role: "interviewer",
+                  content: text,
+                  timestamp: new Date().toISOString(),
+                };
+                setTranscript((prev) => [...prev, entry]);
+                // Count questions
+                if (text.includes("?")) {
+                  setQuestionCount((prev) => prev + 1);
+                }
+              }
+            }
+          }
+        }
 
-      const inputData = e.inputBuffer.getChannelData(0);
-      const pcm16 = float32ToPCM16(inputData);
-      const base64 = arrayBufferToBase64(pcm16.buffer as ArrayBuffer);
+        // Turn complete
+        if (serverContent.turnComplete) {
+          setAiState("listening");
+        }
 
-      // Fire-and-forget audio POST — don't await to avoid blocking capture
-      postToVoice({ type: "audio", data: base64 }).catch(() => {});
+        // Interrupted
+        if (serverContent.interrupted) {
+          playbackQueueRef.current = [];
+          isPlayingRef.current = false;
+        }
+      }
+
+      // Tool calls
+      const toolCall = data.toolCall as Record<string, unknown> | undefined;
+      if (toolCall) {
+        const functionCalls = toolCall.functionCalls as Array<Record<string, unknown>> | undefined;
+        if (functionCalls) {
+          for (const fc of functionCalls) {
+            handleToolCall(fc.name as string, fc.id as string, (fc.args as Record<string, unknown>) || {});
+          }
+        }
+      }
+    } catch (err) {
+      console.error("Failed to parse Gemini message:", err);
+    }
+  }, [processPlaybackQueue]);
+
+  // ── Tool Call Handler (client-side) ────────────────────────────────
+
+  const handleToolCall = useCallback((name: string, callId: string, args: Record<string, unknown>) => {
+    const ws = wsRef.current;
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+
+    // Send acknowledgment back to Gemini
+    const sendResponse = (response: Record<string, unknown>) => {
+      ws.send(JSON.stringify({
+        toolResponse: {
+          functionResponses: [{
+            id: callId,
+            name,
+            response,
+          }],
+        },
+      }));
     };
 
-    source.connect(processor);
-    processor.connect(audioContext.destination);
+    switch (name) {
+      case "adjustDifficulty":
+        console.log(`[Voice] Difficulty: ${args.currentLevel} → ${args.newLevel}`);
+        sendResponse({ acknowledged: true });
+        break;
 
-    return audioContext;
-  }, [postToVoice]);
+      case "moveToNextSection":
+        console.log(`[Voice] Section: ${args.currentSection} → ${args.nextSection}`);
+        if (args.sectionScore !== undefined) {
+          moduleScoresRef.current.push({
+            module: args.currentSection as string,
+            score: args.sectionScore as number,
+            reason: args.reason as string,
+          });
+        }
+        sendResponse({ acknowledged: true });
+        break;
 
-  // ── Public Actions ───────────────────────────────────────────────
+      case "flagForFollowUp":
+        console.log(`[Voice] Follow-up: ${args.topic}`);
+        sendResponse({ acknowledged: true });
+        break;
+
+      case "endInterview":
+        console.log(`[Voice] End interview: ${args.reason}`);
+        sendResponse({ acknowledged: true });
+        // Wait for closing message, then end
+        setTimeout(() => {
+          endInterviewInternal();
+        }, 5000);
+        break;
+    }
+  }, []);
+
+  // ── Checkpoint Transcript ──────────────────────────────────────────
+
+  const checkpointTranscript = useCallback(async () => {
+    try {
+      await fetch(`/api/interviews/${interviewId}/voice`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          accessToken,
+          action: "checkpoint",
+          transcript: transcriptRef.current,
+          moduleScores: moduleScoresRef.current,
+          questionCount: questionCountRef.current,
+        }),
+      });
+    } catch {
+      // Silent — checkpoints are best-effort
+    }
+  }, [interviewId, accessToken]);
+
+  // ── End Interview (internal) ───────────────────────────────────────
+
+  const endInterviewInternal = useCallback(async () => {
+    setInterviewState("WRAPPING_UP");
+
+    // Close WebSocket
+    if (wsRef.current) {
+      wsRef.current.close();
+      wsRef.current = null;
+    }
+
+    // Stop checkpoint timer
+    if (checkpointTimerRef.current) {
+      clearInterval(checkpointTimerRef.current);
+      checkpointTimerRef.current = null;
+    }
+
+    // Save final state to server
+    try {
+      await fetch(`/api/interviews/${interviewId}/voice`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          accessToken,
+          action: "end_interview",
+          transcript: transcriptRef.current,
+          moduleScores: moduleScoresRef.current,
+          questionCount: questionCountRef.current,
+        }),
+      });
+    } catch (err) {
+      console.error("Failed to save interview end:", err);
+    }
+
+    setInterviewState("COMPLETED");
+    onInterviewEnd?.();
+  }, [interviewId, accessToken, onInterviewEnd]);
+
+  // ── Start Interview ────────────────────────────────────────────────
 
   const startInterview = useCallback(async () => {
     try {
       setInterviewState("CONNECTING");
 
-      // Set up audio capture first
-      await setupAudioCapture();
+      // 1. Get config from server
+      const initRes = await fetch(`/api/interviews/${interviewId}/voice-init`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ accessToken }),
+      });
 
-      // Start SSE listener for receiving AI responses
-      connectSSE();
-
-      // Signal server to begin the interview
-      const result = await postToVoice({ action: "begin_interview" });
-      if (result.reconnectToken) {
-        reconnectTokenRef.current = result.reconnectToken;
+      if (!initRes.ok) {
+        const err = await initRes.json().catch(() => ({ error: "Init failed" }));
+        throw new Error(err.error || `Init error: ${initRes.status}`);
       }
+
+      const initData = await initRes.json();
+      const { apiKey, systemPrompt, tools, voiceName, candidateName, model } = initData;
+      candidateNameRef.current = candidateName;
+
+      // 2. Set up audio context for playback
+      const audioContext = new AudioContext({ sampleRate: 24000 });
+      audioContextRef.current = audioContext;
+
+      // 3. Set up mic capture
+      const micStream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          sampleRate: 24000,
+          channelCount: 1,
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      });
+      mediaStreamRef.current = micStream;
+
+      // 4. Connect to Gemini Live WebSocket
+      const ws = new WebSocket(`${GEMINI_WS_URL}?key=${apiKey}`);
+      wsRef.current = ws;
+
+      await new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error("WebSocket connection timeout")), 10000);
+
+        ws.onopen = () => {
+          clearTimeout(timeout);
+
+          // Send setup message
+          const toolDefs = tools.map((tool: { name: string; description: string; parameters: Record<string, unknown> }) => ({
+            functionDeclarations: [{
+              name: tool.name,
+              description: tool.description,
+              parameters: tool.parameters,
+            }],
+          }));
+
+          ws.send(JSON.stringify({
+            setup: {
+              model: model || "models/gemini-2.0-flash-live-001",
+              generationConfig: {
+                responseModalities: ["AUDIO", "TEXT"],
+                speechConfig: {
+                  voiceConfig: {
+                    prebuiltVoiceConfig: { voiceName: voiceName || "Kore" },
+                  },
+                },
+                temperature: 0.7,
+                maxOutputTokens: 4096,
+              },
+              systemInstruction: {
+                parts: [{ text: systemPrompt }],
+              },
+              tools: toolDefs,
+            },
+          }));
+
+          resolve();
+        };
+
+        ws.onerror = () => {
+          clearTimeout(timeout);
+          reject(new Error("WebSocket connection failed"));
+        };
+      });
+
+      // 5. Set up message handler
+      ws.onmessage = handleGeminiMessage;
+
+      ws.onerror = (event) => {
+        console.error("Gemini WebSocket error:", event);
+        setConnectionQuality("poor");
+      };
+
+      ws.onclose = () => {
+        setIsConnected(false);
+        if (interviewState !== "WRAPPING_UP" && interviewState !== "COMPLETED") {
+          setConnectionQuality("poor");
+        }
+      };
+
+      // 6. Wait a moment for setup to complete, then send greeting trigger
+      await new Promise((resolve) => setTimeout(resolve, 500));
+
+      ws.send(JSON.stringify({
+        clientContent: {
+          turns: [{
+            role: "user",
+            parts: [{ text: `Begin the interview now. Greet ${candidateName} warmly and introduce yourself as Aria, their AI interviewer.` }],
+          }],
+          turnComplete: true,
+        },
+      }));
+
+      // 7. Start mic audio capture → WebSocket
+      const source = audioContext.createMediaStreamSource(micStream);
+      const processor = audioContext.createScriptProcessor(4096, 1, 1);
+      processorRef.current = processor;
+
+      processor.onaudioprocess = (e) => {
+        if (!isMicEnabledRef.current) return;
+        if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+
+        const inputData = e.inputBuffer.getChannelData(0);
+        const pcm16 = float32ToPCM16(inputData);
+        const base64 = arrayBufferToBase64(pcm16.buffer as ArrayBuffer);
+
+        wsRef.current.send(JSON.stringify({
+          realtimeInput: {
+            mediaChunks: [{
+              mimeType: "audio/pcm;rate=24000",
+              data: base64,
+            }],
+          },
+        }));
+      };
+
+      source.connect(processor);
+      processor.connect(audioContext.destination);
+
+      // 8. Start checkpoint timer
+      checkpointTimerRef.current = setInterval(checkpointTranscript, CHECKPOINT_INTERVAL_MS);
 
       setInterviewState("IN_PROGRESS");
       setIsConnected(true);
+      setAiState("thinking");
     } catch (err) {
+      console.error("Failed to start voice interview:", err);
       setInterviewState("ERROR");
       onError?.(err instanceof Error ? err.message : "Failed to start interview");
     }
-  }, [setupAudioCapture, connectSSE, postToVoice, onError]);
+  }, [interviewId, accessToken, handleGeminiMessage, checkpointTranscript, onError]);
+
+  // ── Public Actions ─────────────────────────────────────────────────
 
   const endInterview = useCallback(() => {
-    setInterviewState("WRAPPING_UP");
-    postToVoice({ action: "end_interview" }).catch((err) => {
-      console.error("Failed to end interview:", err);
-    });
-  }, [postToVoice]);
+    endInterviewInternal();
+  }, [endInterviewInternal]);
 
   const sendTextMessage = useCallback((text: string) => {
-    postToVoice({ type: "text", message: text }).catch((err) => {
-      console.error("Failed to send text message:", err);
-    });
+    const ws = wsRef.current;
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
 
-    // Add to local transcript immediately
+    ws.send(JSON.stringify({
+      clientContent: {
+        turns: [{ role: "user", parts: [{ text }] }],
+        turnComplete: true,
+      },
+    }));
+
     setTranscript((prev) => [
       ...prev,
-      {
-        role: "candidate",
-        content: text,
-        timestamp: new Date().toISOString(),
-      },
+      { role: "candidate", content: text, timestamp: new Date().toISOString() },
     ]);
-  }, [postToVoice]);
+  }, []);
 
   const toggleMic = useCallback(() => {
     setIsMicEnabled((prev) => {
@@ -436,8 +508,6 @@ export function useVoiceInterview(
     });
   }, []);
 
-  // ── Pause/Resume ────────────────────────────────────────────────
-
   const pauseInterview = useCallback(async () => {
     try {
       await fetch(`/api/interviews/${interviewId}/pause`, {
@@ -446,7 +516,6 @@ export function useVoiceInterview(
         body: JSON.stringify({ action: "pause", accessToken }),
       });
       setIsPaused(true);
-      // Mute mic
       if (mediaStreamRef.current) {
         mediaStreamRef.current.getAudioTracks().forEach((t) => (t.enabled = false));
       }
@@ -470,7 +539,6 @@ export function useVoiceInterview(
         return;
       }
       setIsPaused(false);
-      // Re-enable mic
       if (mediaStreamRef.current) {
         mediaStreamRef.current.getAudioTracks().forEach((t) => (t.enabled = isMicEnabledRef.current));
       }
@@ -479,63 +547,44 @@ export function useVoiceInterview(
     }
   }, [interviewId, accessToken, onError]);
 
-  // ── Cleanup ──────────────────────────────────────────────────────
+  const reconnect = useCallback(async () => {
+    setIsReconnecting(true);
+    setReconnectPhase("checking");
+    try {
+      // Just restart the whole connection
+      await startInterview();
+      setIsReconnecting(false);
+      setReconnectPhase(null);
+    } catch {
+      setIsReconnecting(false);
+      setReconnectPhase(null);
+      setFallbackToText(true);
+      onError?.("Failed to reconnect. You can switch to text mode.");
+    }
+  }, [startInterview, onError]);
+
+  // ── Cleanup ────────────────────────────────────────────────────────
 
   useEffect(() => {
     return () => {
-      // Abort SSE connection
-      if (sseAbortRef.current) {
-        sseAbortRef.current.abort();
-        sseAbortRef.current = null;
+      if (wsRef.current) {
+        wsRef.current.close();
+        wsRef.current = null;
       }
-
-      // Stop polling
-      if (pollingRef.current) {
-        clearInterval(pollingRef.current);
-        pollingRef.current = null;
+      if (checkpointTimerRef.current) {
+        clearInterval(checkpointTimerRef.current);
+        checkpointTimerRef.current = null;
       }
-
-      // Stop media stream
       if (mediaStreamRef.current) {
         mediaStreamRef.current.getTracks().forEach((track) => track.stop());
         mediaStreamRef.current = null;
       }
-
-      // Close audio context
       if (audioContextRef.current) {
         audioContextRef.current.close();
         audioContextRef.current = null;
       }
     };
   }, []);
-
-  // ── Heartbeat ────────────────────────────────────────────────────
-  const heartbeatRttRef = useRef<number[]>([]);
-
-  useEffect(() => {
-    if (interviewState !== "IN_PROGRESS" || isPaused) return;
-
-    const interval = setInterval(async () => {
-      try {
-        const start = Date.now();
-        await postToVoice({ type: "heartbeat" });
-        const rtt = Date.now() - start;
-
-        // Rolling average of last 5 RTTs
-        heartbeatRttRef.current.push(rtt);
-        if (heartbeatRttRef.current.length > 5) heartbeatRttRef.current.shift();
-        const avgRtt = heartbeatRttRef.current.reduce((a, b) => a + b, 0) / heartbeatRttRef.current.length;
-
-        if (avgRtt > 500) setConnectionQuality("poor");
-        else if (avgRtt > 200) setConnectionQuality("fair");
-        else setConnectionQuality("good");
-      } catch {
-        setConnectionQuality("poor");
-      }
-    }, 10000);
-
-    return () => clearInterval(interval);
-  }, [interviewState, isPaused, postToVoice]);
 
   return {
     interviewState,
@@ -561,9 +610,6 @@ export function useVoiceInterview(
 
 // ── Audio Utility Functions ────────────────────────────────────────────
 
-/**
- * Convert Float32 audio samples to PCM 16-bit.
- */
 function float32ToPCM16(float32Array: Float32Array): Int16Array {
   const pcm16 = new Int16Array(float32Array.length);
   for (let i = 0; i < float32Array.length; i++) {
@@ -573,28 +619,20 @@ function float32ToPCM16(float32Array: Float32Array): Int16Array {
   return pcm16;
 }
 
-/**
- * Convert base64 PCM 16-bit audio to Float32 for playback.
- */
 function base64ToFloat32(base64: string): Float32Array {
   const binaryString = atob(base64);
   const bytes = new Uint8Array(binaryString.length);
   for (let i = 0; i < binaryString.length; i++) {
     bytes[i] = binaryString.charCodeAt(i);
   }
-
   const pcm16 = new Int16Array(bytes.buffer);
   const float32 = new Float32Array(pcm16.length);
   for (let i = 0; i < pcm16.length; i++) {
     float32[i] = pcm16[i] / (pcm16[i] < 0 ? 0x8000 : 0x7fff);
   }
-
   return float32;
 }
 
-/**
- * Convert ArrayBuffer to base64 string.
- */
 function arrayBufferToBase64(buffer: ArrayBuffer): string {
   const bytes = new Uint8Array(buffer);
   let binary = "";

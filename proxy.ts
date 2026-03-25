@@ -81,7 +81,7 @@ export async function proxy(request: NextRequest) {
   // For API routes, return 401 if not authenticated
   // Exception: interview stream/validate routes use accessToken auth instead
   if (pathname.startsWith('/api/')) {
-    const interviewPublicPattern = /^\/api\/interviews\/(accept|[^/]+\/(stream|validate|report-status|consent|pause|recording|voice))$/;
+    const interviewPublicPattern = /^\/api\/interviews\/(accept|[^/]+\/(stream|validate|report-status|consent|pause|recording|voice|voice-init))$/;
     if (interviewPublicPattern.test(pathname)) {
       return supabaseResponse;
     }

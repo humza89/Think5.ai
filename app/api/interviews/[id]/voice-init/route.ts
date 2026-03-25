@@ -1,0 +1,151 @@
+/**
+ * Voice Interview Initialization
+ *
+ * Returns the system prompt, tool definitions, and API key
+ * so the client can connect directly to Gemini Live via WebSocket.
+ * This endpoint is stateless — no WebSocket is created server-side.
+ */
+
+import { NextRequest } from "next/server";
+import { prisma } from "@/lib/prisma";
+import { buildAriaVoicePrompt } from "@/lib/aria-prompts";
+import { planToSystemContext } from "@/lib/interview-planner";
+import { getInterviewTools } from "@/lib/gemini-live";
+import { checkCandidateEligibility } from "@/lib/interview-eligibility";
+import { logInterviewActivity, getClientIp } from "@/lib/interview-audit";
+import { isValidTransition } from "@/lib/interview-state-machine";
+import * as Sentry from "@sentry/nextjs";
+
+export async function POST(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params;
+
+  try {
+    const body = await request.json();
+    const { accessToken } = body;
+
+    if (!accessToken) {
+      return Response.json({ error: "Access token required" }, { status: 400 });
+    }
+
+    // Validate access
+    const interview = await prisma.interview.findUnique({
+      where: { id },
+      include: {
+        candidate: {
+          select: {
+            id: true,
+            fullName: true,
+            currentTitle: true,
+            currentCompany: true,
+            skills: true,
+            experienceYears: true,
+            resumeText: true,
+            onboardingStatus: true,
+          },
+        },
+        template: true,
+      },
+    });
+
+    if (!interview || interview.accessToken !== accessToken) {
+      return Response.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    if (interview.accessTokenExpiresAt && new Date() > new Date(interview.accessTokenExpiresAt)) {
+      return Response.json({ error: "Access token expired" }, { status: 401 });
+    }
+
+    // Check eligibility
+    const eligibility = checkCandidateEligibility(interview);
+    if (!eligibility.eligible) {
+      return Response.json({ error: eligibility.reason }, { status: 403 });
+    }
+
+    // Consent check for non-practice interviews
+    if (!interview.isPractice) {
+      const consentCheck = await prisma.interview.findUnique({
+        where: { id },
+        select: { consentRecording: true, consentPrivacy: true, consentProctoring: true, consentedAt: true },
+      });
+      if (!consentCheck?.consentRecording || !consentCheck?.consentPrivacy || !consentCheck?.consentedAt) {
+        return Response.json(
+          { error: "Recording and privacy consent must be confirmed before starting." },
+          { status: 403 }
+        );
+      }
+      if (!consentCheck?.consentProctoring) {
+        return Response.json(
+          { error: "Proctoring consent must be confirmed before starting." },
+          { status: 403 }
+        );
+      }
+    }
+
+    // Build system prompt
+    const systemPrompt = buildAriaVoicePrompt({
+      interviewType: interview.type as "TECHNICAL" | "BEHAVIORAL" | "DOMAIN_EXPERT" | "LANGUAGE" | "CASE_STUDY",
+      candidateName: interview.candidate.fullName,
+      candidateTitle: interview.candidate.currentTitle,
+      candidateCompany: interview.candidate.currentCompany,
+      candidateSkills: interview.candidate.skills as string[] | undefined,
+      candidateExperience: interview.candidate.experienceYears,
+      resumeText: interview.candidate.resumeText,
+    });
+
+    let fullPrompt = systemPrompt;
+    if (interview.interviewPlan) {
+      const planContext = planToSystemContext(interview.interviewPlan as any);
+      fullPrompt += "\n\n" + planContext;
+    }
+
+    // Get tool definitions
+    const tools = getInterviewTools();
+
+    // Update interview status to IN_PROGRESS
+    const currentStatus = interview.status;
+    if (currentStatus !== "IN_PROGRESS") {
+      if (!isValidTransition(currentStatus, "IN_PROGRESS")) {
+        console.warn(`[${id}] Invalid voice init status transition: ${currentStatus} → IN_PROGRESS`);
+      }
+      await prisma.interview.update({
+        where: { id },
+        data: {
+          status: "IN_PROGRESS",
+          startedAt: new Date(),
+          voiceProvider: "gemini-live",
+        },
+      });
+    }
+
+    // Audit log
+    logInterviewActivity({
+      interviewId: id,
+      action: "interview.voice_started",
+      userId: interview.candidate.id,
+      userRole: "candidate",
+      ipAddress: getClientIp(request.headers),
+    }).catch(() => {});
+
+    // Return config for client-side WebSocket connection
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      return Response.json({ error: "Voice service not configured" }, { status: 500 });
+    }
+
+    return Response.json({
+      apiKey,
+      systemPrompt: fullPrompt,
+      tools,
+      voiceName: "Kore",
+      candidateName: interview.candidate.fullName,
+      model: "models/gemini-2.0-flash-live-001",
+    });
+  } catch (error) {
+    Sentry.captureException(error, { tags: { component: "voice_init" } });
+    console.error("Voice init error:", error);
+    return Response.json({ error: "Failed to initialize voice session" }, { status: 500 });
+  }
+}
