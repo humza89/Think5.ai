@@ -400,7 +400,7 @@ export function useVoiceInterview(
             setup: {
               model: model || "models/gemini-2.5-flash-native-audio-latest",
               generationConfig: {
-                responseModalities: ["audio"],
+                responseModalities: ["AUDIO"],
                 speechConfig: {
                   voiceConfig: {
                     prebuiltVoiceConfig: { voiceName: voiceName || "Kore" },
@@ -410,6 +410,7 @@ export function useVoiceInterview(
               systemInstruction: {
                 parts: [{ text: systemPrompt }],
               },
+              outputAudioTranscription: {},
             },
           };
 
