@@ -132,6 +132,13 @@ export function VoiceInterviewRoom({
     },
   });
 
+  // ── Auto-start: consent already handled by WelcomeScreen ────────
+  useEffect(() => {
+    if (interviewState === "IDLE") {
+      startInterview();
+    }
+  }, [interviewState, startInterview]);
+
   // ── Reduced Motion Detection ────────────────────────────────────
   useEffect(() => {
     const mq = window.matchMedia("(prefers-reduced-motion: reduce)");

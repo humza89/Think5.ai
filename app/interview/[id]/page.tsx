@@ -132,9 +132,9 @@ export default function InterviewRoom() {
 
   // Handle start — save consent, request fullscreen + start monitoring
   const handleStart = useCallback(async (consent: { consentRecording: boolean; consentProctoring: boolean; consentPrivacy: boolean }) => {
-    // Persist consent to the backend before starting
+    // Persist consent to the backend — MUST succeed before starting
     try {
-      await fetch(`/api/interviews/${interviewId}/validate`, {
+      const res = await fetch(`/api/interviews/${interviewId}/validate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -144,8 +144,14 @@ export default function InterviewRoom() {
           consentPrivacy: consent.consentPrivacy,
         }),
       });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setError(data.error || "Failed to save consent. Please try again.");
+        return;
+      }
     } catch {
-      // Non-blocking: consent is recorded best-effort
+      setError("Network error saving consent. Please check your connection and try again.");
+      return;
     }
 
     // Start screen capture if required by template
@@ -368,8 +374,8 @@ export default function InterviewRoom() {
     );
   }
 
-  // Voice interview mode — route to VoiceInterviewRoom
-  if (meta?.voiceProvider === "gemini-live" && stage !== "COMPLETE" && stage !== "CLOSING") {
+  // Voice interview mode — route to VoiceInterviewRoom (only after consent via WelcomeScreen)
+  if (meta?.voiceProvider === "gemini-live" && stage === "ACTIVE") {
     return (
       <VoiceInterviewRoom
         interviewId={interviewId}

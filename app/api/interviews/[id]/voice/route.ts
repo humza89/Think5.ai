@@ -150,7 +150,7 @@ export async function POST(
           );
         }
         // Template-driven readiness check enforcement
-        const readinessRequired = interview.template?.readinessCheckRequired ?? true;
+        const readinessRequired = interview.template?.readinessCheckRequired ?? false;
         if (readinessRequired && !preStartCheck.readinessVerified) {
           return Response.json(
             { error: "Device readiness check must be completed before starting the interview." },
