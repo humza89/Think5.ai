@@ -34,17 +34,17 @@ const nextConfig: NextConfig = {
 
     return [
       {
-        source: "/(interview|api|candidate)(.*)",
-        headers: [
-          ...securityHeaders,
-          { key: "Content-Security-Policy", value: strictCsp },
-        ],
-      },
-      {
         source: "/(.*)",
         headers: [
           ...securityHeaders,
           { key: "Content-Security-Policy", value: landingCsp },
+        ],
+      },
+      {
+        source: "/(interview|api|candidate)(.*)",
+        headers: [
+          ...securityHeaders,
+          { key: "Content-Security-Policy", value: strictCsp },
         ],
       },
     ];
