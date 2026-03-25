@@ -192,6 +192,21 @@ export function useVoiceInterview(
           playbackQueueRef.current = [];
           isPlayingRef.current = false;
         }
+
+        // Output transcription (native audio models send transcript separately)
+        const outputTranscription = serverContent.outputTranscription as Record<string, unknown> | undefined;
+        if (outputTranscription?.text) {
+          const text = outputTranscription.text as string;
+          const entry: TranscriptEntry = {
+            role: "interviewer",
+            content: text,
+            timestamp: new Date().toISOString(),
+          };
+          setTranscript((prev) => [...prev, entry]);
+          if (text.includes("?")) {
+            setQuestionCount((prev) => prev + 1);
+          }
+        }
       }
 
       // Tool calls
@@ -386,18 +401,19 @@ export function useVoiceInterview(
             setup: {
               model: model || "models/gemini-2.5-flash-native-audio-latest",
               generationConfig: {
-                responseModalities: ["AUDIO", "TEXT"],
+                responseModalities: ["AUDIO"],
                 speechConfig: {
                   voiceConfig: {
                     prebuiltVoiceConfig: { voiceName: voiceName || "Kore" },
                   },
                 },
                 temperature: 0.7,
-                maxOutputTokens: 4096,
               },
               systemInstruction: {
+                role: "system",
                 parts: [{ text: systemPrompt }],
               },
+              outputAudioTranscription: {},
               tools: toolDefs,
             },
           };

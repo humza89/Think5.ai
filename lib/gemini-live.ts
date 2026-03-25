@@ -222,7 +222,7 @@ function buildSetupMessage(config: GeminiLiveConfig) {
     setup: {
       model: "models/gemini-2.5-flash-native-audio-latest",
       generationConfig: {
-        responseModalities: config.generationConfig?.responseModalities || ["AUDIO", "TEXT"],
+        responseModalities: ["AUDIO"],
         speechConfig: {
           voiceConfig: {
             prebuiltVoiceConfig: {
@@ -231,11 +231,12 @@ function buildSetupMessage(config: GeminiLiveConfig) {
           },
         },
         temperature: config.generationConfig?.temperature ?? 0.7,
-        maxOutputTokens: config.generationConfig?.maxOutputTokens ?? 4096,
       },
       systemInstruction: {
+        role: "system",
         parts: [{ text: config.systemInstruction }],
       },
+      outputAudioTranscription: {},
       tools: tools || [],
     },
   };
