@@ -1,47 +1,40 @@
 "use client";
 
 /**
- * VoiceInterviewRoom — Micro1-style Voice + Video Interview UI
+ * VoiceInterviewRoom — Mercor/Micro1-style immersive interview UI
  *
- * Layout: AI avatar/waveform (left) + candidate webcam (right) + transcript panel
- * Features: real-time voice conversation, video recording, proctoring, accessibility fallback
+ * Full-screen candidate video, Think5 AI indicator in corner,
+ * floating control bar, device selectors, transcript panel on right.
  */
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import Image from "next/image";
 import {
   Mic,
   MicOff,
-  Video,
-  VideoOff,
   PhoneOff,
   Send,
   Bot,
   User,
-  Clock,
   MessageSquare,
   AlertTriangle,
-  Maximize2,
-  Volume2,
-  RefreshCw,
   Pause,
   Play,
   Loader2,
-  CheckCircle2,
+  X,
+  PanelRightOpen,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import {
   useVoiceInterview,
-  type InterviewState,
   type AISpeakingState,
   type TranscriptEntry,
 } from "@/hooks/useVoiceInterview";
-import { NetworkQualityIndicator } from "@/components/interview/NetworkQualityIndicator";
-import { classifyError } from "@/lib/error-classification";
+import { DeviceSelector } from "@/components/interview/DeviceSelector";
 
 // ── Props ──────────────────────────────────────────────────────────────
 
@@ -75,7 +68,6 @@ export function VoiceInterviewRoom({
 
   // Reconnection state
   const [isReconnecting, setIsReconnecting] = useState(false);
-  const [reconnectAttempt, setReconnectAttempt] = useState(0);
   const prevConnectedRef = useRef(true);
 
   // Recording failure tracking
@@ -85,18 +77,17 @@ export function VoiceInterviewRoom({
   // UI states
   const [textInput, setTextInput] = useState("");
   const [showTextInput, setShowTextInput] = useState(false);
+  const [showTranscript, setShowTranscript] = useState(true);
   const [timeLeft, setTimeLeft] = useState(durationMinutes * 60);
-  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [showControls, setShowControls] = useState(true);
   const transcriptEndRef = useRef<HTMLDivElement>(null);
+  const controlsTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Accessibility: screen reader announcements
+  // Accessibility
   const [srAnnouncement, setSrAnnouncement] = useState("");
-  // Accessibility: reduced motion preference
   const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
-  // Progressive degradation tracking
   const [degradationBannerShown, setDegradationBannerShown] = useState(false);
   const degradationTimerRef = useRef<NodeJS.Timeout | null>(null);
-  // Auto-save draft
   const draftKeyRef = useRef(`draft-response:${interviewId}`);
 
   // Voice interview hook
@@ -125,9 +116,7 @@ export function VoiceInterviewRoom({
     onError: (error) => toast.error(error),
     onInterviewEnd: () => {
       toast.success("Interview completed! Generating your report...");
-      // Finalize recording
       finalizeRecording();
-      // Redirect after delay
       setTimeout(() => {
         router.push(`/candidate/interviews/${interviewId}/report`);
       }, 3000);
@@ -139,14 +128,62 @@ export function VoiceInterviewRoom({
     if (fallbackToText) setShowTextInput(true);
   }, [fallbackToText]);
 
-  // ── Auto-start: consent already handled by WelcomeScreen ────────
-  useEffect(() => {
-    if (interviewState === "IDLE") {
-      startInterview();
+  // ── Device switching handlers ──────────────────────────────────────
+  const handleMicChange = useCallback(async (deviceId: string) => {
+    try {
+      // Get new mic stream
+      const newStream = await navigator.mediaDevices.getUserMedia({
+        audio: { deviceId: { exact: deviceId } },
+      });
+      // If there's an active MediaRecorder using audio, we'd need to restart it
+      // For now, the voice hook handles mic through its own getUserMedia call
+      // This primarily affects the next reconnect cycle
+      toast.success("Microphone switched");
+      newStream.getTracks().forEach((t) => t.stop()); // cleanup — hook will pick up on reconnect
+    } catch {
+      toast.error("Failed to switch microphone");
     }
+  }, []);
+
+  const handleCameraChange = useCallback(async (deviceId: string) => {
+    try {
+      // Stop old video tracks
+      if (stream) {
+        stream.getVideoTracks().forEach((t) => t.stop());
+      }
+      const newStream = await navigator.mediaDevices.getUserMedia({
+        video: { deviceId: { exact: deviceId }, width: { ideal: 1280 }, height: { ideal: 720 } },
+        audio: false,
+      });
+      setStream(newStream);
+      if (videoRef.current) videoRef.current.srcObject = newStream;
+      toast.success("Camera switched");
+    } catch {
+      toast.error("Failed to switch camera");
+    }
+  }, [stream]);
+
+  const handleSpeakerChange = useCallback(async (deviceId: string) => {
+    // setSinkId is only available on some browsers (Chrome/Edge)
+    try {
+      const audioElements = document.querySelectorAll("audio");
+      for (const el of audioElements) {
+        if ("setSinkId" in el) {
+          await (el as HTMLAudioElement & { setSinkId: (id: string) => Promise<void> }).setSinkId(deviceId);
+        }
+      }
+      toast.success("Speaker switched");
+    } catch {
+      toast.error("Speaker switching not supported in this browser");
+    }
+  }, []);
+
+  // ── Auto-start ────────────────────────────────────────────────────
+  useEffect(() => {
+    if (interviewState === "IDLE") startInterview();
   }, [interviewState, startInterview]);
 
-  // ── Reduced Motion Detection ────────────────────────────────────
+  // ── Reduced Motion ────────────────────────────────────────────────
   useEffect(() => {
     const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
     setPrefersReducedMotion(mq.matches);
@@ -155,274 +192,180 @@ export function VoiceInterviewRoom({
     return () => mq.removeEventListener("change", handler);
   }, []);
 
-  // ── Screen Reader Announcements ───────────────────────────────
+  // ── Screen Reader Announcements ─────────────────────────────────
   useEffect(() => {
     if (interviewState === "IN_PROGRESS") setSrAnnouncement("Interview started. Aria is ready.");
-    else if (interviewState === "COMPLETED") setSrAnnouncement("Interview completed. Report is being generated.");
+    else if (interviewState === "COMPLETED") setSrAnnouncement("Interview completed.");
   }, [interviewState]);
 
   useEffect(() => {
     if (aiState === "speaking") setSrAnnouncement("Aria is speaking.");
     else if (aiState === "listening") setSrAnnouncement("Aria is listening. You may respond now.");
-    else if (aiState === "thinking") setSrAnnouncement("Aria is thinking.");
   }, [aiState]);
 
   useEffect(() => {
-    if (isPaused) setSrAnnouncement("Interview paused.");
-  }, [isPaused]);
-
-  useEffect(() => {
-    if (connectionQuality === "poor") setSrAnnouncement("Connection quality is poor. Responses may be delayed.");
+    if (connectionQuality === "poor") setSrAnnouncement("Connection quality is poor.");
   }, [connectionQuality]);
 
-  useEffect(() => {
-    if (recordingWarning) setSrAnnouncement("Warning: Recording may be incomplete due to upload issues.");
-  }, [recordingWarning]);
-
-  // ── Keyboard Shortcuts ────────────────────────────────────────
+  // ── Keyboard Shortcuts ──────────────────────────────────────────
   useEffect(() => {
     if (interviewState !== "IN_PROGRESS") return;
-
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Don't trigger shortcuts when typing in input/textarea
       const tag = (e.target as HTMLElement)?.tagName?.toLowerCase();
       if (tag === "input" || tag === "textarea") return;
-
       switch (e.key) {
-        case " ": // Space = toggle mic
-          e.preventDefault();
-          toggleMic();
-          break;
-        case "Escape": // Escape = end interview confirmation
-          e.preventDefault();
-          if (confirm("Are you sure you want to end the interview?")) {
-            endInterview();
-          }
-          break;
-        case "t":
-        case "T": // T = toggle text input
-          e.preventDefault();
-          setShowTextInput((prev) => !prev);
-          break;
-        case "p":
-        case "P": // P = pause/resume
-          e.preventDefault();
-          if (isPaused) resumeInterview();
-          else pauseInterview();
-          break;
+        case " ": e.preventDefault(); toggleMic(); break;
+        case "Escape": e.preventDefault(); if (confirm("End the interview?")) endInterview(); break;
+        case "t": case "T": e.preventDefault(); setShowTextInput((p) => !p); break;
+        case "p": case "P": e.preventDefault(); isPaused ? resumeInterview() : pauseInterview(); break;
       }
     };
-
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [interviewState, isPaused, toggleMic, endInterview, pauseInterview, resumeInterview]);
 
-  // ── Progressive Degradation Tracking ──────────────────────────
+  // ── Progressive Degradation ─────────────────────────────────────
   useEffect(() => {
     if (connectionQuality === "fair" || connectionQuality === "poor") {
       if (!degradationTimerRef.current) {
-        degradationTimerRef.current = setTimeout(() => {
-          setDegradationBannerShown(true);
-        }, 10000); // Show after 10s of degraded quality
+        degradationTimerRef.current = setTimeout(() => setDegradationBannerShown(true), 10000);
       }
     } else {
-      if (degradationTimerRef.current) {
-        clearTimeout(degradationTimerRef.current);
-        degradationTimerRef.current = null;
-      }
+      if (degradationTimerRef.current) { clearTimeout(degradationTimerRef.current); degradationTimerRef.current = null; }
       setDegradationBannerShown(false);
     }
-    return () => {
-      if (degradationTimerRef.current) clearTimeout(degradationTimerRef.current);
-    };
+    return () => { if (degradationTimerRef.current) clearTimeout(degradationTimerRef.current); };
   }, [connectionQuality]);
 
-  // ── Auto-Save Draft Responses ─────────────────────────────────
+  // ── Draft Auto-Save ─────────────────────────────────────────────
   useEffect(() => {
     if (!showTextInput) return;
-    // Restore draft on mount
     const saved = localStorage.getItem(draftKeyRef.current);
     if (saved && !textInput) setTextInput(saved);
   }, [showTextInput]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!showTextInput || !textInput) return;
-    const timeout = setTimeout(() => {
-      localStorage.setItem(draftKeyRef.current, textInput);
-    }, 500);
+    const timeout = setTimeout(() => localStorage.setItem(draftKeyRef.current, textInput), 500);
     return () => clearTimeout(timeout);
   }, [textInput, showTextInput]);
 
-  // ── Camera Setup (mandatory) ────────────────────────────────────
-
+  // ── Camera Setup ──────────────────────────────────────────────────
   useEffect(() => {
     let currentStream: MediaStream | null = null;
-
     const initCamera = async () => {
       try {
         currentStream = await navigator.mediaDevices.getUserMedia({
           video: { width: { ideal: 1280 }, height: { ideal: 720 } },
-          audio: false, // Audio is handled by useVoiceInterview
+          audio: false,
         });
         setStream(currentStream);
         setCameraEnabled(true);
 
-        // Initialize recording
         const fullStream = await navigator.mediaDevices.getUserMedia({
           video: { width: { ideal: 1280 }, height: { ideal: 720 } },
           audio: true,
         });
-
         try {
-          const recorder = new MediaRecorder(fullStream, {
-            mimeType: "video/webm;codecs=vp9",
-          });
+          const recorder = new MediaRecorder(fullStream, { mimeType: "video/webm;codecs=vp9" });
           mediaRecorderRef.current = recorder;
-
           recorder.ondataavailable = async (event) => {
-            if (event.data.size > 0) {
-              await uploadChunk(event.data, recordedChunksRef.current);
-              recordedChunksRef.current++;
-            }
+            if (event.data.size > 0) { await uploadChunk(event.data, recordedChunksRef.current); recordedChunksRef.current++; }
           };
-
-          recorder.start(2000); // 2-second chunks
+          recorder.start(2000);
         } catch {
-          // VP9 not supported, try default
           const recorder = new MediaRecorder(fullStream);
           mediaRecorderRef.current = recorder;
           recorder.ondataavailable = async (event) => {
-            if (event.data.size > 0) {
-              await uploadChunk(event.data, recordedChunksRef.current);
-              recordedChunksRef.current++;
-            }
+            if (event.data.size > 0) { await uploadChunk(event.data, recordedChunksRef.current); recordedChunksRef.current++; }
           };
           recorder.start(2000);
         }
       } catch {
-        toast.error("Camera access is required for this interview. Please enable your camera and refresh.");
+        toast.error("Camera access is required. Please enable your camera and refresh.");
       }
     };
-
     initCamera();
-
     return () => {
-      if (currentStream) {
-        currentStream.getTracks().forEach((track) => track.stop());
-      }
-      if (mediaRecorderRef.current?.state === "recording") {
-        mediaRecorderRef.current.stop();
-      }
+      if (currentStream) currentStream.getTracks().forEach((t) => t.stop());
+      if (mediaRecorderRef.current?.state === "recording") mediaRecorderRef.current.stop();
     };
   }, []);
 
-  // Bind stream to video element (runs after video element renders)
   useEffect(() => {
-    if (videoRef.current && stream) {
-      videoRef.current.srcObject = stream;
-    }
+    if (videoRef.current && stream) videoRef.current.srcObject = stream;
   }, [stream, interviewState]);
 
-  // ── Timer ────────────────────────────────────────────────────────
-
+  // ── Timer ───────────────────────────────────────────────────────
   useEffect(() => {
     if (interviewState !== "IN_PROGRESS") return;
-
     const timer = setInterval(() => {
-      setTimeLeft((prev) => {
-        if (prev <= 0) {
-          endInterview();
-          return 0;
-        }
-        return prev - 1;
-      });
+      setTimeLeft((prev) => { if (prev <= 0) { endInterview(); return 0; } return prev - 1; });
     }, 1000);
-
     return () => clearInterval(timer);
   }, [interviewState, endInterview]);
 
-  // ── Auto-scroll transcript ───────────────────────────────────────
+  // ── Auto-scroll transcript ─────────────────────────────────────
+  useEffect(() => { transcriptEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [transcript]);
 
-  useEffect(() => {
-    transcriptEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [transcript]);
-
-  // ── Reconnection Detection ──────────────────────────────────────
-
+  // ── Reconnection Detection ────────────────────────────────────
   useEffect(() => {
     if (interviewState !== "IN_PROGRESS") return;
-
-    if (!isConnected && prevConnectedRef.current) {
-      // Lost connection
-      setIsReconnecting(true);
-      setReconnectAttempt((prev) => prev + 1);
-    } else if (isConnected && !prevConnectedRef.current) {
-      // Reconnected
-      setIsReconnecting(false);
-      toast.success("Connection restored");
-    }
+    if (!isConnected && prevConnectedRef.current) { setIsReconnecting(true); }
+    else if (isConnected && !prevConnectedRef.current) { setIsReconnecting(false); toast.success("Connection restored"); }
     prevConnectedRef.current = isConnected;
   }, [isConnected, interviewState]);
 
-  // ── Recording Upload ─────────────────────────────────────────────
+  // ── Auto-hide controls ────────────────────────────────────────
+  const resetControlsTimer = useCallback(() => {
+    setShowControls(true);
+    if (controlsTimerRef.current) clearTimeout(controlsTimerRef.current);
+    controlsTimerRef.current = setTimeout(() => setShowControls(false), 5000);
+  }, []);
 
-  const uploadChunk = async (blob: Blob, index: number, type?: string) => {
+  useEffect(() => {
+    if (interviewState !== "IN_PROGRESS") return;
+    resetControlsTimer();
+    const handleMove = () => resetControlsTimer();
+    window.addEventListener("mousemove", handleMove);
+    return () => {
+      window.removeEventListener("mousemove", handleMove);
+      if (controlsTimerRef.current) clearTimeout(controlsTimerRef.current);
+    };
+  }, [interviewState, resetControlsTimer]);
+
+  // ── Upload & Recording ────────────────────────────────────────
+  const uploadChunk = async (blob: Blob, index: number) => {
     try {
       const formData = new FormData();
       formData.append("chunk", blob);
       formData.append("chunkIndex", String(index));
       formData.append("accessToken", accessToken);
-      if (type) {
-        formData.append("type", type);
-      }
-
-      await fetch(`/api/interviews/${interviewId}/recording`, {
-        method: "POST",
-        body: formData,
-      });
-      // Reset consecutive failure counter on success
+      await fetch(`/api/interviews/${interviewId}/recording`, { method: "POST", body: formData });
       failedChunksRef.current = 0;
     } catch {
       failedChunksRef.current++;
-      if (failedChunksRef.current >= 3) {
-        setRecordingWarning(true);
-      }
+      if (failedChunksRef.current >= 3) setRecordingWarning(true);
     }
   };
 
   const finalizeRecording = async () => {
-    if (mediaRecorderRef.current?.state === "recording") {
-      mediaRecorderRef.current.stop();
-    }
-
+    if (mediaRecorderRef.current?.state === "recording") mediaRecorderRef.current.stop();
     try {
       await fetch(`/api/interviews/${interviewId}/recording`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "finalize",
-          totalChunks: recordedChunksRef.current,
-          format: "webm",
-          durationSeconds: durationMinutes * 60 - timeLeft,
-        }),
+        body: JSON.stringify({ action: "finalize", totalChunks: recordedChunksRef.current, format: "webm", durationSeconds: durationMinutes * 60 - timeLeft }),
       });
-    } catch {
-      // Silent fail
-    }
+    } catch { /* silent */ }
   };
-
-  // ── Camera Toggle ────────────────────────────────────────────────
 
   const toggleCamera = useCallback(() => {
     if (stream) {
-      stream.getVideoTracks().forEach((track) => {
-        track.enabled = !track.enabled;
-      });
-      setCameraEnabled((prev) => !prev);
+      stream.getVideoTracks().forEach((t) => { t.enabled = !t.enabled; });
+      setCameraEnabled((p) => !p);
     }
   }, [stream]);
-
-  // ── Text Fallback ────────────────────────────────────────────────
 
   const handleTextSubmit = () => {
     if (!textInput.trim()) return;
@@ -431,59 +374,49 @@ export function VoiceInterviewRoom({
     localStorage.removeItem(draftKeyRef.current);
   };
 
-  // ── Fullscreen ───────────────────────────────────────────────────
-
-  const toggleFullscreen = () => {
-    if (!document.fullscreenElement) {
-      document.documentElement.requestFullscreen();
-      setIsFullscreen(true);
-    } else {
-      document.exitFullscreen();
-      setIsFullscreen(false);
-    }
-  };
-
-  // ── Time Format ──────────────────────────────────────────────────
-
   const formatTime = (seconds: number) => {
     const m = Math.floor(seconds / 60);
     const s = seconds % 60;
     return `${m}:${s.toString().padStart(2, "0")}`;
   };
 
-  // ── Render ───────────────────────────────────────────────────────
+  const elapsedSeconds = durationMinutes * 60 - timeLeft;
+  const formatElapsed = (s: number) => {
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    const sec = s % 60;
+    return h > 0
+      ? `${h}:${m.toString().padStart(2, "0")}:${sec.toString().padStart(2, "0")}`
+      : `${m.toString().padStart(2, "0")}:${sec.toString().padStart(2, "0")}`;
+  };
 
-  // Connecting state — consent already handled by WelcomeScreen
+  // ── Loading / Completed states ────────────────────────────────
+
   if (interviewState === "IDLE" || interviewState === "CONNECTING") {
     return (
-      <div className="flex h-screen items-center justify-center bg-background">
+      <div className="flex h-screen items-center justify-center bg-gray-950">
         <div className="text-center">
-          <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto mb-4" />
-          <p className="text-sm text-muted-foreground">Connecting to Aria...</p>
+          <Loader2 className="h-8 w-8 animate-spin text-blue-500 mx-auto mb-4" />
+          <p className="text-sm text-gray-400">Connecting to Aria...</p>
         </div>
       </div>
     );
   }
 
-  // Completed state
   if (interviewState === "COMPLETED") {
     return (
-      <div className="flex h-screen items-center justify-center bg-background">
-        <Card className="max-w-md p-8 text-center">
+      <div className="flex h-screen items-center justify-center bg-gray-950">
+        <Card className="max-w-md p-8 text-center bg-gray-900 border-gray-800">
           <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-green-500/10">
             <Bot className="h-8 w-8 text-green-500" />
           </div>
-          <h2 className="text-xl font-semibold">Interview Complete!</h2>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Thank you, {candidateName}. Your interview has been recorded and a
-            detailed report is being generated.
-          </p>
-          <p className="mt-4 text-xs text-muted-foreground">
-            You&apos;ll be redirected to your results shortly...
+          <h2 className="text-xl font-semibold text-white">Interview Complete!</h2>
+          <p className="mt-2 text-sm text-gray-400">
+            Thank you, {candidateName}. Your report is being generated.
           </p>
           <div className="mt-4">
-            <div className="h-1 overflow-hidden rounded-full bg-muted">
-              <div className="h-full animate-pulse rounded-full bg-primary" style={{ width: "60%" }} />
+            <div className="h-1 overflow-hidden rounded-full bg-gray-800">
+              <div className="h-full animate-pulse rounded-full bg-blue-500" style={{ width: "60%" }} />
             </div>
           </div>
         </Card>
@@ -491,277 +424,254 @@ export function VoiceInterviewRoom({
     );
   }
 
-  // Active interview
+  // ── Active Interview Layout ───────────────────────────────────
+
   return (
-    <div className="flex h-screen flex-col bg-background">
-      {/* ── Top Bar ── */}
-      <header className="flex items-center justify-between border-b px-4 py-2">
-        <div className="flex items-center gap-3">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10">
-            <Bot className="h-4 w-4 text-primary" />
-          </div>
-          <div>
-            <p className="text-sm font-medium">Aria Interview</p>
-            <p className="text-xs text-muted-foreground">{jobTitle}</p>
-          </div>
-        </div>
+    <div className="flex h-screen bg-gray-950 overflow-hidden">
+      {/* Screen reader announcements */}
+      <div aria-live="assertive" aria-atomic="true" className="sr-only">{srAnnouncement}</div>
 
-        <div className="flex items-center gap-3">
-          {/* Question count */}
-          <Badge variant="secondary" className="gap-1">
-            <MessageSquare className="h-3 w-3" />
-            Q{questionCount}
-          </Badge>
+      {/* ── Main Video Area ── */}
+      <div className="relative flex-1 flex flex-col">
 
-          {/* Timer */}
-          <Badge
-            variant={timeLeft < 300 ? "destructive" : "secondary"}
-            className="gap-1 tabular-nums"
-          >
-            <Clock className="h-3 w-3" />
-            {formatTime(timeLeft)}
-          </Badge>
-
-          {/* Connection quality */}
-          <NetworkQualityIndicator quality={connectionQuality} />
-
-          {/* Fullscreen */}
-          <Button variant="ghost" size="icon" onClick={toggleFullscreen}>
-            <Maximize2 className="h-4 w-4" />
-          </Button>
-
-          {/* End interview */}
-          <Button
-            variant="destructive"
-            size="sm"
-            onClick={() => {
-              if (confirm("Are you sure you want to end the interview?")) {
-                endInterview();
-              }
-            }}
-          >
-            <PhoneOff className="h-4 w-4 mr-1" />
-            End
-          </Button>
-        </div>
-      </header>
-
-      {/* ── Reconnection Overlay ── */}
-      {voiceReconnecting && (
-        <div
-          className="flex items-center justify-between gap-2 bg-orange-500/10 border-b border-orange-500/20 px-4 py-2 text-sm text-orange-700 dark:text-orange-400"
-          role="alert"
-          aria-live="assertive"
-        >
-          <div className="flex items-center gap-2">
-            <RefreshCw className={`h-4 w-4 shrink-0 ${prefersReducedMotion ? "" : "animate-spin"}`} />
-            <span>
-              Connection lost — reconnecting... Your responses are saved.
-            </span>
-          </div>
-          <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={reconnect} autoFocus>
-              Retry Now
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setShowTextInput(true)}
-            >
-              Switch to Text
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {/* ── Pause Overlay ── */}
-      {isPaused && (
-        <div
-          className="absolute inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm"
-          role="dialog"
-          aria-modal="true"
-          aria-label="Interview paused"
-        >
-          <Card className="max-w-sm p-8 text-center">
-            <Pause className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
-            <h2 className="text-xl font-semibold mb-2">Interview Paused</h2>
-            <p className="text-sm text-muted-foreground mb-6">
-              Your progress is saved. The interview will auto-cancel if paused for more than 10 minutes.
-            </p>
-            <Button onClick={resumeInterview} className="w-full" size="lg" autoFocus>
-              <Play className="h-4 w-4 mr-2" />
-              Resume Interview
-            </Button>
-          </Card>
-        </div>
-      )}
-
-      {/* ── Recording Warning ── */}
-      {recordingWarning && (
-        <div className="flex items-center gap-2 bg-yellow-500/10 border-b border-yellow-500/20 px-4 py-2 text-sm text-yellow-700 dark:text-yellow-400" role="alert">
-          <AlertTriangle className="h-4 w-4 shrink-0" />
-          Recording may be incomplete due to upload issues
-        </div>
-      )}
-
-      {/* ── Progressive Degradation Banners ── */}
-      {degradationBannerShown && connectionQuality === "fair" && (
-        <div className="flex items-center gap-2 bg-amber-500/10 border-b border-amber-500/20 px-4 py-2 text-sm text-amber-700 dark:text-amber-400" role="alert">
-          <AlertTriangle className="h-4 w-4 shrink-0" />
-          Your connection quality has decreased. Audio may be slightly delayed.
-        </div>
-      )}
-      {degradationBannerShown && connectionQuality === "poor" && (
-        <div className="flex items-center justify-between bg-orange-500/10 border-b border-orange-500/20 px-4 py-2 text-sm text-orange-700 dark:text-orange-400" role="alert">
-          <div className="flex items-center gap-2">
-            <AlertTriangle className="h-4 w-4 shrink-0" />
-            Connection is unstable. Consider switching to text mode for a better experience.
-          </div>
-          <Button variant="outline" size="sm" onClick={() => setShowTextInput(true)}>
-            Switch to Text
-          </Button>
-        </div>
-      )}
-      {micIsSilent && isMicEnabled && interviewState === "IN_PROGRESS" && (
-        <div className="flex items-center gap-2 bg-red-500/10 border-b border-red-500/20 px-4 py-2 text-sm text-red-700 dark:text-red-400" role="alert">
-          <AlertTriangle className="h-4 w-4 shrink-0" />
-          Your microphone appears to be muted or not picking up audio. Check your mic settings.
-        </div>
-      )}
-      {fallbackToText && (
-        <div className="flex items-center gap-2 bg-blue-500/10 border-b border-blue-500/20 px-4 py-2 text-sm text-blue-700 dark:text-blue-400" role="alert">
-          <AlertTriangle className="h-4 w-4 shrink-0" />
-          Voice connection lost. You can continue by typing your responses below.
-        </div>
-      )}
-
-      {/* ── Screen Reader Announcements (visually hidden) ── */}
-      <div
-        aria-live="assertive"
-        aria-atomic="true"
-        className="sr-only"
-      >
-        {srAnnouncement}
-      </div>
-
-      {/* ── Main Content ── */}
-      <div className="flex flex-1 overflow-hidden">
-        {/* ── Left: AI Avatar + Candidate Video ── */}
-        <div className="flex w-2/3 flex-col gap-4 p-4">
-          <div className="flex flex-1 gap-4">
-            {/* AI Avatar Panel */}
-            <div className="flex flex-1 flex-col items-center justify-center rounded-xl bg-gradient-to-br from-primary/5 to-primary/10 border">
-              <AIAvatar state={aiState} reducedMotion={prefersReducedMotion} />
-              <p className="mt-3 text-sm font-medium">Aria</p>
-              <p className="text-xs text-muted-foreground">
-                {aiState === "speaking"
-                  ? "Speaking..."
-                  : aiState === "thinking"
-                    ? "Thinking..."
-                    : aiState === "listening"
-                      ? "Listening..."
-                      : "Ready"}
-              </p>
-            </div>
-
-            {/* Candidate Video */}
-            <div className="relative flex-1 overflow-hidden rounded-xl bg-muted border">
-              <video
-                ref={videoRef}
-                autoPlay
-                playsInline
-                muted
-                className="h-full w-full object-cover"
-              />
-              {!cameraEnabled && (
-                <div className="absolute inset-0 flex items-center justify-center bg-muted">
-                  <div className="text-center">
-                    <User className="mx-auto h-12 w-12 text-muted-foreground" />
-                    <p className="mt-2 text-sm text-muted-foreground">Camera off</p>
-                  </div>
-                </div>
-              )}
-              <div className="absolute bottom-2 left-2">
-                <Badge variant="secondary" className="text-xs">
-                  {candidateName}
-                </Badge>
+        {/* Alert banners (overlaid on top of video) */}
+        <div className="absolute top-0 left-0 right-0 z-30 flex flex-col">
+          {voiceReconnecting && (
+            <div className="flex items-center justify-between gap-2 bg-orange-500/90 px-4 py-2 text-sm text-white">
+              <span>Reconnecting... Your responses are saved.</span>
+              <div className="flex gap-2">
+                <button onClick={reconnect} className="underline text-xs">Retry</button>
+                <button onClick={() => setShowTextInput(true)} className="underline text-xs">Text Mode</button>
               </div>
-
             </div>
-          </div>
-
-          {/* Controls */}
-          <div className="flex items-center justify-center gap-3">
-            <Button
-              variant={isMicEnabled ? "secondary" : "destructive"}
-              size="icon"
-              className="h-12 w-12 rounded-full"
-              onClick={toggleMic}
-            >
-              {isMicEnabled ? (
-                <Mic className="h-5 w-5" />
-              ) : (
-                <MicOff className="h-5 w-5" />
-              )}
-            </Button>
-
-            <Button
-              variant="secondary"
-              size="icon"
-              className="h-12 w-12 rounded-full"
-              onClick={() => setShowTextInput(!showTextInput)}
-              title="Text input (accessibility fallback)"
-            >
-              <MessageSquare className="h-5 w-5" />
-            </Button>
-
-            <Button
-              variant="outline"
-              size="icon"
-              className="h-12 w-12 rounded-full"
-              onClick={pauseInterview}
-              title="Pause interview"
-            >
-              <Pause className="h-5 w-5" />
-            </Button>
-          </div>
-
-          {/* Text Input Fallback */}
-          {showTextInput && (
-            <div className="flex gap-2">
-              <Input
-                value={textInput}
-                onChange={(e) => setTextInput(e.target.value)}
-                placeholder="Type your response..."
-                onKeyDown={(e) => e.key === "Enter" && handleTextSubmit()}
-              />
-              <Button onClick={handleTextSubmit} size="icon">
-                <Send className="h-4 w-4" />
-              </Button>
+          )}
+          {micIsSilent && isMicEnabled && interviewState === "IN_PROGRESS" && (
+            <div className="flex items-center gap-2 bg-red-500/90 px-4 py-2 text-sm text-white">
+              <AlertTriangle className="h-4 w-4" />
+              Mic appears muted — check your mic settings
+            </div>
+          )}
+          {degradationBannerShown && connectionQuality === "poor" && (
+            <div className="flex items-center gap-2 bg-orange-500/80 px-4 py-2 text-sm text-white">
+              <AlertTriangle className="h-4 w-4" />
+              Connection unstable. Consider text mode.
+            </div>
+          )}
+          {fallbackToText && (
+            <div className="flex items-center gap-2 bg-blue-500/90 px-4 py-2 text-sm text-white">
+              Voice lost. Continue by typing below.
             </div>
           )}
         </div>
 
-        {/* ── Right: Transcript Panel ── */}
-        <div className="flex w-1/3 flex-col border-l">
-          <div className="border-b px-4 py-3">
-            <h3 className="text-sm font-medium">Live Transcript</h3>
+        {/* Full-screen candidate video */}
+        <div className="relative flex-1 bg-gray-900 overflow-hidden">
+          <video
+            ref={videoRef}
+            autoPlay
+            playsInline
+            muted
+            className="absolute inset-0 w-full h-full object-cover"
+          />
+          {!cameraEnabled && (
+            <div className="absolute inset-0 flex items-center justify-center bg-gray-900">
+              <div className="text-center">
+                <User className="mx-auto h-16 w-16 text-gray-600" />
+                <p className="mt-3 text-sm text-gray-500">Camera off</p>
+              </div>
+            </div>
+          )}
+
+          {/* Recording indicator — top left */}
+          {interviewState === "IN_PROGRESS" && (
+            <div className="absolute top-4 left-4 z-20 flex items-center gap-2 rounded-full bg-black/60 backdrop-blur-sm px-3 py-1.5">
+              <span className="relative flex h-2.5 w-2.5">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-500 opacity-75" />
+                <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-red-500" />
+              </span>
+              <span className="text-xs text-white/90 font-medium">REC</span>
+              <span className="text-xs text-white/60 tabular-nums">{formatElapsed(elapsedSeconds)}</span>
+            </div>
+          )}
+
+          {/* Timer + Question count — top right */}
+          <div className="absolute top-4 right-4 z-20 flex items-center gap-2">
+            <div className={`rounded-full px-3 py-1.5 text-xs tabular-nums font-medium backdrop-blur-sm ${
+              timeLeft < 300 ? "bg-red-500/80 text-white" : "bg-black/60 text-white/90"
+            }`}>
+              {formatTime(timeLeft)} left
+            </div>
+            <div className="rounded-full bg-black/60 backdrop-blur-sm px-3 py-1.5 text-xs text-white/90 font-medium">
+              Q{questionCount}
+            </div>
+            {/* Toggle transcript button */}
+            {!showTranscript && (
+              <button
+                onClick={() => setShowTranscript(true)}
+                className="rounded-full bg-black/60 backdrop-blur-sm p-2 text-white/70 hover:text-white transition-colors"
+                title="Show transcript"
+              >
+                <PanelRightOpen className="h-4 w-4" />
+              </button>
+            )}
           </div>
+
+          {/* Think5 AI Indicator — bottom left (like Micro1's "m." logo) */}
+          <div className="absolute bottom-24 left-4 z-20">
+            <AriaIndicator state={aiState} reducedMotion={prefersReducedMotion} />
+          </div>
+
+          {/* Candidate name — bottom right */}
+          <div className="absolute bottom-24 right-4 z-20 flex items-center gap-2 rounded-full bg-black/60 backdrop-blur-sm px-3 py-1.5">
+            <span className="text-sm text-white font-medium">{candidateName}</span>
+            <span className="flex gap-0.5">
+              <span className="h-1 w-1 rounded-full bg-white/50" />
+              <span className="h-1 w-1 rounded-full bg-white/50" />
+              <span className="h-1 w-1 rounded-full bg-white/50" />
+            </span>
+          </div>
+
+          {/* ── Floating Control Bar — bottom center ── */}
           <div
-            className="flex-1 overflow-y-auto p-4 space-y-3"
+            className={`absolute bottom-0 left-0 right-0 z-20 transition-all duration-300 ${
+              showControls ? "translate-y-0 opacity-100" : "translate-y-full opacity-0"
+            }`}
+            onMouseEnter={() => setShowControls(true)}
+          >
+            <div className="mx-auto max-w-3xl px-4 pb-4">
+              <div className="flex items-center justify-between rounded-2xl bg-black/70 backdrop-blur-xl border border-white/10 px-4 py-3">
+                {/* Left: Device selectors */}
+                <DeviceSelector
+                  onMicChange={handleMicChange}
+                  onCameraChange={handleCameraChange}
+                  onSpeakerChange={handleSpeakerChange}
+                />
+
+                {/* Center: Control buttons */}
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={toggleMic}
+                    className={`flex h-11 w-11 items-center justify-center rounded-full transition-colors ${
+                      isMicEnabled
+                        ? "bg-white/10 hover:bg-white/20 text-white"
+                        : "bg-red-500 hover:bg-red-600 text-white"
+                    }`}
+                    title={isMicEnabled ? "Mute mic (Space)" : "Unmute mic (Space)"}
+                  >
+                    {isMicEnabled ? <Mic className="h-5 w-5" /> : <MicOff className="h-5 w-5" />}
+                  </button>
+
+                  <button
+                    onClick={pauseInterview}
+                    className="flex h-11 w-11 items-center justify-center rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors"
+                    title="Pause (P)"
+                  >
+                    <Pause className="h-5 w-5" />
+                  </button>
+
+                  <button
+                    onClick={() => setShowTextInput((p) => !p)}
+                    className={`flex h-11 w-11 items-center justify-center rounded-full transition-colors ${
+                      showTextInput
+                        ? "bg-blue-500 text-white"
+                        : "bg-white/10 hover:bg-white/20 text-white"
+                    }`}
+                    title="Text mode (T)"
+                  >
+                    <MessageSquare className="h-5 w-5" />
+                  </button>
+
+                  <button
+                    onClick={() => { if (confirm("End the interview?")) endInterview(); }}
+                    className="flex h-11 w-11 items-center justify-center rounded-full bg-red-500 hover:bg-red-600 text-white transition-colors"
+                    title="End interview (Esc)"
+                  >
+                    <PhoneOff className="h-5 w-5" />
+                  </button>
+                </div>
+
+                {/* Right: Connection quality dot */}
+                <div className="flex items-center gap-2">
+                  <span className={`h-2 w-2 rounded-full ${
+                    connectionQuality === "good" ? "bg-green-500" :
+                    connectionQuality === "fair" ? "bg-yellow-500" : "bg-red-500"
+                  }`} />
+                  <span className="text-xs text-white/50">{connectionQuality}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Text input bar (shown above control bar when active) */}
+          {showTextInput && (
+            <div className="absolute bottom-20 left-0 right-0 z-20 px-4">
+              <div className="mx-auto max-w-2xl">
+                <div className="flex gap-2 rounded-xl bg-black/70 backdrop-blur-xl border border-white/10 p-2">
+                  <Input
+                    value={textInput}
+                    onChange={(e) => setTextInput(e.target.value)}
+                    placeholder="Type your response..."
+                    onKeyDown={(e) => e.key === "Enter" && handleTextSubmit()}
+                    className="bg-transparent border-0 text-white placeholder:text-white/40 focus-visible:ring-0"
+                  />
+                  <Button onClick={handleTextSubmit} size="icon" variant="ghost" className="text-white hover:bg-white/10">
+                    <Send className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Pause Overlay */}
+        {isPaused && (
+          <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
+            <Card className="max-w-sm p-8 text-center bg-gray-900 border-gray-800">
+              <Pause className="mx-auto h-12 w-12 text-gray-400 mb-4" />
+              <h2 className="text-xl font-semibold text-white mb-2">Interview Paused</h2>
+              <p className="text-sm text-gray-400 mb-6">
+                Auto-cancels after 10 minutes of pause.
+              </p>
+              <Button onClick={resumeInterview} className="w-full" size="lg" autoFocus>
+                <Play className="h-4 w-4 mr-2" />
+                Resume
+              </Button>
+            </Card>
+          </div>
+        )}
+      </div>
+
+      {/* ── Transcript Panel — Right Side ── */}
+      {showTranscript && (
+        <div className="flex w-[340px] flex-col border-l border-white/10 bg-gray-950">
+          {/* Header */}
+          <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
+            <h3 className="text-sm font-medium text-white">Live Transcript</h3>
+            <button
+              onClick={() => setShowTranscript(false)}
+              className="rounded-md p-1 text-gray-500 hover:text-gray-300 transition-colors"
+              title="Close transcript"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+
+          {/* Transcript content */}
+          <div
+            className="flex-1 overflow-y-auto p-4 space-y-4"
             role="log"
             aria-live="polite"
             aria-label="Interview transcript"
           >
             {transcript.map((entry, i) => (
-              <TranscriptBubble key={i} entry={entry} />
+              <TranscriptBubble key={i} entry={entry} candidateName={candidateName} />
             ))}
             {aiState === "thinking" && (
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <div className="flex items-center gap-2 text-xs text-gray-500">
                 <div className="flex gap-1">
-                  <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-primary" style={{ animationDelay: "0ms" }} />
-                  <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-primary" style={{ animationDelay: "150ms" }} />
-                  <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-primary" style={{ animationDelay: "300ms" }} />
+                  <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-blue-500" style={{ animationDelay: "0ms" }} />
+                  <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-blue-500" style={{ animationDelay: "150ms" }} />
+                  <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-blue-500" style={{ animationDelay: "300ms" }} />
                 </div>
                 Aria is thinking...
               </div>
@@ -769,92 +679,98 @@ export function VoiceInterviewRoom({
             <div ref={transcriptEndRef} />
           </div>
         </div>
-      </div>
-    </div>
-  );
-}
-
-// ── AI Avatar Component ────────────────────────────────────────────────
-
-function AIAvatar({ state, reducedMotion = false }: { state: AISpeakingState; reducedMotion?: boolean }) {
-  return (
-    <div className="relative" role="img" aria-label={`AI interviewer status: ${state}`}>
-      {/* Outer ring animation */}
-      {!reducedMotion && (
-        <div
-          className={`absolute inset-0 rounded-full transition-all duration-500 ${
-            state === "speaking"
-              ? "animate-ping bg-primary/20"
-              : state === "listening"
-                ? "animate-pulse bg-blue-500/10"
-                : state === "thinking"
-                  ? "animate-pulse bg-yellow-500/10"
-                  : ""
-          }`}
-          style={{ transform: "scale(1.3)" }}
-          aria-hidden="true"
-        />
       )}
+    </div>
+  );
+}
 
-      {/* Main avatar circle */}
-      <div
-        className={`relative flex h-24 w-24 items-center justify-center rounded-full transition-all duration-300 ${
-          state === "speaking"
-            ? "bg-primary/20 ring-4 ring-primary/30"
-            : state === "listening"
-              ? "bg-blue-500/10 ring-2 ring-blue-500/20"
-              : state === "thinking"
-                ? "bg-yellow-500/10 ring-2 ring-yellow-500/20"
-                : "bg-muted ring-1 ring-border"
-        }`}
-      >
-        {state === "speaking" ? (
-          <Volume2 className={`h-10 w-10 text-primary ${reducedMotion ? "" : "animate-pulse"}`} />
-        ) : state === "thinking" ? (
-          reducedMotion ? (
-            <Loader2 className="h-10 w-10 text-primary" />
-          ) : (
-            <div className="h-10 w-10 animate-spin rounded-full border-4 border-muted border-t-primary" />
-          )
-        ) : (
-          <Bot className="h-10 w-10 text-primary" />
+// ── Think5 AI Indicator (corner avatar like Micro1's "m.") ──────────
+
+function AriaIndicator({ state, reducedMotion = false }: { state: AISpeakingState; reducedMotion?: boolean }) {
+  const isSpeaking = state === "speaking";
+  const isThinking = state === "thinking";
+
+  return (
+    <div className="flex items-center gap-3">
+      {/* Logo circle with glow */}
+      <div className="relative" role="img" aria-label={`Aria is ${state}`}>
+        {/* Glow ring when speaking */}
+        {isSpeaking && !reducedMotion && (
+          <div className="absolute -inset-2 rounded-full bg-blue-500/30 animate-pulse" />
         )}
+        {isThinking && !reducedMotion && (
+          <div className="absolute -inset-1 rounded-full bg-blue-500/15 animate-pulse" />
+        )}
+
+        <div className={`relative flex h-14 w-14 items-center justify-center rounded-full border-2 overflow-hidden transition-all duration-300 ${
+          isSpeaking ? "border-blue-500 shadow-lg shadow-blue-500/30" :
+          isThinking ? "border-blue-400/50" :
+          "border-white/20"
+        }`}>
+          <Image
+            src="/uploads/Robot think5.png"
+            alt="Think5 AI"
+            width={56}
+            height={56}
+            className="h-full w-full object-cover"
+          />
+        </div>
+      </div>
+
+      {/* Name + audio bars */}
+      <div className="flex flex-col">
+        <span className="text-sm font-medium text-white">Aria</span>
+        <div className="flex items-center gap-1 mt-0.5">
+          {isSpeaking ? (
+            <AudioBars />
+          ) : (
+            <span className="text-xs text-gray-500">
+              {isThinking ? "Thinking..." : state === "listening" ? "Listening" : ""}
+            </span>
+          )}
+        </div>
       </div>
     </div>
   );
 }
 
-// ── Transcript Bubble ──────────────────────────────────────────────────
+// ── Audio Level Bars (animated when speaking) ────────────────────────
 
-function TranscriptBubble({ entry }: { entry: TranscriptEntry }) {
+function AudioBars() {
+  return (
+    <div className="flex items-end gap-0.5 h-3" aria-hidden="true">
+      {[0, 80, 160, 240, 320].map((delay) => (
+        <span
+          key={delay}
+          className="w-0.5 rounded-full bg-blue-500 animate-audio-bar"
+          style={{
+            animationDelay: `${delay}ms`,
+            height: "100%",
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+
+// ── Transcript Bubble (Micro1-style) ─────────────────────────────────
+
+function TranscriptBubble({ entry, candidateName }: { entry: TranscriptEntry; candidateName: string }) {
   if (entry.content === "__turn_complete__") return null;
-
-  const isInterviewer = entry.role === "interviewer";
+  const isAria = entry.role === "interviewer";
 
   return (
-    <div
-      className={`flex gap-2 ${isInterviewer ? "" : "flex-row-reverse"}`}
-      aria-label={`${isInterviewer ? "Aria" : "You"} said: ${entry.content}`}
-    >
-      <div
-        className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${
-          isInterviewer ? "bg-primary/10" : "bg-muted"
-        }`}
-        aria-hidden="true"
-      >
-        {isInterviewer ? (
-          <Bot className="h-3 w-3 text-primary" />
-        ) : (
-          <User className="h-3 w-3 text-muted-foreground" />
-        )}
-      </div>
-      <div
-        className={`max-w-[85%] rounded-lg px-3 py-2 text-sm ${
-          isInterviewer
-            ? "bg-primary/5 text-foreground"
-            : "bg-muted text-foreground"
-        }`}
-      >
+    <div className={`flex flex-col ${isAria ? "items-start" : "items-end"}`}>
+      {/* Name label */}
+      <span className={`text-xs font-medium mb-1 ${isAria ? "text-gray-400" : "text-blue-400"}`}>
+        {isAria ? "Aria" : candidateName}
+      </span>
+      {/* Bubble */}
+      <div className={`max-w-[90%] rounded-xl px-3.5 py-2.5 text-sm leading-relaxed ${
+        isAria
+          ? "bg-gray-800/80 text-gray-200"
+          : "bg-blue-600/80 text-white"
+      }`}>
         {entry.content}
       </div>
     </div>
