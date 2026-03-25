@@ -141,7 +141,7 @@ export async function POST(
       tools,
       voiceName: "Kore",
       candidateName: interview.candidate.fullName,
-      model: "models/gemini-2.0-flash-live-001",
+      model: "models/gemini-2.0-flash-exp",
     });
   } catch (error) {
     Sentry.captureException(error, { tags: { component: "voice_init" } });
