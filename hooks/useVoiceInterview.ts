@@ -89,8 +89,7 @@ export function useVoiceInterview(
   const wsRef = useRef<WebSocket | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
-  const playbackQueueRef = useRef<Float32Array[]>([]);
-  const isPlayingRef = useRef(false);
+  const nextPlayTimeRef = useRef(0); // Tracks when the next audio chunk should start
   const isMicEnabledRef = useRef(true);
   const transcriptRef = useRef<TranscriptEntry[]>([]);
   const moduleScoresRef = useRef<Array<{ module: string; score: number; reason: string }>>([]);
@@ -110,32 +109,31 @@ export function useVoiceInterview(
   useEffect(() => { onStateChange?.(interviewState); }, [interviewState, onStateChange]);
   useEffect(() => { onTranscriptUpdate?.(transcript); }, [transcript, onTranscriptUpdate]);
 
-  // ── Audio Playback ───────────────────────────────────────────────
+  // ── Audio Playback (gapless scheduled) ──────────────────────────
 
-  const processPlaybackQueue = useCallback(() => {
-    if (isPlayingRef.current || playbackQueueRef.current.length === 0) return;
-    if (!audioContextRef.current) return;
+  const scheduleAudioChunk = useCallback((audioData: Float32Array) => {
+    const ctx = audioContextRef.current;
+    if (!ctx) return;
 
-    isPlayingRef.current = true;
-    const data = playbackQueueRef.current.shift()!;
+    const buffer = ctx.createBuffer(1, audioData.length, 24000);
+    buffer.copyToChannel(new Float32Array(audioData), 0);
 
-    const buffer = audioContextRef.current.createBuffer(1, data.length, 24000);
-    buffer.copyToChannel(new Float32Array(data), 0);
-
-    const source = audioContextRef.current.createBufferSource();
+    const source = ctx.createBufferSource();
     source.buffer = buffer;
-    source.connect(audioContextRef.current.destination);
+    source.connect(ctx.destination);
 
+    // Schedule gaplessly: each chunk starts exactly when the previous ends
+    const now = ctx.currentTime;
+    const startTime = Math.max(now, nextPlayTimeRef.current);
+    source.start(startTime);
+    nextPlayTimeRef.current = startTime + buffer.duration;
+
+    // Track when AI finishes speaking
     source.onended = () => {
-      isPlayingRef.current = false;
-      if (playbackQueueRef.current.length > 0) {
-        processPlaybackQueue();
-      } else {
+      if (ctx.currentTime >= nextPlayTimeRef.current - 0.05) {
         setAiState("listening");
       }
     };
-
-    source.start();
   }, []);
 
   // ── Gemini WebSocket Message Handler ───────────────────────────────
@@ -170,8 +168,7 @@ export function useVoiceInterview(
               if (inlineData?.data) {
                 setAiState("speaking");
                 const audioData = base64ToFloat32(inlineData.data as string);
-                playbackQueueRef.current.push(audioData);
-                processPlaybackQueue();
+                scheduleAudioChunk(audioData);
               }
 
               // Text transcript
@@ -197,10 +194,9 @@ export function useVoiceInterview(
           setAiState("listening");
         }
 
-        // Interrupted
+        // Interrupted — reset scheduled playback time so new audio starts immediately
         if (serverContent.interrupted) {
-          playbackQueueRef.current = [];
-          isPlayingRef.current = false;
+          nextPlayTimeRef.current = 0;
         }
 
         // Output transcription (native audio models send transcript separately)
@@ -232,7 +228,7 @@ export function useVoiceInterview(
     } catch (err) {
       console.error("Failed to parse Gemini message:", err);
     }
-  }, [processPlaybackQueue]);
+  }, [scheduleAudioChunk]);
 
   // ── Tool Call Handler (client-side) ────────────────────────────────
 
@@ -603,7 +599,7 @@ export function useVoiceInterview(
       if (mediaStreamRef.current) {
         mediaStreamRef.current.getAudioTracks().forEach((t) => (t.enabled = false));
       }
-      playbackQueueRef.current = [];
+      nextPlayTimeRef.current = 0; // Cancel pending scheduled audio
     } catch (err) {
       onError?.(err instanceof Error ? err.message : "Failed to pause");
     }
