@@ -237,6 +237,69 @@ export async function checkAllSLOs(): Promise<SLOStatus[]> {
 }
 
 /**
+ * Persist a daily SLO snapshot for long-term trend analysis.
+ * Stores a rollup of all SLO statuses keyed by date. Retained for 90 days.
+ */
+export async function persistSLOSnapshot(): Promise<void> {
+  const redis = await getRedis();
+  if (!redis) return;
+
+  try {
+    const statuses = await checkAllSLOs();
+    const dateKey = new Date().toISOString().slice(0, 10);
+    const snapshot = {
+      date: dateKey,
+      generatedAt: new Date().toISOString(),
+      slos: statuses.map((s) => ({
+        name: s.name,
+        current: s.current,
+        target: s.target,
+        totalEvents: s.totalEvents,
+        successEvents: s.successEvents,
+        breached: s.breached,
+        errorBudgetRemaining: s.errorBudgetRemaining,
+      })),
+    };
+
+    await redis.set(`slo-snapshot:${dateKey}`, JSON.stringify(snapshot), { ex: 90 * 86400 });
+  } catch (err) {
+    console.warn("[SLO] Failed to persist snapshot:", err);
+  }
+}
+
+/**
+ * Retrieve SLO trend history for the last N days.
+ */
+export async function getSLOTrend(days: number = 30): Promise<Array<{
+  date: string;
+  slos: Array<{
+    name: string;
+    current: number;
+    target: number;
+    breached: boolean;
+    errorBudgetRemaining: number;
+  }>;
+}>> {
+  const redis = await getRedis();
+  if (!redis) return [];
+
+  const results: Array<{ date: string; slos: Array<{ name: string; current: number; target: number; breached: boolean; errorBudgetRemaining: number }> }> = [];
+  const now = Date.now();
+
+  for (let i = 0; i < days; i++) {
+    const date = new Date(now - i * 86400000).toISOString().slice(0, 10);
+    try {
+      const data = await redis.get(`slo-snapshot:${date}`);
+      if (data) {
+        results.push(typeof data === "string" ? JSON.parse(data) : data);
+      }
+    } catch { /* skip missing days */ }
+  }
+
+  return results.reverse();
+}
+
+/**
  * Check SLOs and alert via Sentry if any are breached.
  */
 export async function checkAndAlertSLOs(): Promise<void> {

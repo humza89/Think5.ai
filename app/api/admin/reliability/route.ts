@@ -7,13 +7,19 @@
 
 import { NextResponse } from "next/server";
 import { requireRole, handleAuthError } from "@/lib/auth";
-import { checkAllSLOs, SLO_DEFINITIONS } from "@/lib/slo-monitor";
+import { checkAllSLOs, SLO_DEFINITIONS, getSLOTrend, persistSLOSnapshot } from "@/lib/slo-monitor";
 
 export async function GET() {
   try {
     await requireRole(["admin"]);
 
-    const sloStatuses = await checkAllSLOs();
+    const [sloStatuses, trendHistory] = await Promise.all([
+      checkAllSLOs(),
+      getSLOTrend(30),
+    ]);
+
+    // Persist today's snapshot for long-term trend storage
+    await persistSLOSnapshot().catch(() => {});
 
     const breaches = sloStatuses.filter((s) => s.breached);
     const warnings = sloStatuses.filter(
@@ -54,6 +60,10 @@ export async function GET() {
         errorBudgetRemaining: s.errorBudgetRemaining,
       })),
       failureTaxonomy,
+      trend: {
+        days: trendHistory.length,
+        history: trendHistory,
+      },
     });
   } catch (error) {
     const { error: message, status } = handleAuthError(error);

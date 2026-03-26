@@ -82,13 +82,17 @@ export function checkPromotionReadiness(input: PromotionInput): PromotionResult 
   // Check QA scores if available
   if (input.qaScores) {
     if (input.qaScores.compositeScore < THRESHOLDS.minQACompositeScore) {
-      warnings.push(
-        `Transcript QA score ${input.qaScores.compositeScore.toFixed(1)} < ${THRESHOLDS.minQACompositeScore} target`
+      blockers.push(
+        `Transcript QA composite ${input.qaScores.compositeScore.toFixed(1)} < ${THRESHOLDS.minQACompositeScore} threshold`
       );
     }
 
+    // Critical QA dimensions are blockers, not warnings
+    const criticalQADimensions = ["flow_realism", "signal_extraction", "probing_depth"];
     for (const dim of input.qaScores.dimensions) {
-      if (dim.score < 4) {
+      if (criticalQADimensions.includes(dim.name) && dim.score < 4) {
+        blockers.push(`Critical QA dimension "${dim.name}" scored ${dim.score}/10 < 4 minimum`);
+      } else if (dim.score < 4) {
         warnings.push(`QA dimension "${dim.name}" scored ${dim.score}/10 — needs attention`);
       }
     }

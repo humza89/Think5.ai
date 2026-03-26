@@ -27,6 +27,9 @@ jobs:
       - name: Run eval harness (mock mode, 3 runs)
         run: npx tsx eval/interview-harness.ts --all --runs 3
 
+      - name: Run soak test (50 simulated interviews)
+        run: npx tsx eval/soak-test-config.ts --interviews 50 || true
+
       - name: Run chaos tests (unauthenticated)
         run: npx tsx eval/chaos-test.ts || true
 
@@ -53,3 +56,24 @@ jobs:
               body: `The nightly soak/chaos test suite failed.\n\nRun: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}\n\nPlease investigate before next deploy.`,
               labels: ['reliability', 'automated']
             });
+
+      - name: Notify Slack on failure
+        if: failure() && env.SLACK_WEBHOOK_URL != ''
+        uses: slackapi/slack-github-action@v1.27.0
+        with:
+          payload: |
+            {
+              "text": "Nightly Soak Test Failed",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*Nightly Soak Test Failed*\n\n<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Run>\n\nPlease investigate before next deploy."
+                  }
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK

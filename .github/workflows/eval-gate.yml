@@ -6,6 +6,10 @@ on:
   push:
     branches: [main, "release/*"]
 
+# Required status check — configure in GitHub repo settings:
+#   Settings → Branches → Branch protection rules → main
+#   ✅ Require status checks: "TypeScript Type Check", "Eval Harness (Mock Mode)"
+
 jobs:
   typecheck:
     name: TypeScript Type Check
@@ -33,6 +37,17 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx tsx eval/interview-harness.ts --all
+
+      - name: Verify eval passed
+        run: |
+          if [ -f eval/eval-results.json ]; then
+            PASSED=$(node -e "const r=JSON.parse(require('fs').readFileSync('eval/eval-results.json','utf8')); console.log(r[r.length-1]?.overallPassed ?? false)")
+            if [ "$PASSED" != "true" ]; then
+              echo "::error::Eval harness did not pass — merge blocked"
+              exit 1
+            fi
+          fi
+
       - name: Upload eval results
         if: always()
         uses: actions/upload-artifact@v4
