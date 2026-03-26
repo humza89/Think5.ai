@@ -16,6 +16,17 @@ import { checkCandidateEligibility } from "@/lib/interview-eligibility";
 import { logInterviewActivity, getClientIp } from "@/lib/interview-audit";
 import { persistProctoringEvents } from "@/lib/proctoring-normalizer";
 import { isValidTransition } from "@/lib/interview-state-machine";
+import {
+  saveSessionState,
+  deleteSessionState,
+  refreshSessionTTL,
+  recordHeartbeat,
+  releaseSessionLock,
+  getSessionState,
+} from "@/lib/session-store";
+import { recordSLOEvent } from "@/lib/slo-monitor";
+import { classifyError } from "@/lib/error-classification";
+import { validateTranscript } from "@/lib/transcript-validator";
 import * as Sentry from "@sentry/nextjs";
 
 // ── Validate Access ────────────────────────────────────────────────────
@@ -71,8 +82,17 @@ export async function POST(
       return Response.json({ error: eligibility.reason }, { status: 403 });
     }
 
+    // ── Refresh TTL: keep session alive during active use ──
+    if (action === "refresh_ttl") {
+      await refreshSessionTTL(id);
+      await recordHeartbeat(id);
+      return Response.json({ ok: true });
+    }
+
     // ── Checkpoint: periodic transcript save ──
     if (action === "checkpoint") {
+      const checkpointStart = Date.now();
+
       await prisma.interview.update({
         where: { id },
         data: {
@@ -80,6 +100,24 @@ export async function POST(
           skillModuleScores: moduleScores || [],
         },
       });
+
+      // Sync to durable session store
+      const existingSession = await getSessionState(id);
+      if (existingSession) {
+        await saveSessionState(id, {
+          ...existingSession,
+          transcript: transcript || [],
+          moduleScores: moduleScores || [],
+          questionCount: questionCount || existingSession.questionCount,
+          lastActiveAt: new Date().toISOString(),
+        });
+      }
+      await refreshSessionTTL(id);
+
+      // Record checkpoint latency SLO
+      const checkpointMs = Date.now() - checkpointStart;
+      await recordSLOEvent("transcript.checkpoint.latency_p99", checkpointMs < 500, checkpointMs);
+
       return Response.json({ ok: true });
     }
 
@@ -120,6 +158,23 @@ export async function POST(
         persistProctoringEvents(id, interviewData.integrityEvents as any[]).catch(console.error);
       }
 
+      // Validate transcript quality (log warnings, don't block)
+      if (transcript && transcript.length > 0) {
+        const validation = validateTranscript(transcript);
+        if (!validation.valid) {
+          console.warn(`[${id}] Transcript quality issues:`, validation.issues);
+          Sentry.addBreadcrumb({
+            category: "transcript_qa",
+            message: `${validation.issues.length} issue(s): ${validation.issues.map(i => i.type).join(", ")}`,
+            level: "warning",
+          });
+        }
+      }
+
+      // Clean up durable session state and release lock
+      await deleteSessionState(id);
+      await releaseSessionLock(id);
+
       // Generate report in background
       generateReportInBackground(id).catch(console.error);
 
@@ -130,6 +185,10 @@ export async function POST(
   } catch (error) {
     Sentry.captureException(error, { tags: { component: "voice_route" } });
     console.error("Voice route error:", error);
-    return Response.json({ error: "Internal server error" }, { status: 500 });
+    const classified = classifyError(error, { statusCode: 500 });
+    return Response.json(
+      { error: classified.message, code: classified.title, recoverable: classified.recoverable },
+      { status: 500 }
+    );
   }
 }

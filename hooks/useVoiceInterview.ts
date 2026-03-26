@@ -126,6 +126,7 @@ export function useVoiceInterview(
   const circuitBreakerTimerRef = useRef<NodeJS.Timeout | null>(null); // F3: OPEN → HALF_OPEN timer
   const audioProcessorErrorCountRef = useRef(0); // F2: Error counter for audio processor
   const micRevokedRef = useRef(false); // F6: Track mic revocation
+  const askedQuestionsRef = useRef<string[]>([]); // Question dedup: track AI questions to prevent repeats
 
   // ── Audio Resource Cleanup Helper ────────────────────────────────────
   // Called before reconnect and on unmount to prevent resource leaks
@@ -348,9 +349,10 @@ export function useVoiceInterview(
               }
               return [...prev, { role: "interviewer" as const, content: finalText, timestamp: new Date().toISOString(), finalized: true }];
             });
-            // Count questions from the complete sentence
+            // Count questions and track for dedup
             if (finalText.includes("?")) {
               setQuestionCount((prev) => prev + 1);
+              askedQuestionsRef.current.push(finalText);
             }
           }
           currentTurnTextRef.current = "";
@@ -816,7 +818,7 @@ export function useVoiceInterview(
               // F12: System-level instruction instead of user turn for context restoration
               {
                 role: "model",
-                parts: [{ text: "[Session reconnected. The following is the recent conversation history. Continue the interview seamlessly without re-introducing yourself or repeating questions.]" }],
+                parts: [{ text: `[Session reconnected. The following is the recent conversation history. Continue the interview seamlessly without re-introducing yourself or repeating questions.${askedQuestionsRef.current.length > 0 ? `\n\nQuestions already asked (DO NOT repeat these):\n${askedQuestionsRef.current.slice(-10).map((q, i) => `${i + 1}. ${q.slice(0, 120)}`).join("\n")}` : ""}]` }],
               },
               ...contextTurns,
             ],

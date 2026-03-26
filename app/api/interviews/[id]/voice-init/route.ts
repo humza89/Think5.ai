@@ -14,6 +14,9 @@ import { getInterviewTools } from "@/lib/gemini-live";
 import { checkCandidateEligibility } from "@/lib/interview-eligibility";
 import { logInterviewActivity, getClientIp } from "@/lib/interview-audit";
 import { isValidTransition } from "@/lib/interview-state-machine";
+import { acquireSessionLock, saveSessionState, generateReconnectToken } from "@/lib/session-store";
+import { recordSLOEvent } from "@/lib/slo-monitor";
+import { classifyError } from "@/lib/error-classification";
 import * as Sentry from "@sentry/nextjs";
 
 export async function POST(
@@ -84,6 +87,16 @@ export async function POST(
       }
     }
 
+    // Acquire session lock to prevent duplicate sessions
+    const lockAcquired = await acquireSessionLock(id);
+    if (!lockAcquired) {
+      await recordSLOEvent("interview.start.success_rate", false);
+      return Response.json(
+        { error: "This interview is already active in another tab or device." },
+        { status: 409 }
+      );
+    }
+
     // Build system prompt
     const systemPrompt = buildAriaVoicePrompt({
       interviewType: interview.type as "TECHNICAL" | "BEHAVIORAL" | "DOMAIN_EXPERT" | "LANGUAGE" | "CASE_STUDY",
@@ -129,6 +142,20 @@ export async function POST(
       ipAddress: getClientIp(request.headers),
     }).catch(() => {});
 
+    // Initialize durable session state with reconnect token
+    const reconnectToken = generateReconnectToken();
+    await saveSessionState(id, {
+      interviewId: id,
+      transcript: [],
+      moduleScores: [],
+      questionCount: 0,
+      reconnectToken,
+      lastActiveAt: new Date().toISOString(),
+    });
+
+    // Record successful start SLO
+    await recordSLOEvent("interview.start.success_rate", true);
+
     // Return config for client-side WebSocket connection
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
@@ -142,10 +169,16 @@ export async function POST(
       voiceName: "Kore",
       candidateName: interview.candidate.fullName,
       model: "models/gemini-2.5-flash-native-audio-latest",
+      reconnectToken,
     });
   } catch (error) {
     Sentry.captureException(error, { tags: { component: "voice_init" } });
     console.error("Voice init error:", error);
-    return Response.json({ error: "Failed to initialize voice session" }, { status: 500 });
+    await recordSLOEvent("interview.start.success_rate", false);
+    const classified = classifyError(error, { statusCode: 500 });
+    return Response.json(
+      { error: classified.message, code: classified.title, recoverable: classified.recoverable },
+      { status: 500 }
+    );
   }
 }

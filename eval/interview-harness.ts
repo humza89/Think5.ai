@@ -265,6 +265,14 @@ function printResults(results: EvalResult[]): void {
 }
 
 async function main() {
+  // CI-proof: skip gracefully if required env vars are missing
+  const requiredEnvVars = ["OPENAI_API_KEY"];
+  const missingVars = requiredEnvVars.filter((v) => !process.env[v]);
+  if (missingVars.length > 0) {
+    console.warn(`[SKIP] Eval harness requires env vars: ${missingVars.join(", ")}. Skipping.`);
+    process.exit(0);
+  }
+
   const args = process.argv.slice(2);
   const benchmarkFilter = args.includes("--benchmark")
     ? args[args.indexOf("--benchmark") + 1]

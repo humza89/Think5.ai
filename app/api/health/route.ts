@@ -62,7 +62,14 @@ export async function GET() {
     // SLO monitoring not available
   }
 
-  const allHealthy = checks.database === "healthy";
+  // Detect SLO breaches
+  const sloBreaches = (sloStatus as Array<{ breached?: boolean; name?: string; current?: number; target?: number }>)
+    .filter((s) => s.breached)
+    .map((s) => ({ name: s.name, current: s.current, target: s.target }));
+
+  const dbHealthy = checks.database === "healthy";
+  const hasSloBreaches = sloBreaches.length > 0;
+  const allHealthy = dbHealthy && !hasSloBreaches;
 
   return NextResponse.json(
     {
@@ -71,6 +78,7 @@ export async function GET() {
       checks,
       storage: storageMetrics,
       slos: sloStatus,
+      sloBreaches,
     },
     { status: allHealthy ? 200 : 503 }
   );

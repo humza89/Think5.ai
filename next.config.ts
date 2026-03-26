@@ -33,15 +33,25 @@ const nextConfig: NextConfig = {
       "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; connect-src 'self' https://*.supabase.co https://*.upstash.io wss://*.supabase.co https://prod.spline.design https://unpkg.com; media-src 'self' blob: data:; font-src 'self' data:; frame-src 'self' https://*.supabase.co blob:; frame-ancestors 'none'";
 
     return [
+      // Strict CSP for app routes (interview, API, candidate, admin, dashboard)
       {
-        source: "/(.*)",
+        source: "/(interview|api|candidate|admin|dashboard)(.*)",
+        headers: [
+          ...securityHeaders,
+          { key: "Content-Security-Policy", value: strictCsp },
+        ],
+      },
+      // Landing page: unsafe-eval scoped only here for Spline 3D runtime
+      {
+        source: "/",
         headers: [
           ...securityHeaders,
           { key: "Content-Security-Policy", value: landingCsp },
         ],
       },
+      // All other routes: strict CSP (no unsafe-eval)
       {
-        source: "/(interview|api|candidate)(.*)",
+        source: "/((?!interview|api|candidate|admin|dashboard).*)",
         headers: [
           ...securityHeaders,
           { key: "Content-Security-Policy", value: strictCsp },

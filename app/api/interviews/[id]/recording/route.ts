@@ -19,6 +19,7 @@ import {
 } from "@/lib/media-storage";
 import { computeJsonHash } from "@/lib/versioning";
 import { logInterviewActivity, getClientIp } from "@/lib/interview-audit";
+import { recordSLOEvent } from "@/lib/slo-monitor";
 
 // ── POST: Upload recording chunk or complete recording ─────────────────
 
@@ -93,6 +94,7 @@ export async function POST(
         ipAddress: getClientIp(request.headers),
       }).catch(() => {});
 
+      await recordSLOEvent("recording.upload.success_rate", true);
       return Response.json({ ok: true, chunkIndex });
     }
 
@@ -202,6 +204,7 @@ export async function POST(
     return Response.json({ error: "Invalid request" }, { status: 400 });
   } catch (error) {
     console.error("Recording upload error:", error);
+    await recordSLOEvent("recording.upload.success_rate", false);
     return Response.json(
       { error: "Failed to upload recording" },
       { status: 500 }
