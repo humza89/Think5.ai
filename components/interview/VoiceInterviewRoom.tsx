@@ -110,6 +110,7 @@ export function VoiceInterviewRoom({
     resumeInterview,
     fallbackToText,
     micIsSilent,
+    retryVoice,
   } = useVoiceInterview({
     interviewId,
     accessToken,
@@ -335,18 +336,25 @@ export function VoiceInterviewRoom({
   }, [interviewState, resetControlsTimer]);
 
   // ── Upload & Recording ────────────────────────────────────────
+  // F7: Upload with retry (3 attempts, 1s delay between each)
   const uploadChunk = async (blob: Blob, index: number) => {
-    try {
-      const formData = new FormData();
-      formData.append("chunk", blob);
-      formData.append("chunkIndex", String(index));
-      formData.append("accessToken", accessToken);
-      await fetch(`/api/interviews/${interviewId}/recording`, { method: "POST", body: formData });
-      failedChunksRef.current = 0;
-    } catch {
-      failedChunksRef.current++;
-      if (failedChunksRef.current >= 3) setRecordingWarning(true);
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const formData = new FormData();
+        formData.append("chunk", blob);
+        formData.append("chunkIndex", String(index));
+        formData.append("accessToken", accessToken);
+        await fetch(`/api/interviews/${interviewId}/recording`, { method: "POST", body: formData });
+        failedChunksRef.current = 0;
+        setRecordingWarning(false);
+        return; // Success
+      } catch {
+        if (attempt < 2) await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
+      }
     }
+    // All 3 attempts failed
+    failedChunksRef.current++;
+    if (failedChunksRef.current >= 3) setRecordingWarning(true);
   };
 
   const finalizeRecording = async () => {
@@ -399,6 +407,34 @@ export function VoiceInterviewRoom({
           <Loader2 className="h-8 w-8 animate-spin text-blue-500 mx-auto mb-4" />
           <p className="text-sm text-gray-400">Connecting to Aria...</p>
         </div>
+      </div>
+    );
+  }
+
+  // F9: ERROR state UI — show recovery card
+  if (interviewState === "ERROR") {
+    return (
+      <div className="flex h-screen items-center justify-center bg-gray-950">
+        <Card className="max-w-md p-8 text-center bg-gray-900 border-gray-800">
+          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-red-500/10">
+            <AlertTriangle className="h-8 w-8 text-red-500" />
+          </div>
+          <h2 className="text-xl font-semibold text-white">Something Went Wrong</h2>
+          <p className="mt-2 text-sm text-gray-400">
+            The interview encountered an error. You can try reconnecting or contact support.
+          </p>
+          <div className="mt-6 flex flex-col gap-3">
+            <Button onClick={() => retryVoice()} className="w-full" size="lg">
+              Retry Connection
+            </Button>
+            <Button onClick={() => window.location.reload()} variant="outline" className="w-full" size="lg">
+              Refresh Page
+            </Button>
+            <a href="mailto:support@think5.io" className="text-sm text-gray-500 hover:text-gray-300 transition-colors">
+              Contact Support
+            </a>
+          </div>
+        </Card>
       </div>
     );
   }
@@ -458,8 +494,19 @@ export function VoiceInterviewRoom({
             </div>
           )}
           {fallbackToText && (
-            <div className="flex items-center gap-2 bg-blue-500/90 px-4 py-2 text-sm text-white">
-              Voice lost. Continue by typing below.
+            <div className="flex items-center justify-between gap-2 bg-blue-500/90 px-4 py-2 text-sm text-white">
+              <span>Voice lost. Continue by typing below.</span>
+              {/* F3: Retry Voice button — allows recovery from circuit breaker */}
+              <button onClick={() => retryVoice()} className="underline text-xs font-medium hover:text-white/80">
+                Retry Voice
+              </button>
+            </div>
+          )}
+          {/* F7: Recording upload warning banner */}
+          {recordingWarning && (
+            <div className="flex items-center gap-2 bg-yellow-500/90 px-4 py-2 text-sm text-white">
+              <AlertTriangle className="h-4 w-4" />
+              Recording upload issues — some segments may not be saved.
             </div>
           )}
         </div>
@@ -663,7 +710,9 @@ export function VoiceInterviewRoom({
             aria-live="polite"
             aria-label="Interview transcript"
           >
-            {transcript.map((entry, i) => (
+            {transcript
+              .filter((entry) => entry.role === "interviewer")
+              .map((entry, i) => (
               <TranscriptBubble key={i} entry={entry} candidateName={candidateName} />
             ))}
             {aiState === "thinking" && (

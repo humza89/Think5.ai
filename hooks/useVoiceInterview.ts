@@ -58,6 +58,7 @@ export interface UseVoiceInterviewReturn {
   toggleMic: () => void;
   isMicEnabled: boolean;
   reconnect: () => Promise<void>;
+  retryVoice: () => Promise<void>;
   pauseInterview: () => Promise<void>;
   resumeInterview: () => Promise<void>;
 }
@@ -120,6 +121,11 @@ export function useVoiceInterview(
   const silentFramesRef = useRef(0); // Consecutive silent audio frames
   const checkpointFailuresRef = useRef(0); // Consecutive checkpoint failures
   const consecutiveSetupFailuresRef = useRef(0); // Circuit breaker counter
+  const tabHiddenRef = useRef(false); // F5: Tab visibility — suppress heartbeat when hidden
+  const circuitBreakerStateRef = useRef<"CLOSED" | "OPEN" | "HALF_OPEN">("CLOSED"); // F3: Circuit breaker state
+  const circuitBreakerTimerRef = useRef<NodeJS.Timeout | null>(null); // F3: OPEN → HALF_OPEN timer
+  const audioProcessorErrorCountRef = useRef(0); // F2: Error counter for audio processor
+  const micRevokedRef = useRef(false); // F6: Track mic revocation
 
   // ── Audio Resource Cleanup Helper ────────────────────────────────────
   // Called before reconnect and on unmount to prevent resource leaks
@@ -172,6 +178,32 @@ export function useVoiceInterview(
   // Notify parent on state changes
   useEffect(() => { onStateChange?.(interviewState); }, [interviewState, onStateChange]);
   useEffect(() => { onTranscriptUpdate?.(transcript); }, [transcript, onTranscriptUpdate]);
+
+  // F5: Tab visibility detection — pause audio & suppress heartbeat when tab hidden
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      tabHiddenRef.current = document.hidden;
+      if (document.hidden) {
+        // Tab hidden: suppress heartbeat timeout (handled in heartbeat interval)
+        // Optionally pause audio processor to save resources
+        if (processorRef.current) {
+          try { processorRef.current.disconnect(); } catch { /* already disconnected */ }
+        }
+      } else {
+        // Tab visible: resume audio processor, reset heartbeat timer
+        lastMessageTimeRef.current = Date.now();
+        if (processorRef.current && audioContextRef.current && mediaStreamRef.current) {
+          try {
+            const source = audioContextRef.current.createMediaStreamSource(mediaStreamRef.current);
+            source.connect(processorRef.current);
+            processorRef.current.connect(audioContextRef.current.destination);
+          } catch { /* reconnect will handle this */ }
+        }
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }, []);
 
   // Auto-stop mic when falling back to text mode
   useEffect(() => {
@@ -417,6 +449,14 @@ export function useVoiceInterview(
       });
       if (res.ok) {
         checkpointFailuresRef.current = 0;
+        // F8: Refresh session TTL on successful checkpoint
+        try {
+          await fetch(`/api/interviews/${interviewId}/voice`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ accessToken, action: "refresh_ttl" }),
+          });
+        } catch { /* best-effort TTL refresh */ }
       } else {
         throw new Error(`Checkpoint HTTP ${res.status}`);
       }
@@ -528,11 +568,19 @@ export function useVoiceInterview(
         checkpointTimerRef.current = null;
       }
 
-      // Circuit breaker: if 3+ consecutive setup failures, stop retrying
-      if (consecutiveSetupFailuresRef.current >= 3) {
-        console.error("[Voice] Circuit breaker tripped — 3 consecutive setup failures");
-        setFallbackToText(true);
-        onError?.("Voice connection failed repeatedly. Switching to text mode.");
+      // F3: Circuit breaker with HALF_OPEN recovery
+      if (consecutiveSetupFailuresRef.current >= 3 && circuitBreakerStateRef.current !== "HALF_OPEN") {
+        if (circuitBreakerStateRef.current !== "OPEN") {
+          circuitBreakerStateRef.current = "OPEN";
+          console.error("[Voice] Circuit breaker OPEN — 3 consecutive setup failures");
+          setFallbackToText(true);
+          onError?.("Voice connection failed repeatedly. Switching to text mode.");
+          // After 30s, transition to HALF_OPEN to allow one retry
+          circuitBreakerTimerRef.current = setTimeout(() => {
+            circuitBreakerStateRef.current = "HALF_OPEN";
+            console.log("[Voice] Circuit breaker → HALF_OPEN (retry allowed)");
+          }, 30_000);
+        }
         return;
       }
 
@@ -586,6 +634,18 @@ export function useVoiceInterview(
           },
         });
         mediaStreamRef.current = micStream;
+        micRevokedRef.current = false;
+
+        // F6: Detect mic revocation (user removes permission or unplugs device)
+        const audioTrack = micStream.getAudioTracks()[0];
+        if (audioTrack) {
+          audioTrack.onended = () => {
+            micRevokedRef.current = true;
+            console.warn("[Voice] Mic track ended — permission revoked or device disconnected");
+            onError?.("Microphone disconnected. Please reconnect your mic and try again.");
+            setMicIsSilent(true);
+          };
+        }
       }
 
       // 4. Connect to Gemini Live WebSocket and wait for setupComplete
@@ -741,9 +801,11 @@ export function useVoiceInterview(
       // 6. Send greeting or restore context on reconnect
       const existingTranscript = transcriptRef.current;
       if (existingTranscript.length > 0) {
-        // Reconnect: restore conversation context from last few exchanges
+        // F12: Restore last 12 entries (6 exchanges) with validation and system instruction
         console.log("[Voice] Reconnecting — restoring transcript context...");
-        const recentEntries = existingTranscript.slice(-6); // Last 3 exchanges
+        const recentEntries = existingTranscript
+          .slice(-12) // Last 6 exchanges (up from 3)
+          .filter((entry) => entry.content && entry.content.trim().length > 0); // Validate non-empty
         const contextTurns = recentEntries.map((entry) => ({
           role: entry.role === "interviewer" ? "model" : "user",
           parts: [{ text: entry.content }],
@@ -751,11 +813,12 @@ export function useVoiceInterview(
         ws.send(JSON.stringify({
           clientContent: {
             turns: [
-              ...contextTurns,
+              // F12: System-level instruction instead of user turn for context restoration
               {
-                role: "user",
-                parts: [{ text: "Continue the interview seamlessly from where we left off. Do not re-introduce yourself or repeat any questions." }],
+                role: "model",
+                parts: [{ text: "[Session reconnected. The following is the recent conversation history. Continue the interview seamlessly without re-introducing yourself or repeating questions.]" }],
               },
+              ...contextTurns,
             ],
             turnComplete: true,
           },
@@ -775,11 +838,16 @@ export function useVoiceInterview(
       }
 
       // 7. Start mic audio capture → WebSocket
+      // TODO [F11]: Migrate from ScriptProcessorNode (deprecated) to AudioWorklet.
+      // AudioWorklet requires a separate worker file and MessagePort communication.
+      // Deferred: not blocking enterprise readiness, but should be done for long-term support.
       const source = audioContext.createMediaStreamSource(micStream);
       const processor = audioContext.createScriptProcessor(4096, 1, 1);
       processorRef.current = processor;
+      audioProcessorErrorCountRef.current = 0; // F2: Reset error counter on new processor
 
       processor.onaudioprocess = (e) => {
+        try { // F2: Error boundary — catch exceptions in audio processor
         if (!isMicEnabledRef.current) return;
         const ws2 = wsRef.current;
         if (!ws2 || ws2.readyState !== WebSocket.OPEN) return;
@@ -836,6 +904,13 @@ export function useVoiceInterview(
           },
         }));
         lastSendTimeRef.current = Date.now();
+        } catch (err) { // F2: Error boundary catch
+          audioProcessorErrorCountRef.current += 1;
+          console.error("[Voice] Audio processor error:", err);
+          if (audioProcessorErrorCountRef.current >= 3) {
+            onError?.("Audio processing issue detected. Your mic may need attention.");
+          }
+        }
       };
 
       source.connect(processor);
@@ -851,22 +926,27 @@ export function useVoiceInterview(
         const ws2 = wsRef.current;
         if (!ws2 || ws2.readyState !== WebSocket.OPEN) return;
 
-        // Keep-alive: send empty audio if no data sent in 25s (prevents idle disconnects)
+        // F10: Keep-alive with valid PCM16 silence frame (not empty string)
         const sendGap = Date.now() - lastSendTimeRef.current;
         if (sendGap > 25_000) {
+          // 480 bytes of zeros = 240 PCM16 samples = 10ms of silence at 24kHz
+          const silenceFrame = new Int16Array(240);
+          const silenceBase64 = arrayBufferToBase64(silenceFrame.buffer as ArrayBuffer);
           ws2.send(JSON.stringify({
             realtimeInput: {
-              mediaChunks: [{ mimeType: "audio/pcm;rate=24000", data: "" }],
+              mediaChunks: [{ mimeType: "audio/pcm;rate=24000", data: silenceBase64 }],
             },
           }));
           lastSendTimeRef.current = Date.now();
         }
 
         const silenceMs = Date.now() - lastMessageTimeRef.current;
-        if (silenceMs > 60_000) {
-          // No message from Gemini for 60s — connection is dead
+        // Only trigger heartbeat timeout when AI is idle/listening — NOT during thinking/speaking
+        // (Gemini goes quiet during long candidate responses and during its own processing)
+        const aiIdle = aiStateRef.current === "listening" || aiStateRef.current === "idle";
+        if (silenceMs > 60_000 && aiIdle && !tabHiddenRef.current) {
           console.warn("[Voice] Heartbeat timeout — no server message for 60s, triggering reconnect");
-          intentionalCloseRef.current = false; // Let onclose trigger reconnect
+          intentionalCloseRef.current = false;
           ws2.close(4000, "Heartbeat timeout");
         }
       }, 20_000); // Check every 20s
@@ -890,6 +970,8 @@ export function useVoiceInterview(
       setConnectionQuality("good");
       reconnectAttemptsRef.current = 0; // Reset on successful connection
       consecutiveSetupFailuresRef.current = 0; // Reset circuit breaker
+      circuitBreakerStateRef.current = "CLOSED"; // F3: Reset circuit breaker state
+      if (circuitBreakerTimerRef.current) { clearTimeout(circuitBreakerTimerRef.current); circuitBreakerTimerRef.current = null; }
     } catch (err) {
       console.error("Failed to start voice interview:", err);
       consecutiveSetupFailuresRef.current += 1;
@@ -990,6 +1072,28 @@ export function useVoiceInterview(
     }
   }, [startInterview, onError]);
 
+  // F3: Retry voice after circuit breaker fallback — resets breaker and attempts reconnect
+  const retryVoice = useCallback(async () => {
+    circuitBreakerStateRef.current = "HALF_OPEN";
+    consecutiveSetupFailuresRef.current = 0;
+    if (circuitBreakerTimerRef.current) { clearTimeout(circuitBreakerTimerRef.current); circuitBreakerTimerRef.current = null; }
+    setFallbackToText(false);
+    setIsReconnecting(true);
+    setReconnectPhase("checking");
+    try {
+      await startInterview();
+      setIsReconnecting(false);
+      setReconnectPhase(null);
+    } catch {
+      setIsReconnecting(false);
+      setReconnectPhase(null);
+      circuitBreakerStateRef.current = "OPEN";
+      consecutiveSetupFailuresRef.current = 3;
+      setFallbackToText(true);
+      onError?.("Voice retry failed. Staying in text mode.");
+    }
+  }, [startInterview, onError]);
+
   // ── Cleanup ────────────────────────────────────────────────────────
 
   useEffect(() => {
@@ -1008,6 +1112,8 @@ export function useVoiceInterview(
         mediaStreamRef.current.getTracks().forEach((track) => track.stop());
         mediaStreamRef.current = null;
       }
+      // F3: Clear circuit breaker timer
+      if (circuitBreakerTimerRef.current) { clearTimeout(circuitBreakerTimerRef.current); circuitBreakerTimerRef.current = null; }
       cleanupAudioResources();
     };
   }, [cleanupAudioResources]);
@@ -1030,6 +1136,7 @@ export function useVoiceInterview(
     toggleMic,
     isMicEnabled,
     reconnect,
+    retryVoice,
     pauseInterview,
     resumeInterview,
   };

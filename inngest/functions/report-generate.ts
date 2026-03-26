@@ -24,6 +24,49 @@ export const reportGenerate = inngest.createFunction(
   async ({ event, step }: any) => {
     const { interviewId } = event.data;
 
+    // F4: Pre-check — validate interview data before generating report
+    await step.run("validate-interview-data", async () => {
+      const { prisma } = await import("@/lib/prisma");
+      const interview = await prisma.interview.findUnique({
+        where: { id: interviewId },
+        select: { id: true, transcript: true, report: true, status: true, recruiterId: true },
+      });
+
+      if (!interview) {
+        console.error(`[Report] Interview ${interviewId} not found`);
+        throw new Error(`Interview ${interviewId} not found`);
+      }
+
+      if (interview.report) {
+        console.log(`[Report] Interview ${interviewId} already has a report — skipping`);
+        return { skip: true };
+      }
+
+      if (!interview.transcript || (Array.isArray(interview.transcript) && interview.transcript.length === 0)) {
+        console.error(`[Report] Interview ${interviewId} has no transcript — cannot generate report`);
+        // Update status to REPORT_FAILED
+        await prisma.interview.update({
+          where: { id: interviewId },
+          data: { reportStatus: "failed" },
+        });
+        // Create notification for recruiter
+        if (interview.recruiterId) {
+          await prisma.notification.create({
+            data: {
+              userId: interview.recruiterId,
+              type: "REPORT_FAILED",
+              title: "Report generation failed",
+              message: `Report for interview ${interviewId} could not be generated — incomplete interview data (no transcript).`,
+              interviewId,
+            },
+          }).catch((err: Error) => console.warn("[Report] Failed to create notification:", err.message));
+        }
+        throw new Error(`Interview ${interviewId} has no transcript data`);
+      }
+
+      return { skip: false };
+    });
+
     // Step 1: Generate the report (with SLO tracking)
     await step.run("generate-report", async () => {
       const { generateReportInBackground } = await import(
