@@ -471,6 +471,18 @@ export function useVoiceInterview(
     }
   }, [interviewId, accessToken, onError]);
 
+  // ── Report SLO Event (client → server) ────────────────────────────
+
+  const reportSLOEvent = useCallback(async (sloName: string, success: boolean) => {
+    try {
+      await fetch(`/api/interviews/${interviewId}/voice`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ accessToken, action: "record_slo", sloName, success }),
+      });
+    } catch { /* best-effort SLO reporting */ }
+  }, [interviewId, accessToken]);
+
   // ── End Interview (internal) ───────────────────────────────────────
 
   const endInterviewInternal = useCallback(async () => {
@@ -558,6 +570,10 @@ export function useVoiceInterview(
       setInterviewState("CONNECTING");
 
       // 0. Clean up old audio resources (critical for reconnect)
+      // Clear stale question dedup on fresh start (not reconnect)
+      if (transcriptRef.current.length === 0) {
+        askedQuestionsRef.current = [];
+      }
       cleanupAudioResources();
       // Close old WebSocket if still open
       if (wsRef.current) {
@@ -783,6 +799,9 @@ export function useVoiceInterview(
               setIsReconnecting(false);
               setReconnectPhase(null);
               setConnectionQuality("good");
+              // SLO: successful reconnect + context preserved
+              reportSLOEvent("session.reconnect.success_rate", true);
+              reportSLOEvent("session.reconnect.context_loss.rate", true);
             }).catch(() => {
               setIsReconnecting(false);
               setReconnectPhase(null);
@@ -790,6 +809,9 @@ export function useVoiceInterview(
                 setConnectionQuality("poor");
                 setFallbackToText(true);
                 onError?.("Connection lost. You can switch to text mode.");
+                // SLO: failed reconnect + hard stop
+                reportSLOEvent("session.reconnect.success_rate", false);
+                reportSLOEvent("session.hard_stop.rate", false);
               }
             });
           }, delay);
@@ -797,6 +819,9 @@ export function useVoiceInterview(
           setConnectionQuality("poor");
           setFallbackToText(true);
           onError?.("Connection lost after multiple attempts. Switch to text mode.");
+          // SLO: hard stop — reconnect exhausted
+          reportSLOEvent("session.reconnect.success_rate", false);
+          reportSLOEvent("session.hard_stop.rate", false);
         }
       };
 
@@ -982,7 +1007,7 @@ export function useVoiceInterview(
     } finally {
       isStartingRef.current = false; // Release mutex
     }
-  }, [interviewId, accessToken, handleGeminiMessage, checkpointTranscript, onError, cleanupAudioResources, micIsSilent]);
+  }, [interviewId, accessToken, handleGeminiMessage, checkpointTranscript, reportSLOEvent, onError, cleanupAudioResources, micIsSilent]);
 
   // ── Public Actions ─────────────────────────────────────────────────
 

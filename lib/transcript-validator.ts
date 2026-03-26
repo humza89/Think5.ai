@@ -6,7 +6,7 @@
  */
 
 export interface TranscriptIssue {
-  type: "duplicate_question" | "empty_fragment" | "prompt_leakage" | "consecutive_role" | "suspicious_pattern";
+  type: "duplicate_question" | "empty_fragment" | "prompt_leakage" | "consecutive_role" | "suspicious_pattern" | "non_sequitur";
   severity: "warning" | "error";
   message: string;
   turnIndex?: number;
@@ -133,6 +133,23 @@ export function validateTranscript(
           turnIndex: aiTurns[j].index,
         });
       }
+    }
+  }
+
+  // Non-sequitur detection: consecutive AI turns with very low topic overlap
+  const TRANSITION_PHRASES = ["let's", "moving on", "shift", "switch", "next", "different", "another", "now let"];
+  for (let i = 1; i < aiTurns.length; i++) {
+    const prev = aiTurns[i - 1];
+    const curr = aiTurns[i];
+    const similarity = wordSimilarity(prev.text, curr.text);
+    const isTransition = TRANSITION_PHRASES.some((p) => curr.text.toLowerCase().includes(p));
+    if (similarity < 0.1 && !isTransition && curr.text.length > 30) {
+      issues.push({
+        type: "non_sequitur",
+        severity: "warning",
+        message: `Potential non-sequitur at AI turn ${curr.index} (${(similarity * 100).toFixed(0)}% topic overlap with previous AI turn)`,
+        turnIndex: curr.index,
+      });
     }
   }
 

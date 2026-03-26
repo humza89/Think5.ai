@@ -158,6 +158,15 @@ async function evaluateInterviewPlan(
     // Consistency — single run can't measure this; default to baseline
     dimensionScores.consistency = 7.0;
 
+    // Realism — check for natural language patterns in plan
+    const hasVariedPhrasing = allQuestions.length > 0 &&
+      new Set(allQuestions.map((q: string | { text?: string }) =>
+        (typeof q === "string" ? q : q.text || "").split(" ").slice(0, 3).join(" ").toLowerCase()
+      )).size >= Math.min(allQuestions.length * 0.6, allQuestions.length);
+    const hasTransitions = planText.includes("transition") || planText.includes("let's") || planText.includes("shift");
+    const realismScore = 5.0 + (hasVariedPhrasing ? 2.0 : 0) + (hasTransitions ? 1.5 : 0) + (followUpRatio > 0.2 ? 1.5 : 0);
+    dimensionScores.realism = Math.min(10, realismScore);
+
     const weightedScore = computeWeightedScore(dimensionScores);
 
     return {
@@ -249,11 +258,47 @@ function printResults(results: EvalResult[]): void {
   console.log(`  Overall: ${allPassed ? "PASSED" : "FAILED"} | Avg Score: ${avgScore.toFixed(1)}`);
   console.log("-".repeat(70) + "\n");
 
-  // Save results to file
+  // Drift detection: compare against historical baseline
   const outputPath = path.join(__dirname, "eval-results.json");
   const existingResults = fs.existsSync(outputPath)
     ? JSON.parse(fs.readFileSync(outputPath, "utf-8"))
     : [];
+
+  if (existingResults.length > 0) {
+    console.log("\n  DRIFT DETECTION:");
+    // Compute historical average per dimension
+    const historicalScores: Record<string, number[]> = {};
+    for (const run of existingResults) {
+      for (const result of run.results) {
+        for (const [dimId, score] of Object.entries(result.dimensionScores)) {
+          if (!historicalScores[dimId]) historicalScores[dimId] = [];
+          historicalScores[dimId].push(score as number);
+        }
+      }
+    }
+
+    let driftWarnings = 0;
+    for (const result of results) {
+      for (const [dimId, currentScore] of Object.entries(result.dimensionScores)) {
+        const history = historicalScores[dimId];
+        if (history && history.length >= 2) {
+          const historicalAvg = history.reduce((a, b) => a + b, 0) / history.length;
+          const driftPercent = historicalAvg > 0
+            ? ((historicalAvg - (currentScore as number)) / historicalAvg) * 100
+            : 0;
+          if (driftPercent > 10) {
+            console.log(`    [DRIFT WARNING] ${dimId}: ${(currentScore as number).toFixed(1)} vs historical avg ${historicalAvg.toFixed(1)} (${driftPercent.toFixed(0)}% drop)`);
+            driftWarnings++;
+          }
+        }
+      }
+    }
+    if (driftWarnings === 0) {
+      console.log("    No significant drift detected.");
+    }
+  }
+
+  // Save results to file
   existingResults.push({
     runDate: new Date().toISOString(),
     results,
@@ -261,7 +306,7 @@ function printResults(results: EvalResult[]): void {
     avgScore,
   });
   fs.writeFileSync(outputPath, JSON.stringify(existingResults, null, 2));
-  console.log(`Results saved to ${outputPath}`);
+  console.log(`\nResults saved to ${outputPath}`);
 }
 
 async function main() {

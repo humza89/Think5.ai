@@ -88,7 +88,7 @@ export const EVAL_DIMENSIONS: EvalDimension[] = [
   {
     id: "consistency",
     name: "Score Consistency",
-    weight: 0.15,
+    weight: 0.10,
     description: "Score stability across multiple runs with same candidate profile",
     scoringCriteria: {
       excellent: "Score variance < 5% across runs",
@@ -96,6 +96,19 @@ export const EVAL_DIMENSIONS: EvalDimension[] = [
       adequate: "Score variance 10-15%",
       poor: "Score variance 15-25%",
       failing: "Score variance > 25%",
+    },
+  },
+  {
+    id: "realism",
+    name: "Recruiter Realism",
+    weight: 0.10,
+    description: "Human-likeness of interview flow: natural transitions, varied phrasing, non-robotic tone",
+    scoringCriteria: {
+      excellent: "Indistinguishable from a skilled human recruiter in flow and phrasing",
+      good: "Natural transitions and varied question phrasing with minor tells",
+      adequate: "Generally natural but some robotic patterns visible",
+      poor: "Noticeably formulaic with repetitive patterns",
+      failing: "Obviously automated with rigid, template-driven flow",
     },
   },
 ];

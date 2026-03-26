@@ -82,6 +82,15 @@ export async function POST(
       return Response.json({ error: eligibility.reason }, { status: 403 });
     }
 
+    // ── Record SLO: client-reported SLO events ──
+    if (action === "record_slo") {
+      const { sloName, success, durationMs } = body;
+      if (sloName && typeof success === "boolean") {
+        await recordSLOEvent(sloName, success, durationMs);
+      }
+      return Response.json({ ok: true });
+    }
+
     // ── Refresh TTL: keep session alive during active use ──
     if (action === "refresh_ttl") {
       await refreshSessionTTL(id);
@@ -170,6 +179,11 @@ export async function POST(
           });
         }
       }
+
+      // Record session completion SLO
+      await recordSLOEvent("session.30min_completion.rate", true);
+      // Record no hard-stop (normal completion = success)
+      await recordSLOEvent("session.hard_stop.rate", true);
 
       // Clean up durable session state and release lock
       await deleteSessionState(id);

@@ -62,6 +62,34 @@ export const SLO_DEFINITIONS: SLODefinition[] = [
     description: "Recording chunk upload success rate",
     unit: "rate",
   },
+  {
+    name: "session.reconnect.success_rate",
+    target: 0.99,
+    windowHours: 24,
+    description: "WebSocket reconnect success rate (≥99.0%)",
+    unit: "rate",
+  },
+  {
+    name: "session.hard_stop.rate",
+    target: 0.9975,
+    windowHours: 24,
+    description: "Session non-hard-stop rate (≤0.25% hard stops)",
+    unit: "rate",
+  },
+  {
+    name: "session.30min_completion.rate",
+    target: 0.985,
+    windowHours: 24,
+    description: "30-minute session completion rate (≥98.5%)",
+    unit: "rate",
+  },
+  {
+    name: "session.reconnect.context_loss.rate",
+    target: 0.995,
+    windowHours: 24,
+    description: "Post-reconnect context preservation rate (≤0.5% loss)",
+    unit: "rate",
+  },
 ];
 
 /**
