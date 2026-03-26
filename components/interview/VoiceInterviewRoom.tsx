@@ -710,7 +710,7 @@ function AriaIndicator({ state, reducedMotion = false }: { state: AISpeakingStat
   return (
     <div role="img" aria-label={`Aria is ${state}`}>
       <div
-        className={`relative flex h-16 w-16 items-center justify-center rounded-full bg-white overflow-hidden ${
+        className={`relative flex h-24 w-24 items-center justify-center rounded-full bg-white overflow-hidden ${
           isThinking && !reducedMotion ? "animate-pulse" : ""
         }`}
         style={glowStyle}
@@ -718,9 +718,10 @@ function AriaIndicator({ state, reducedMotion = false }: { state: AISpeakingStat
         <Image
           src="/Logos/think5 logo.png"
           alt="Think5 AI"
-          width={64}
-          height={64}
-          className="h-full w-full object-contain p-2"
+          width={200}
+          height={200}
+          unoptimized
+          className="w-[80%] h-auto object-contain"
         />
       </div>
     </div>
