@@ -115,7 +115,7 @@ export async function GET() {
     let passiveProfile: Record<string, unknown> | null = null;
 
     try {
-      const results = await Promise.all([
+      const results = await Promise.allSettled([
         prisma.candidateSkill.findMany({
           where: { candidateId: candidate.id },
           orderBy: { createdAt: "desc" },
@@ -140,7 +140,17 @@ export async function GET() {
           where: { candidateId: candidate.id },
         }),
       ]);
-      [skills, experiences, education, certifications, documents, jobPreference] = results;
+      skills = results[0].status === "fulfilled" ? results[0].value : [];
+      experiences = results[1].status === "fulfilled" ? results[1].value : [];
+      education = results[2].status === "fulfilled" ? results[2].value : [];
+      certifications = results[3].status === "fulfilled" ? results[3].value : [];
+      documents = results[4].status === "fulfilled" ? results[4].value : [];
+      jobPreference = results[5].status === "fulfilled" ? results[5].value : null;
+
+      const failures = results.filter((r) => r.status === "rejected");
+      if (failures.length > 0) {
+        console.warn(`${failures.length} onboarding queries failed (partial data returned)`);
+      }
     } catch (e) {
       console.warn("Some onboarding relation tables may not exist yet:", e);
     }

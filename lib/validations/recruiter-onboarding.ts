@@ -1,5 +1,11 @@
 import { z } from "zod";
 
+// SECURITY: URL validation that rejects javascript:, data:, and other dangerous schemes
+const safeUrl = z.string().max(500).refine(
+  (val) => !val || /^https?:\/\//i.test(val),
+  { message: "Must be a valid URL starting with http:// or https://" }
+).optional().or(z.literal(""));
+
 // ============================================
 // Step 1: Personal Info
 // ============================================
@@ -8,7 +14,7 @@ export const personalInfoSchema = z.object({
   title: z.string().max(200).optional().or(z.literal("")),
   department: z.string().max(200).optional().or(z.literal("")),
   phone: z.string().max(30).optional().or(z.literal("")),
-  linkedinUrl: z.string().max(500).optional().or(z.literal("")),
+  linkedinUrl: safeUrl,
   profileImage: z.string().max(500).optional().or(z.literal("")),
   bio: z.string().max(2000).optional().or(z.literal("")),
 });
@@ -21,10 +27,10 @@ export const companyCreateSchema = z.object({
   name: z.string().min(1, "Company name is required").max(200),
   industry: z.string().max(200).optional().or(z.literal("")),
   companySize: z.string().max(100).optional().or(z.literal("")),
-  website: z.string().max(500).optional().or(z.literal("")),
+  website: safeUrl,
   description: z.string().max(5000).optional().or(z.literal("")),
-  logoUrl: z.string().max(500).optional().or(z.literal("")),
-  linkedinUrl: z.string().max(500).optional().or(z.literal("")),
+  logoUrl: safeUrl,
+  linkedinUrl: safeUrl,
   domain: z.string().max(200).optional().or(z.literal("")),
   brandColor: z.string().max(20).optional().or(z.literal("")),
   tagline: z.string().max(500).optional().or(z.literal("")),

@@ -10,11 +10,25 @@ import { requireRole, handleAuthError } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import crypto from "crypto";
 
+async function resolveAdminCompanyId(userId: string): Promise<string | null> {
+  const recruiter = await prisma.recruiter.findFirst({
+    where: { supabaseUserId: userId },
+    select: { companyId: true },
+  });
+  return recruiter?.companyId ?? null;
+}
+
 export async function GET() {
   try {
-    await requireRole(["admin"]);
+    const { user } = await requireRole(["admin"]);
+
+    const companyId = await resolveAdminCompanyId(user.id);
+    if (!companyId) {
+      return NextResponse.json({ error: "No company associated" }, { status: 403 });
+    }
 
     const webhooks = await prisma.webhookEndpoint.findMany({
+      where: { companyId },
       orderBy: { createdAt: "desc" },
       include: {
         _count: { select: { deliveries: true } },
@@ -30,13 +44,18 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   try {
-    await requireRole(["admin"]);
+    const { user } = await requireRole(["admin"]);
 
-    const { companyId, url, events } = await req.json();
+    const companyId = await resolveAdminCompanyId(user.id);
+    if (!companyId) {
+      return NextResponse.json({ error: "No company associated" }, { status: 403 });
+    }
 
-    if (!companyId || !url || !events) {
+    const { url, events } = await req.json();
+
+    if (!url || !events) {
       return NextResponse.json(
-        { error: "Missing required fields: companyId, url, events" },
+        { error: "Missing required fields: url, events" },
         { status: 400 }
       );
     }

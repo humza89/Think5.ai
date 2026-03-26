@@ -160,6 +160,12 @@ export async function POST(
     await recordSLOEvent("interview.start.success_rate", true);
 
     // Return config for client-side WebSocket connection
+    // SECURITY NOTE: Gemini Live WebSocket requires the API key client-side.
+    // This is a known architectural limitation. Mitigations:
+    // 1. Endpoint requires valid interview accessToken (validated above)
+    // 2. Single-use reconnect token ties this session to one interview
+    // 3. Key should be a restricted Gemini API key (Gemini Live only, no other APIs)
+    // TODO: Implement server-side WebSocket relay to eliminate client-side key exposure
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
       return Response.json({ error: "Voice service not configured" }, { status: 500 });
@@ -173,6 +179,11 @@ export async function POST(
       candidateName: interview.candidate.fullName,
       model: "models/gemini-2.5-flash-native-audio-latest",
       reconnectToken,
+    }, {
+      headers: {
+        "X-Content-Type-Options": "nosniff",
+        "Cache-Control": "no-store, no-cache, must-revalidate",
+      },
     });
   } catch (error) {
     Sentry.captureException(error, { tags: { component: "voice_init" } });

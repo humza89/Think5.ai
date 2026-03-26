@@ -8,9 +8,13 @@
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { scoreTranscript, TranscriptEntry } from "@/lib/transcript-qa-scorer";
+import { requireRole, handleAuthError } from "@/lib/auth";
 
 export async function POST(request: NextRequest) {
   try {
+    // SECURITY: Require admin role — this endpoint exposes interview transcripts
+    await requireRole(["admin"]);
+
     const body = await request.json();
     const { interviewId } = body;
 

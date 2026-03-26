@@ -186,6 +186,10 @@ export async function POST(
 
     // Handle complete recording upload (base64)
     if (body.recording) {
+      // SECURITY: Validate access token for complete recording upload
+      if (!body.accessToken || interview.accessToken !== body.accessToken) {
+        return Response.json({ error: "Unauthorized" }, { status: 401 });
+      }
       const buffer = Buffer.from(body.recording, "base64");
       const key = await uploadCompleteRecording(id, buffer, body.mimeType);
 

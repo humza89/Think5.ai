@@ -86,7 +86,18 @@ export async function POST(
     // ── Record SLO: client-reported SLO events ──
     if (action === "record_slo") {
       const { sloName, success, durationMs } = body;
-      if (sloName && typeof success === "boolean") {
+      // SECURITY: Only accept known SLO names to prevent Redis key spam
+      const ALLOWED_CLIENT_SLOS = new Set([
+        "interview.start.success_rate",
+        "session.reconnect.success_rate",
+        "session.reconnect.latency_p95",
+        "session.reconnect.context_loss.rate",
+        "recording.upload.success_rate",
+      ]);
+      if (!sloName || !ALLOWED_CLIENT_SLOS.has(sloName)) {
+        return Response.json({ error: "Invalid SLO name" }, { status: 400 });
+      }
+      if (typeof success === "boolean") {
         await recordSLOEvent(sloName, success, durationMs);
       }
       return Response.json({ ok: true });

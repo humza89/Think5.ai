@@ -29,6 +29,11 @@ const nextConfig: NextConfig = {
     const strictCsp =
       "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; connect-src 'self' https://*.supabase.co https://*.upstash.io wss://*.supabase.co wss://generativelanguage.googleapis.com https://generativelanguage.googleapis.com; media-src 'self' blob: data:; font-src 'self' data:; frame-src 'self' https://*.supabase.co blob:; frame-ancestors 'none'";
 
+    // SECURITY: 'unsafe-eval' is required exclusively for the Spline 3D runtime
+    // on the landing page. It does NOT apply to any app/interview/admin routes
+    // (those use strictCsp above). Spline uses eval() internally for its WebGL
+    // pipeline and does not support nonce-based loading as of 2026-03.
+    // TODO: Remove unsafe-eval when Spline adds CSP nonce support.
     const landingCsp =
       "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; connect-src 'self' https://*.supabase.co https://*.upstash.io wss://*.supabase.co https://prod.spline.design https://unpkg.com; media-src 'self' blob: data:; font-src 'self' data:; frame-src 'self' https://*.supabase.co blob:; frame-ancestors 'none'";
 

@@ -112,10 +112,23 @@ export async function PATCH(
       );
     }
 
-    // Fetch candidate
-    const candidate = await prisma.candidate.findUnique({ where: { id } });
+    // Fetch candidate with recruiter's company for tenant scoping
+    const candidate = await prisma.candidate.findUnique({
+      where: { id },
+      include: { recruiter: { select: { companyId: true } } },
+    });
     if (!candidate) {
       return NextResponse.json({ error: "Candidate not found" }, { status: 404 });
+    }
+
+    // SECURITY: Verify admin has access to this candidate's tenant
+    const adminRecruiter = await prisma.recruiter.findFirst({
+      where: { supabaseUserId: user.id },
+      select: { companyId: true },
+    });
+    if (adminRecruiter?.companyId && candidate.recruiter?.companyId
+        && adminRecruiter.companyId !== candidate.recruiter.companyId) {
+      return NextResponse.json({ error: "Forbidden: candidate not in your company" }, { status: 403 });
     }
 
     if (!candidate.onboardingCompleted) {

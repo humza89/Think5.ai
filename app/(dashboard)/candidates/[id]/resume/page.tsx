@@ -11,7 +11,23 @@ export default async function ResumeTab({ params }: { params: Promise<{ id: stri
 
   if (!candidate) return null;
 
-  const resumeUrl = (candidate as any)?.resumeUrl;
+  const rawResumeUrl = (candidate as any)?.resumeUrl;
+
+  // SECURITY: Sanitize resume URL to prevent XSS via javascript:, data:, or other dangerous schemes
+  function sanitizeResumeUrl(url: string | null | undefined): string | null {
+    if (!url) return null;
+    // Allow relative /uploads/ paths
+    if (url.startsWith('/uploads/')) return url;
+    try {
+      const parsed = new URL(url, 'https://placeholder.invalid');
+      if (parsed.protocol === 'https:' || parsed.protocol === 'http:') return url;
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  const resumeUrl = sanitizeResumeUrl(rawResumeUrl);
 
   return (
     <div className="-m-6 h-full">
@@ -50,6 +66,7 @@ export default async function ResumeTab({ params }: { params: Promise<{ id: stri
               </div>
               <iframe
                 src={resumeUrl}
+                sandbox="allow-same-origin"
                 className="w-full flex-1"
                 style={{ minHeight: 'calc(100vh - 250px)' }}
                 title="Resume"

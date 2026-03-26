@@ -161,9 +161,10 @@ export default function InterviewRoom() {
 
     setStage("ACTIVE");
 
-    // Voice interviews: VoiceInterviewRoom auto-starts and manages its own session
+    // SECURITY: Always start proctoring monitoring regardless of voice provider
+    proctoring.startMonitoring();
+
     if (meta?.voiceProvider !== "gemini-live") {
-      proctoring.startMonitoring();
       await proctoring.requestFullscreen();
       await session.startInterview();
       // Start recording if webcam is active and consent given

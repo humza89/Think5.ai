@@ -128,7 +128,20 @@ export async function GET(
     }).catch(() => {});
 
     // Return report data (strip recipientEmail from response)
-    const { recipientEmail: _, ...reportData } = report;
+    const { recipientEmail: _, shareScopes, ...reportData } = report;
+
+    // SECURITY: Enforce share scope restrictions — only return allowed fields
+    if (shareScopes && Array.isArray(shareScopes) && shareScopes.length > 0) {
+      const allowed = new Set(shareScopes as string[]);
+      const filteredData: Record<string, unknown> = { id: reportData.id };
+      for (const [key, value] of Object.entries(reportData)) {
+        if (key === "id" || key === "interview" || allowed.has(key)) {
+          filteredData[key] = value;
+        }
+      }
+      return NextResponse.json(filteredData);
+    }
+
     return NextResponse.json(reportData);
   } catch (error) {
     console.error("Shared report data error:", error);

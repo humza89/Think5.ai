@@ -158,6 +158,19 @@ export function VoiceInterviewRoom({
       });
       setStream(newStream);
       if (videoRef.current) videoRef.current.srcObject = newStream;
+
+      // SECURITY/F18: Update recording stream's video track if actively recording
+      if (mediaRecorderRef.current?.state === "recording") {
+        const recorderStream = mediaRecorderRef.current.stream;
+        const oldVideoTrack = recorderStream.getVideoTracks()[0];
+        const newVideoTrack = newStream.getVideoTracks()[0];
+        if (oldVideoTrack && newVideoTrack) {
+          recorderStream.removeTrack(oldVideoTrack);
+          recorderStream.addTrack(newVideoTrack.clone());
+          oldVideoTrack.stop();
+        }
+      }
+
       toast.success("Camera switched");
     } catch {
       toast.error("Failed to switch camera");

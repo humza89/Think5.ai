@@ -9,20 +9,33 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireRole, handleAuthError } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
+async function resolveAdminCompanyId(userId: string): Promise<string | null> {
+  const recruiter = await prisma.recruiter.findFirst({
+    where: { supabaseUserId: userId },
+    select: { companyId: true },
+  });
+  return recruiter?.companyId ?? null;
+}
+
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireRole(["admin"]);
+    const { user } = await requireRole(["admin"]);
     const { id } = await params;
     const body = await req.json();
+
+    const companyId = await resolveAdminCompanyId(user.id);
+    if (!companyId) {
+      return NextResponse.json({ error: "No company associated" }, { status: 403 });
+    }
 
     const webhook = await prisma.webhookEndpoint.findUnique({
       where: { id },
     });
 
-    if (!webhook) {
+    if (!webhook || webhook.companyId !== companyId) {
       return NextResponse.json(
         { error: "Webhook not found" },
         { status: 404 }
@@ -74,14 +87,19 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireRole(["admin"]);
+    const { user } = await requireRole(["admin"]);
     const { id } = await params;
+
+    const companyId = await resolveAdminCompanyId(user.id);
+    if (!companyId) {
+      return NextResponse.json({ error: "No company associated" }, { status: 403 });
+    }
 
     const webhook = await prisma.webhookEndpoint.findUnique({
       where: { id },
     });
 
-    if (!webhook) {
+    if (!webhook || webhook.companyId !== companyId) {
       return NextResponse.json(
         { error: "Webhook not found" },
         { status: 404 }

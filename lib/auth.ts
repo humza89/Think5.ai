@@ -113,10 +113,11 @@ export async function requireApprovedAccess(allowedRoles: UserRole[]) {
       select: { onboardingCompleted: true, onboardingStatus: true },
     });
 
-    if (recruiter && !recruiter.onboardingCompleted) {
+    // SECURITY: Block auto-created recruiters that haven't completed onboarding
+    if (!recruiter || !recruiter.onboardingCompleted) {
       throw new AuthError('Please complete onboarding first.', 403);
     }
-    if (recruiter && recruiter.onboardingStatus !== 'APPROVED' && recruiter.onboardingStatus !== 'COMPLETED') {
+    if (recruiter.onboardingStatus !== 'APPROVED' && recruiter.onboardingStatus !== 'COMPLETED') {
       throw new AuthError('Account not yet approved. Await admin approval.', 403);
     }
   }
@@ -215,18 +216,8 @@ export async function requireCandidateAccess(candidateId: string) {
     }
 
     if (candidate.recruiterId !== recruiter.id) {
-      // Allow recruiters to claim self-onboarded candidates (owned by system recruiter)
-      const systemRecruiter = await prisma.recruiter.findFirst({
-        where: { email: "system@think5.ai" },
-        select: { id: true },
-      });
-      if (systemRecruiter && candidate.recruiterId === systemRecruiter.id) {
-        await prisma.candidate.update({
-          where: { id: candidateId },
-          data: { recruiterId: recruiter.id },
-        });
-        return { user, profile, recruiter };
-      }
+      // SECURITY: Do not auto-claim candidates. Requires explicit admin assignment.
+      // Previously auto-claimed system-owned candidates, which broke tenant isolation.
       throw new AuthError('Forbidden: you do not own this candidate', 403);
     }
 

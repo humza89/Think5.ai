@@ -261,7 +261,7 @@ export default function ClientDetailPage() {
                           <div>
                             <p className="text-sm font-medium text-gray-500">Website</p>
                             <a
-                              href={client.website}
+                              href={/^https?:\/\//i.test(client.website) ? client.website : '#'}
                               target="_blank"
                               rel="noopener noreferrer"
                               className="text-blue-600 hover:underline"
@@ -278,7 +278,7 @@ export default function ClientDetailPage() {
                           <div>
                             <p className="text-sm font-medium text-gray-500">LinkedIn</p>
                             <a
-                              href={client.linkedinUrl}
+                              href={/^https?:\/\//i.test(client.linkedinUrl) ? client.linkedinUrl : '#'}
                               target="_blank"
                               rel="noopener noreferrer"
                               className="text-blue-600 hover:underline"
