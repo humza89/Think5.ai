@@ -690,65 +690,39 @@ function AriaIndicator({ state, reducedMotion = false }: { state: AISpeakingStat
   const isSpeaking = state === "speaking";
   const isThinking = state === "thinking";
 
+  const glowStyle: React.CSSProperties = isSpeaking
+    ? {
+        boxShadow:
+          "0 0 20px 5px rgba(59,130,246,0.6), 0 0 60px 20px rgba(59,130,246,0.3), 0 0 120px 40px rgba(59,130,246,0.15)",
+        transition: "box-shadow 0.5s ease",
+      }
+    : isThinking
+    ? {
+        boxShadow:
+          "0 0 15px 5px rgba(59,130,246,0.3), 0 0 40px 15px rgba(59,130,246,0.15)",
+        transition: "box-shadow 0.5s ease",
+      }
+    : {
+        boxShadow: "none",
+        transition: "box-shadow 0.5s ease",
+      };
+
   return (
-    <div className="flex items-center gap-3">
-      {/* Logo circle with glow */}
-      <div className="relative" role="img" aria-label={`Aria is ${state}`}>
-        {/* Glow ring when speaking */}
-        {isSpeaking && !reducedMotion && (
-          <div className="absolute -inset-2 rounded-full bg-blue-500/30 animate-pulse" />
-        )}
-        {isThinking && !reducedMotion && (
-          <div className="absolute -inset-1 rounded-full bg-blue-500/15 animate-pulse" />
-        )}
-
-        <div className={`relative flex h-14 w-14 items-center justify-center rounded-full border-2 overflow-hidden transition-all duration-300 ${
-          isSpeaking ? "border-blue-500 shadow-lg shadow-blue-500/30" :
-          isThinking ? "border-blue-400/50" :
-          "border-white/20"
-        }`}>
-          <Image
-            src="/uploads/Robot think5.png"
-            alt="Think5 AI"
-            width={56}
-            height={56}
-            className="h-full w-full object-cover"
-          />
-        </div>
-      </div>
-
-      {/* Name + audio bars */}
-      <div className="flex flex-col">
-        <span className="text-sm font-medium text-white">Aria</span>
-        <div className="flex items-center gap-1 mt-0.5">
-          {isSpeaking ? (
-            <AudioBars />
-          ) : (
-            <span className="text-xs text-gray-500">
-              {isThinking ? "Thinking..." : state === "listening" ? "Listening" : ""}
-            </span>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ── Audio Level Bars (animated when speaking) ────────────────────────
-
-function AudioBars() {
-  return (
-    <div className="flex items-end gap-0.5 h-3" aria-hidden="true">
-      {[0, 80, 160, 240, 320].map((delay) => (
-        <span
-          key={delay}
-          className="w-0.5 rounded-full bg-blue-500 animate-audio-bar"
-          style={{
-            animationDelay: `${delay}ms`,
-            height: "100%",
-          }}
+    <div role="img" aria-label={`Aria is ${state}`}>
+      <div
+        className={`relative flex h-16 w-16 items-center justify-center rounded-full bg-white overflow-hidden ${
+          isThinking && !reducedMotion ? "animate-pulse" : ""
+        }`}
+        style={glowStyle}
+      >
+        <Image
+          src="/Logos/think5 logo.png"
+          alt="Think5 AI"
+          width={64}
+          height={64}
+          className="h-full w-full object-contain p-2"
         />
-      ))}
+      </div>
     </div>
   );
 }

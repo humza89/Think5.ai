@@ -56,15 +56,6 @@ const config: Config = {
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
       },
-      keyframes: {
-        "audio-bar": {
-          "0%, 100%": { height: "20%" },
-          "50%": { height: "100%" },
-        },
-      },
-      animation: {
-        "audio-bar": "audio-bar 0.8s ease-in-out infinite",
-      },
     },
   },
   plugins: [require("tailwindcss-animate")],
