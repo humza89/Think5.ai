@@ -88,6 +88,10 @@ export function useVoiceInterview(
   const [reconnectPhase, setReconnectPhase] = useState<"checking" | "restoring" | "verifying" | null>(null);
   const [micIsSilent, setMicIsSilent] = useState(false);
 
+  // Mirror aiState in a ref so audio processor callback can read it
+  const aiStateRef = useRef<AISpeakingState>(aiState);
+  useEffect(() => { aiStateRef.current = aiState; }, [aiState]);
+
   // Refs
   const wsRef = useRef<WebSocket | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -110,6 +114,7 @@ export function useVoiceInterview(
   const isStartingRef = useRef(false); // Mutex: prevents concurrent startInterview() calls
   const heartbeatIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const lastMessageTimeRef = useRef(Date.now()); // Tracks last message from Gemini
+  const lastSendTimeRef = useRef(Date.now()); // Tracks last data sent to Gemini (for keep-alive)
   const qualityCheckIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const droppedFramesRef = useRef(0); // Consecutive frames dropped due to backpressure
   const silentFramesRef = useRef(0); // Consecutive silent audio frames
@@ -611,6 +616,7 @@ export function useVoiceInterview(
               generationConfig: {
                 responseModalities: ["AUDIO"],
                 speechConfig: {
+                  languageCode: "en-US",
                   voiceConfig: {
                     prebuiltVoiceConfig: { voiceName: voiceName || "Kore" },
                   },
@@ -780,22 +786,29 @@ export function useVoiceInterview(
 
         const inputData = e.inputBuffer.getChannelData(0);
 
-        // ── Silence detection ──
-        let sumSquares = 0;
-        for (let i = 0; i < inputData.length; i++) {
-          sumSquares += inputData[i] * inputData[i];
-        }
-        const rms = Math.sqrt(sumSquares / inputData.length);
-        if (rms < 0.005) {
-          silentFramesRef.current += 1;
-          if (silentFramesRef.current >= 30 && !micIsSilent) { // ~3s of silence
-            setMicIsSilent(true);
+        // ── Silence detection (only when AI is listening) ──
+        // Skip during AI speaking/thinking — candidate is naturally quiet
+        if (aiStateRef.current === "listening") {
+          let sumSquares = 0;
+          for (let i = 0; i < inputData.length; i++) {
+            sumSquares += inputData[i] * inputData[i];
+          }
+          const rms = Math.sqrt(sumSquares / inputData.length);
+          if (rms < 0.005) {
+            silentFramesRef.current += 1;
+            if (silentFramesRef.current >= 30 && !micIsSilent) { // ~3s of silence
+              setMicIsSilent(true);
+            }
+          } else {
+            if (silentFramesRef.current >= 30) {
+              setMicIsSilent(false);
+            }
+            silentFramesRef.current = 0;
           }
         } else {
-          if (silentFramesRef.current >= 30) {
-            setMicIsSilent(false);
-          }
+          // Reset counter during AI turns — don't accumulate
           silentFramesRef.current = 0;
+          if (micIsSilent) setMicIsSilent(false);
         }
 
         // ── Backpressure: skip frame if WebSocket buffer is overloaded ──
@@ -822,6 +835,7 @@ export function useVoiceInterview(
             }],
           },
         }));
+        lastSendTimeRef.current = Date.now();
       };
 
       source.connect(processor);
@@ -832,14 +846,26 @@ export function useVoiceInterview(
 
       // 9. Start heartbeat — detect dead connections proactively
       lastMessageTimeRef.current = Date.now();
+      lastSendTimeRef.current = Date.now();
       heartbeatIntervalRef.current = setInterval(() => {
         const ws2 = wsRef.current;
         if (!ws2 || ws2.readyState !== WebSocket.OPEN) return;
 
+        // Keep-alive: send empty audio if no data sent in 25s (prevents idle disconnects)
+        const sendGap = Date.now() - lastSendTimeRef.current;
+        if (sendGap > 25_000) {
+          ws2.send(JSON.stringify({
+            realtimeInput: {
+              mediaChunks: [{ mimeType: "audio/pcm;rate=24000", data: "" }],
+            },
+          }));
+          lastSendTimeRef.current = Date.now();
+        }
+
         const silenceMs = Date.now() - lastMessageTimeRef.current;
-        if (silenceMs > 30_000) {
-          // No message from Gemini for 30s — connection is dead
-          console.warn("[Voice] Heartbeat timeout — no server message for 30s, triggering reconnect");
+        if (silenceMs > 60_000) {
+          // No message from Gemini for 60s — connection is dead
+          console.warn("[Voice] Heartbeat timeout — no server message for 60s, triggering reconnect");
           intentionalCloseRef.current = false; // Let onclose trigger reconnect
           ws2.close(4000, "Heartbeat timeout");
         }
