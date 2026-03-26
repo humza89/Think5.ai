@@ -155,8 +155,18 @@ async function evaluateInterviewPlan(
       planText.includes("adjust");
     dimensionScores.adaptivity = hasDifficultyAdaptation ? 7.5 : 5.0;
 
-    // Consistency — single run can't measure this; default to baseline
+    // Consistency — single run can't measure this; default to baseline (overridden in multi-run mode)
     dimensionScores.consistency = 7.0;
+
+    // Signal Extraction — check if plan includes ownership/impact probes
+    const signalPatterns = ["impact", "measur", "metric", "quantif", "outcome", "result", "ownership", "you personally"];
+    const signalMatches = signalPatterns.filter((p) => planText.includes(p)).length;
+    dimensionScores.signal_extraction = Math.min(10, 4 + signalMatches * 1.0);
+
+    // False Confidence Detection — check if plan includes verification/challenge patterns
+    const challengePatterns = ["verify", "challenge", "probe", "clarify", "inconsisten", "contradict", "elaborate", "specific example"];
+    const challengeMatches = challengePatterns.filter((p) => planText.includes(p)).length;
+    dimensionScores.false_confidence = Math.min(10, 4 + challengeMatches * 1.0);
 
     // Realism — check for natural language patterns in plan
     const hasVariedPhrasing = allQuestions.length > 0 &&
@@ -309,19 +319,71 @@ function printResults(results: EvalResult[]): void {
   console.log(`\nResults saved to ${outputPath}`);
 }
 
+async function runMultipleRuns(
+  benchmark: BenchmarkProfile,
+  runs: number
+): Promise<EvalResult[]> {
+  const results: EvalResult[] = [];
+  for (let i = 0; i < runs; i++) {
+    console.log(`    Run ${i + 1}/${runs}...`);
+    const result = await evaluateInterviewPlan(benchmark);
+    result.runNumber = i + 1;
+    results.push(result);
+  }
+  return results;
+}
+
+function computeConsistencyScore(runResults: EvalResult[]): number {
+  if (runResults.length < 2) return 7.0; // Default for single run
+
+  const scores = runResults.map((r) => r.weightedScore);
+  const mean = scores.reduce((a, b) => a + b, 0) / scores.length;
+  if (mean === 0) return 1.0;
+
+  const variance = scores.reduce((sum, s) => sum + Math.pow(s - mean, 2), 0) / scores.length;
+  const coeffOfVariation = Math.sqrt(variance) / mean;
+
+  // <5% variance → 9-10, 5-10% → 7-8, 10-15% → 5-6, 15-25% → 3-4, >25% → 1-2
+  if (coeffOfVariation < 0.05) return 9 + Math.min(1, (0.05 - coeffOfVariation) * 20);
+  if (coeffOfVariation < 0.10) return 7 + (0.10 - coeffOfVariation) * 40;
+  if (coeffOfVariation < 0.15) return 5 + (0.15 - coeffOfVariation) * 40;
+  if (coeffOfVariation < 0.25) return 3 + (0.25 - coeffOfVariation) * 20;
+  return Math.max(1, 2 - (coeffOfVariation - 0.25) * 4);
+}
+
 async function main() {
-  // CI-proof: skip gracefully if required env vars are missing
-  const requiredEnvVars = ["OPENAI_API_KEY"];
-  const missingVars = requiredEnvVars.filter((v) => !process.env[v]);
-  if (missingVars.length > 0) {
-    console.warn(`[SKIP] Eval harness requires env vars: ${missingVars.join(", ")}. Skipping.`);
-    process.exit(0);
+  const isMockMode = process.env.EVAL_MOCK_MODE === "true";
+  const isReleaseBranch = (() => {
+    try {
+      const { execSync } = require("child_process");
+      const branch = execSync("git rev-parse --abbrev-ref HEAD", { encoding: "utf-8" }).trim();
+      return branch === "main" || branch.startsWith("release/");
+    } catch { return false; }
+  })();
+
+  // Check for AI provider availability
+  if (!isMockMode) {
+    const hasGemini = !!process.env.GEMINI_API_KEY;
+    const hasClaude = !!process.env.ANTHROPIC_API_KEY;
+    if (!hasGemini && !hasClaude) {
+      if (isReleaseBranch) {
+        console.error("[FAIL] Eval harness on release branch requires GEMINI_API_KEY or ANTHROPIC_API_KEY (or set EVAL_MOCK_MODE=true).");
+        process.exit(1);
+      }
+      console.warn("[SKIP] No AI provider key found. Set GEMINI_API_KEY, ANTHROPIC_API_KEY, or EVAL_MOCK_MODE=true.");
+      process.exit(0);
+    }
+  } else {
+    console.log("[MOCK MODE] Using deterministic mock provider for evaluation.");
   }
 
   const args = process.argv.slice(2);
   const benchmarkFilter = args.includes("--benchmark")
     ? args[args.indexOf("--benchmark") + 1]
     : null;
+  const numRuns = args.includes("--runs")
+    ? parseInt(args[args.indexOf("--runs") + 1], 10) || 1
+    : 1;
 
   let benchmarks = await loadBenchmarks();
   if (benchmarkFilter) {
@@ -335,18 +397,40 @@ async function main() {
     process.exit(1);
   }
 
-  console.log(`Running eval on ${benchmarks.length} benchmark(s)...`);
-  const results: EvalResult[] = [];
+  console.log(`Running eval on ${benchmarks.length} benchmark(s) x ${numRuns} run(s)...`);
+  const allResults: EvalResult[] = [];
 
   for (const benchmark of benchmarks) {
     console.log(`  Evaluating: ${benchmark.name}...`);
-    const result = await evaluateInterviewPlan(benchmark);
-    results.push(result);
+
+    if (numRuns > 1) {
+      const runResults = await runMultipleRuns(benchmark, numRuns);
+      // Compute real consistency score from cross-run variance
+      const consistencyScore = computeConsistencyScore(runResults);
+
+      // Update consistency dimension in each result
+      for (const result of runResults) {
+        result.dimensionScores.consistency = Math.round(consistencyScore * 10) / 10;
+        result.weightedScore = computeWeightedScore(result.dimensionScores);
+        result.passed = result.weightedScore >= QUALITY_THRESHOLDS.minimum;
+      }
+
+      // Report the median run
+      const sorted = [...runResults].sort((a, b) => a.weightedScore - b.weightedScore);
+      const median = sorted[Math.floor(sorted.length / 2)];
+      allResults.push(median);
+
+      const scores = runResults.map((r) => r.weightedScore);
+      console.log(`    Scores: [${scores.map((s) => s.toFixed(1)).join(", ")}] | Consistency: ${consistencyScore.toFixed(1)}`);
+    } else {
+      const result = await evaluateInterviewPlan(benchmark);
+      allResults.push(result);
+    }
   }
 
-  printResults(results);
+  printResults(allResults);
 
-  const allPassed = results.every((r) => r.passed);
+  const allPassed = allResults.every((r) => r.passed);
   process.exit(allPassed ? 0 : 1);
 }
 

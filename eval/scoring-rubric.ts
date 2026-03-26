@@ -23,7 +23,7 @@ export const EVAL_DIMENSIONS: EvalDimension[] = [
   {
     id: "depth",
     name: "Follow-Up Depth",
-    weight: 0.2,
+    weight: 0.175,
     description: "Quality and relevance of follow-up questions that probe deeper",
     scoringCriteria: {
       excellent: "Consistently asks probing follow-ups that reveal nuanced understanding",
@@ -49,7 +49,7 @@ export const EVAL_DIMENSIONS: EvalDimension[] = [
   {
     id: "coverage",
     name: "Section Coverage",
-    weight: 0.2,
+    weight: 0.175,
     description: "Percentage of planned interview sections actually covered",
     scoringCriteria: {
       excellent: "95%+ of planned sections covered with depth",
@@ -109,6 +109,32 @@ export const EVAL_DIMENSIONS: EvalDimension[] = [
       adequate: "Generally natural but some robotic patterns visible",
       poor: "Noticeably formulaic with repetitive patterns",
       failing: "Obviously automated with rigid, template-driven flow",
+    },
+  },
+  {
+    id: "signal_extraction",
+    name: "Signal Extraction",
+    weight: 0.05,
+    description: "Ability to surface concrete examples, ownership indicators, and measurable outcomes",
+    scoringCriteria: {
+      excellent: "Every key claim is backed by concrete evidence with measurable impact",
+      good: "Most claims have supporting evidence and specific examples",
+      adequate: "Some evidence collected but gaps in verification",
+      poor: "Relies on self-reported claims without probing for evidence",
+      failing: "No concrete evidence or measurable outcomes surfaced",
+    },
+  },
+  {
+    id: "false_confidence",
+    name: "False Confidence Detection",
+    weight: 0.05,
+    description: "Detecting rehearsed, inflated, or unsubstantiated claims from candidates",
+    scoringCriteria: {
+      excellent: "Consistently identifies and probes inflated claims with targeted follow-ups",
+      good: "Catches most rehearsed answers and asks clarifying questions",
+      adequate: "Some detection of surface-level answers but inconsistent probing",
+      poor: "Rarely challenges inflated claims",
+      failing: "Accepts all claims at face value without verification",
     },
   },
 ];

@@ -50,7 +50,7 @@ export interface UseVoiceInterviewReturn {
   isReconnecting: boolean;
   isPaused: boolean;
   fallbackToText: boolean;
-  reconnectPhase: "checking" | "restoring" | "verifying" | null;
+  reconnectPhase: "checking" | "restoring" | "verifying" | "recovering" | "re-synced" | "resume-failed" | null;
   micIsSilent: boolean;
   startInterview: () => Promise<void>;
   endInterview: () => void;
@@ -86,7 +86,7 @@ export function useVoiceInterview(
   const [isReconnecting, setIsReconnecting] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [fallbackToText, setFallbackToText] = useState(false);
-  const [reconnectPhase, setReconnectPhase] = useState<"checking" | "restoring" | "verifying" | null>(null);
+  const [reconnectPhase, setReconnectPhase] = useState<"checking" | "restoring" | "verifying" | "recovering" | "re-synced" | "resume-failed" | null>(null);
   const [micIsSilent, setMicIsSilent] = useState(false);
 
   // Mirror aiState in a ref so audio processor callback can read it
@@ -127,6 +127,8 @@ export function useVoiceInterview(
   const audioProcessorErrorCountRef = useRef(0); // F2: Error counter for audio processor
   const micRevokedRef = useRef(false); // F6: Track mic revocation
   const askedQuestionsRef = useRef<string[]>([]); // Question dedup: track AI questions to prevent repeats
+  const reconnectTokenRef = useRef<string>(""); // HMAC-signed reconnect token from server
+  const reconnectStartTimeRef = useRef<number>(0); // Tracks reconnect latency for SLO
 
   // ── Audio Resource Cleanup Helper ────────────────────────────────────
   // Called before reconnect and on unmount to prevent resource leaks
@@ -624,8 +626,9 @@ export function useVoiceInterview(
       }
 
       const initData = await initRes.json();
-      const { apiKey, systemPrompt, tools, voiceName, candidateName, model } = initData;
+      const { apiKey, systemPrompt, tools, voiceName, candidateName, model, reconnectToken: initReconnectToken } = initData;
       candidateNameRef.current = candidateName;
+      if (initReconnectToken) reconnectTokenRef.current = initReconnectToken;
 
       // 2. Set up audio context for playback
       const audioContext = new AudioContext({ sampleRate: 24000 });
@@ -780,46 +783,82 @@ export function useVoiceInterview(
           return;
         }
 
-        // Auto-reconnect on any unexpected close (session timeout, network drop, etc.)
+        // Auto-reconnect: call recovery API first, then re-establish WebSocket
         if (reconnectAttemptsRef.current < maxReconnectAttempts) {
           const attempt = reconnectAttemptsRef.current;
           const base = 1000;
           const exp = Math.pow(2, attempt);
-          const jitter = Math.random() * base; // Add jitter to prevent thundering herd
+          const jitter = Math.random() * base;
           const delay = Math.min(base * exp + jitter, 10000);
-          console.log(`[Voice] Unexpected closure (code ${event.code}) — reconnecting in ${Math.round(delay)}ms (attempt ${attempt + 1}/${maxReconnectAttempts})`);
+          console.log(`[Voice] Unexpected closure (code ${event.code}) — recovering in ${Math.round(delay)}ms (attempt ${attempt + 1}/${maxReconnectAttempts})`);
           reconnectAttemptsRef.current += 1;
           setIsReconnecting(true);
-          setReconnectPhase("restoring");
-          // Don't show "poor" quality during reconnect — it's expected
+          setReconnectPhase("recovering");
           setConnectionQuality("fair");
-          setTimeout(() => {
-            startInterview().then(() => {
+          reconnectStartTimeRef.current = Date.now();
+
+          setTimeout(async () => {
+            try {
+              // Step 1: Call recovery API for authoritative session reconciliation
+              if (reconnectTokenRef.current) {
+                const recoveryRes = await fetch(`/api/interviews/${interviewId}/voice/recover`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    reconnectToken: reconnectTokenRef.current,
+                    clientCheckpointDigest: null, // Server computes if missing
+                    clientTurnIndex: transcriptRef.current.length - 1,
+                  }),
+                });
+                if (recoveryRes.ok) {
+                  const recovery = await recoveryRes.json();
+                  reconnectTokenRef.current = recovery.newReconnectToken;
+
+                  // If diverged, reconcile transcript from server
+                  if (recovery.status === "diverged" && recovery.canonicalTranscript) {
+                    const serverTranscript = recovery.canonicalTranscript.map(
+                      (t: { role: string; text: string; timestamp: string }) => ({
+                        role: t.role === "interviewer" ? "interviewer" as const : "candidate" as const,
+                        content: t.text,
+                        timestamp: t.timestamp,
+                        finalized: true,
+                      })
+                    );
+                    setTranscript(serverTranscript);
+                  }
+                  setReconnectPhase("re-synced");
+                } else {
+                  console.warn("[Voice] Recovery API failed, proceeding with WebSocket reconnect");
+                }
+              }
+
+              // Step 2: Re-establish WebSocket
+              setReconnectPhase("restoring");
+              await startInterview();
               reconnectAttemptsRef.current = 0;
               setIsReconnecting(false);
               setReconnectPhase(null);
               setConnectionQuality("good");
-              // SLO: successful reconnect + context preserved
               reportSLOEvent("session.reconnect.success_rate", true);
               reportSLOEvent("session.reconnect.context_loss.rate", true);
-            }).catch(() => {
+            } catch {
               setIsReconnecting(false);
               setReconnectPhase(null);
               if (reconnectAttemptsRef.current >= maxReconnectAttempts) {
                 setConnectionQuality("poor");
                 setFallbackToText(true);
+                setReconnectPhase("resume-failed");
                 onError?.("Connection lost. You can switch to text mode.");
-                // SLO: failed reconnect + hard stop
                 reportSLOEvent("session.reconnect.success_rate", false);
                 reportSLOEvent("session.hard_stop.rate", false);
               }
-            });
+            }
           }, delay);
         } else {
           setConnectionQuality("poor");
           setFallbackToText(true);
+          setReconnectPhase("resume-failed");
           onError?.("Connection lost after multiple attempts. Switch to text mode.");
-          // SLO: hard stop — reconnect exhausted
           reportSLOEvent("session.reconnect.success_rate", false);
           reportSLOEvent("session.hard_stop.rate", false);
         }
@@ -1085,19 +1124,49 @@ export function useVoiceInterview(
 
   const reconnect = useCallback(async () => {
     setIsReconnecting(true);
-    setReconnectPhase("checking");
-    reconnectAttemptsRef.current = 0; // Reset on manual reconnect
+    setReconnectPhase("recovering");
+    reconnectAttemptsRef.current = 0;
+    reconnectStartTimeRef.current = Date.now();
     try {
+      // Call recovery API first for authoritative reconciliation
+      if (reconnectTokenRef.current) {
+        const recoveryRes = await fetch(`/api/interviews/${interviewId}/voice/recover`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            reconnectToken: reconnectTokenRef.current,
+            clientCheckpointDigest: null,
+            clientTurnIndex: transcriptRef.current.length - 1,
+          }),
+        });
+        if (recoveryRes.ok) {
+          const recovery = await recoveryRes.json();
+          reconnectTokenRef.current = recovery.newReconnectToken;
+          if (recovery.status === "diverged" && recovery.canonicalTranscript) {
+            const serverTranscript = recovery.canonicalTranscript.map(
+              (t: { role: string; text: string; timestamp: string }) => ({
+                role: t.role === "interviewer" ? "interviewer" as const : "candidate" as const,
+                content: t.text,
+                timestamp: t.timestamp,
+                finalized: true,
+              })
+            );
+            setTranscript(serverTranscript);
+          }
+          setReconnectPhase("re-synced");
+        }
+      }
+      setReconnectPhase("restoring");
       await startInterview();
       setIsReconnecting(false);
       setReconnectPhase(null);
     } catch {
       setIsReconnecting(false);
-      setReconnectPhase(null);
+      setReconnectPhase("resume-failed");
       setFallbackToText(true);
       onError?.("Failed to reconnect. You can switch to text mode.");
     }
-  }, [startInterview, onError]);
+  }, [startInterview, interviewId, onError]);
 
   // F3: Retry voice after circuit breaker fallback — resets breaker and attempts reconnect
   const retryVoice = useCallback(async () => {

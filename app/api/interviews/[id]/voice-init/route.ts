@@ -143,7 +143,7 @@ export async function POST(
     }).catch(() => {});
 
     // Initialize durable session state with reconnect token
-    const reconnectToken = generateReconnectToken();
+    const reconnectToken = generateReconnectToken(id);
     await saveSessionState(id, {
       interviewId: id,
       transcript: [],
@@ -151,6 +151,9 @@ export async function POST(
       questionCount: 0,
       reconnectToken,
       lastActiveAt: new Date().toISOString(),
+      checkpointDigest: "",
+      lastTurnIndex: -1,
+      reconnectCount: 0,
     });
 
     // Record successful start SLO

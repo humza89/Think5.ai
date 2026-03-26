@@ -23,10 +23,11 @@ import {
   recordHeartbeat,
   releaseSessionLock,
   getSessionState,
+  computeTranscriptChecksum,
 } from "@/lib/session-store";
 import { recordSLOEvent } from "@/lib/slo-monitor";
 import { classifyError } from "@/lib/error-classification";
-import { validateTranscript } from "@/lib/transcript-validator";
+import { validateTranscript, repairTranscript } from "@/lib/transcript-validator";
 import * as Sentry from "@sentry/nextjs";
 
 // ── Validate Access ────────────────────────────────────────────────────
@@ -110,15 +111,18 @@ export async function POST(
         },
       });
 
-      // Sync to durable session store
+      // Sync to durable session store with checkpoint digest
       const existingSession = await getSessionState(id);
       if (existingSession) {
+        const currentTranscript = transcript || [];
         await saveSessionState(id, {
           ...existingSession,
-          transcript: transcript || [],
+          transcript: currentTranscript,
           moduleScores: moduleScores || [],
           questionCount: questionCount || existingSession.questionCount,
           lastActiveAt: new Date().toISOString(),
+          checkpointDigest: computeTranscriptChecksum(currentTranscript),
+          lastTurnIndex: currentTranscript.length - 1,
         });
       }
       await refreshSessionTTL(id);
@@ -167,16 +171,30 @@ export async function POST(
         persistProctoringEvents(id, interviewData.integrityEvents as any[]).catch(console.error);
       }
 
-      // Validate transcript quality (log warnings, don't block)
+      // Validate and auto-repair transcript quality
       if (transcript && transcript.length > 0) {
         const validation = validateTranscript(transcript);
-        if (!validation.valid) {
+
+        // Record transcript anomaly SLO
+        await recordSLOEvent("transcript.anomaly.rate", validation.valid);
+
+        if (!validation.valid || validation.issues.length > 0) {
           console.warn(`[${id}] Transcript quality issues:`, validation.issues);
           Sentry.addBreadcrumb({
             category: "transcript_qa",
             message: `${validation.issues.length} issue(s): ${validation.issues.map(i => i.type).join(", ")}`,
             level: "warning",
           });
+
+          // Auto-repair if issues found
+          const { repaired, repairs } = repairTranscript(transcript);
+          if (repairs.length > 0) {
+            console.log(`[${id}] Transcript auto-repair: ${repairs.join("; ")}`);
+            await prisma.interview.update({
+              where: { id },
+              data: { transcript: repaired },
+            });
+          }
         }
       }
 

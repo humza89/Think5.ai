@@ -106,15 +106,31 @@ export default function ReconnectPage({
   async function handleReconnect() {
     setIsRetrying(true);
     try {
-      // Attempt to transition back to IN_PROGRESS
-      const res = await fetch(`/api/interviews/${id}`, {
-        method: "PATCH",
+      // Call recovery API for authoritative session reconciliation
+      const res = await fetch(`/api/interviews/${id}/voice/recover`, {
+        method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: "IN_PROGRESS" }),
+        body: JSON.stringify({
+          reconnectToken: token,
+          clientCheckpointDigest: null,
+          clientTurnIndex: -1,
+        }),
       });
 
       if (res.ok) {
-        router.push(`/interview/${id}${token ? `?token=${token}` : ""}`);
+        const recovery = await res.json();
+        // Store new rotated token in URL for the interview page
+        const newToken = recovery.newReconnectToken || token;
+        router.push(`/interview/${id}?token=${encodeURIComponent(newToken)}`);
+      } else if (res.status === 410) {
+        setError("Your session has expired. Please contact your recruiter for a new interview link.");
+        setIsRetrying(false);
+      } else if (res.status === 401) {
+        setError("Invalid reconnect token. Please use the original interview link.");
+        setIsRetrying(false);
+      } else if (res.status === 404) {
+        setError("Session not found — it may have expired. Please contact support.");
+        setIsRetrying(false);
       } else {
         setError("Could not reconnect. The interview may have expired.");
         setIsRetrying(false);

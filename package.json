@@ -10,6 +10,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:eval": "npx tsx eval/interview-harness.ts",
+    "predeploy": "npx tsx scripts/pre-deploy-check.ts",
     "postinstall": "prisma generate"
   },
   "keywords": [],

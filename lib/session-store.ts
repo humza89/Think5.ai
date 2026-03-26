@@ -3,10 +3,13 @@
  *
  * Uses Upstash Redis for serverless-compatible session persistence.
  * Falls back to in-memory Map if Redis is not configured.
- * Provides reconnect token generation and validation.
+ * Provides HMAC-signed reconnect token generation and validation.
  */
 
-import { randomUUID } from "crypto";
+import { randomUUID, createHmac, createHash, timingSafeEqual } from "crypto";
+
+// HMAC secret for signing reconnect tokens — falls back to random key for dev
+const SESSION_HMAC_SECRET = process.env.SESSION_HMAC_SECRET || randomUUID();
 
 // Redis client (lazy-initialized)
 let redisClient: any = null;
@@ -46,6 +49,9 @@ export interface SessionState {
   questionCount: number;
   reconnectToken: string;
   lastActiveAt: string;
+  checkpointDigest: string;
+  lastTurnIndex: number;
+  reconnectCount: number;
 }
 
 function sessionKey(interviewId: string): string {
@@ -107,24 +113,89 @@ export async function deleteSessionState(
 }
 
 /**
- * Generate a unique reconnect token for a voice session.
- * Stores the token in both the session state and the Interview record.
+ * Generate an HMAC-signed reconnect token for a voice session.
+ * Format: `${timestamp}.${nonce}.${hmac}`
+ * HMAC covers: `${interviewId}:${timestamp}:${nonce}`
  */
-export function generateReconnectToken(): string {
-  return randomUUID();
+export function generateReconnectToken(interviewId: string): string {
+  const timestamp = Date.now().toString();
+  const nonce = randomUUID();
+  const hmac = createHmac("sha256", SESSION_HMAC_SECRET)
+    .update(`${interviewId}:${timestamp}:${nonce}`)
+    .digest("hex");
+  return `${timestamp}.${nonce}.${hmac}`;
+}
+
+/**
+ * Verify an HMAC-signed reconnect token without loading session state.
+ * Checks: HMAC integrity, timestamp expiry (within SESSION_TTL_SECONDS).
+ */
+export function verifyReconnectToken(
+  interviewId: string,
+  token: string
+): { valid: boolean; expired: boolean; reason: string } {
+  const parts = token.split(".");
+  if (parts.length !== 3) {
+    return { valid: false, expired: false, reason: "Malformed token" };
+  }
+
+  const [timestamp, nonce, providedHmac] = parts;
+  const tokenAge = Date.now() - parseInt(timestamp, 10);
+
+  if (isNaN(tokenAge)) {
+    return { valid: false, expired: false, reason: "Invalid timestamp" };
+  }
+
+  if (tokenAge > SESSION_TTL_SECONDS * 1000) {
+    return { valid: false, expired: true, reason: "Token expired" };
+  }
+
+  const expectedHmac = createHmac("sha256", SESSION_HMAC_SECRET)
+    .update(`${interviewId}:${timestamp}:${nonce}`)
+    .digest("hex");
+
+  try {
+    const valid = timingSafeEqual(
+      Buffer.from(providedHmac, "hex"),
+      Buffer.from(expectedHmac, "hex")
+    );
+    if (!valid) {
+      return { valid: false, expired: false, reason: "Invalid signature" };
+    }
+  } catch {
+    return { valid: false, expired: false, reason: "Invalid signature" };
+  }
+
+  return { valid: true, expired: false, reason: "OK" };
 }
 
 /**
  * Validate a reconnect token against stored session state.
+ * Verifies HMAC signature, expiry, and session match.
  */
 export async function validateReconnectToken(
   interviewId: string,
   token: string
 ): Promise<SessionState | null> {
+  const verification = verifyReconnectToken(interviewId, token);
+  if (!verification.valid) return null;
+
   const state = await getSessionState(interviewId);
   if (!state) return null;
   if (state.reconnectToken !== token) return null;
   return state;
+}
+
+/**
+ * Compute SHA-256 checksum of a transcript for integrity verification.
+ */
+export function computeTranscriptChecksum(
+  transcript: Array<{ role: string; text: string; timestamp: string }>
+): string {
+  const canonical = JSON.stringify(
+    transcript.map((t) => ({ role: t.role, text: t.text, timestamp: t.timestamp }))
+  );
+  return createHash("sha256").update(canonical).digest("hex");
 }
 
 /**

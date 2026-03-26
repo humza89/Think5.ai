@@ -90,6 +90,21 @@ export const SLO_DEFINITIONS: SLODefinition[] = [
     description: "Post-reconnect context preservation rate (≤0.5% loss)",
     unit: "rate",
   },
+  {
+    name: "session.reconnect.latency_p95",
+    target: 0.95,
+    windowHours: 24,
+    description: "Reconnect time under 15 seconds (p95)",
+    unit: "latency_ms",
+    latencyThresholdMs: 15000,
+  },
+  {
+    name: "transcript.anomaly.rate",
+    target: 0.995,
+    windowHours: 24,
+    description: "Transcript anomaly rate (≤0.5% anomalies)",
+    unit: "rate",
+  },
 ];
 
 /**
