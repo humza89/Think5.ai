@@ -159,20 +159,22 @@ export async function POST(
     // Record successful start SLO
     await recordSLOEvent("interview.start.success_rate", true);
 
-    // Return config for client-side WebSocket connection
-    // SECURITY NOTE: Gemini Live WebSocket requires the API key client-side.
-    // This is a known architectural limitation. Mitigations:
-    // 1. Endpoint requires valid interview accessToken (validated above)
-    // 2. Single-use reconnect token ties this session to one interview
-    // 3. Key should be a restricted Gemini API key (Gemini Live only, no other APIs)
-    // TODO: Implement server-side WebSocket relay to eliminate client-side key exposure
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      return Response.json({ error: "Voice service not configured" }, { status: 500 });
+    // Return config for client-side WebSocket connection via relay server.
+    // SECURITY: API key never sent to client. Client authenticates to the
+    // relay server with a signed JWT session token. The relay connects to
+    // Gemini with the real API key server-side.
+    const relayUrl = process.env.VOICE_RELAY_URL;
+    if (!relayUrl) {
+      return Response.json({ error: "Voice relay not configured" }, { status: 500 });
     }
 
+    // Sign a short-lived JWT for relay authentication
+    const { signRelayToken } = await import("@/lib/relay-jwt");
+    const sessionToken = signRelayToken(id, interview.candidate.id);
+
     return Response.json({
-      apiKey,
+      relayUrl,
+      sessionToken,
       systemPrompt: fullPrompt,
       tools,
       voiceName: "Kore",

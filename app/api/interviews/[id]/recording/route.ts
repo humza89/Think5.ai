@@ -8,7 +8,7 @@
 
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireRole, requireInterviewAccess, handleAuthError } from "@/lib/auth";
+import { requireRole, requireInterviewAccess, handleAuthError, getAuthenticatedUser } from "@/lib/auth";
 import {
   uploadRecordingChunk,
   uploadCompleteRecording,
@@ -227,6 +227,16 @@ export async function GET(
   try {
     // Verify caller has access to this interview
     await requireInterviewAccess(id);
+
+    // Audit trail: log recording access
+    const { user, profile } = await getAuthenticatedUser();
+    logInterviewActivity({
+      interviewId: id,
+      action: "recording.accessed",
+      userId: user.id,
+      userRole: profile.role,
+      ipAddress: getClientIp(request.headers),
+    }).catch(() => {});
 
     // Get playback URL
     const url = await getSignedPlaybackUrl(id);

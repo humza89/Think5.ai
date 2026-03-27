@@ -1,3 +1,8 @@
+/**
+ * @deprecated This route will be consolidated under /api/interviews/invitations/bulk.
+ * Deprecation headers are included in responses.
+ */
+
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import {

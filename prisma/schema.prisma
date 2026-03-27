@@ -319,6 +319,7 @@ model Candidate {
   notifications         Notification[]
   jobPreferences        JobPreference?
   approvalActions       ApprovalAction[]
+  deletionRequests      DataDeletionRequest[]
 
   createdAt        DateTime        @default(now())
   updatedAt        DateTime        @updatedAt
@@ -381,6 +382,7 @@ model Client {
   ssoConfig        SSOConfig?
   hmMemberships    HiringManagerMembership[]
   webhookEndpoints WebhookEndpoint[]
+  governancePolicy GovernancePolicy?
   // Cost governance
   monthlyAiBudgetUsd Float?  // Per-company monthly AI budget cap (USD)
   createdAt        DateTime @default(now())
@@ -1481,4 +1483,41 @@ model WebhookDelivery {
 
   @@index([endpointId])
   @@index([event])
+}
+
+// ── DSAR (Data Subject Access Request) Deletion Workflow ──────────────
+
+model DataDeletionRequest {
+  id                String    @id @default(uuid())
+  candidateId       String
+  candidate         Candidate @relation(fields: [candidateId], references: [id])
+  status            String    @default("PENDING") // PENDING, PROCESSING, COMPLETED, CANCELLED
+  requestedAt       DateTime  @default(now())
+  gracePeriodEndsAt DateTime
+  processedAt       DateTime?
+  cancelledAt       DateTime?
+  reason            String?
+  dataManifest      Json?     // Records what data was deleted
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([candidateId])
+  @@index([status])
+  @@index([gracePeriodEndsAt])
+}
+
+// ── AI Decision Governance Policies ───────────────────────────────────
+
+model GovernancePolicy {
+  id                  String   @id @default(uuid())
+  companyId           String   @unique
+  company             Client   @relation(fields: [companyId], references: [id])
+  canOverrideScore    String[] @default(["admin"])
+  canRedactTranscript String[] @default(["admin"])
+  canSuppressReport   String[] @default(["admin"])
+  requireReviewBelow  Float?   // Auto-require human review if AI score below this
+  autoPublishAbove    Float?   // Auto-publish reports above this threshold
+  enforced            Boolean  @default(true)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
 }

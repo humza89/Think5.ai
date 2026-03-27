@@ -12,9 +12,11 @@ import {
   reportGenerate,
   recordingProcess,
   retentionCleanup,
+  sloCheck,
+  dataDeletionExecute,
 } from "@/inngest/functions";
 
 export const { GET, POST, PUT } = serve({
   client: inngest,
-  functions: [reportGenerate, recordingProcess, retentionCleanup],
+  functions: [reportGenerate, recordingProcess, retentionCleanup, sloCheck, dataDeletionExecute],
 });

@@ -3,7 +3,9 @@ import { prisma } from "@/lib/prisma";
 import {
   requireInterviewAccess,
   handleAuthError,
+  getAuthenticatedUser,
 } from "@/lib/auth";
+import { logInterviewActivity, getClientIp } from "@/lib/interview-audit";
 import { isValidTransition, getAllowedTransitions } from "@/lib/interview-state-machine";
 import { inngest } from "@/inngest/client";
 import { cascadeInterviewStatus } from "@/lib/invitation-lifecycle";
@@ -17,6 +19,16 @@ export async function GET(
     const { id } = await params;
 
     await requireInterviewAccess(id);
+
+    // Audit trail: log interview detail access
+    const { user, profile } = await getAuthenticatedUser();
+    logInterviewActivity({
+      interviewId: id,
+      action: "interview.detail_viewed",
+      userId: user.id,
+      userRole: profile.role,
+      ipAddress: getClientIp(request.headers),
+    }).catch(() => {});
 
     const interview = await prisma.interview.findUnique({
       where: { id },

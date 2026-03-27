@@ -7,7 +7,8 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireInterviewAccess, handleAuthError } from "@/lib/auth";
+import { requireInterviewAccess, handleAuthError, getAuthenticatedUser } from "@/lib/auth";
+import { logInterviewActivity, getClientIp } from "@/lib/interview-audit";
 
 // GET — Export evidence bundle
 export async function GET(
@@ -17,6 +18,16 @@ export async function GET(
   try {
     const { id } = await params;
     await requireInterviewAccess(id);
+
+    // Audit trail: log evidence bundle access
+    const { user, profile } = await getAuthenticatedUser();
+    logInterviewActivity({
+      interviewId: id,
+      action: "evidence_bundle.accessed",
+      userId: user.id,
+      userRole: profile.role,
+      ipAddress: getClientIp(request.headers),
+    }).catch(() => {});
 
     const bundle = await prisma.evidenceBundle.findUnique({
       where: { interviewId: id },

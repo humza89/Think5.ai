@@ -110,6 +110,27 @@ export const reportGenerate = inngest.createFunction(
       await computeQualityMetrics(interviewId);
     });
 
+    // Step 4b: Apply governance policy (auto-review thresholds)
+    await step.run("apply-governance-policy", async () => {
+      const { prisma } = await import("@/lib/prisma");
+      const { getGovernancePolicy, shouldRequireReview } = await import("@/lib/governance");
+
+      const interview = await prisma.interview.findUnique({
+        where: { id: interviewId },
+        select: { companyId: true, report: { select: { id: true, overallScore: true, reviewStatus: true } } },
+      });
+
+      if (interview?.companyId && interview.report) {
+        const policy = await getGovernancePolicy(interview.companyId);
+        if (shouldRequireReview(policy, interview.report.overallScore)) {
+          await prisma.interviewReport.update({
+            where: { id: interview.report.id },
+            data: { reviewStatus: "PENDING_REVIEW" },
+          });
+        }
+      }
+    });
+
     // Step 5: Send notification emails
     await step.run("send-notifications", async () => {
       const { sendInterviewNotifications } = await import(

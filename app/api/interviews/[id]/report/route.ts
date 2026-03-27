@@ -19,6 +19,16 @@ export async function GET(
 
     await requireInterviewAccess(id);
 
+    // Audit trail: log report view
+    const { user, profile } = await getAuthenticatedUser();
+    logInterviewActivity({
+      interviewId: id,
+      action: "report.viewed",
+      userId: user.id,
+      userRole: profile.role,
+      ipAddress: getClientIp(request.headers),
+    }).catch(() => {});
+
     const report = await prisma.interviewReport.findUnique({
       where: { interviewId: id },
       include: {

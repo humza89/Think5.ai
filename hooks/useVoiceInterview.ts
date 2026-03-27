@@ -65,7 +65,6 @@ export interface UseVoiceInterviewReturn {
 
 // ── Constants ────────────────────────────────────────────────────────────
 
-const GEMINI_WS_URL = "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent";
 const CHECKPOINT_INTERVAL_MS = 30_000; // Save transcript every 30s
 
 // ── Hook ───────────────────────────────────────────────────────────────
@@ -626,7 +625,7 @@ export function useVoiceInterview(
       }
 
       const initData = await initRes.json();
-      const { apiKey, systemPrompt, tools, voiceName, candidateName, model, reconnectToken: initReconnectToken } = initData;
+      const { relayUrl, sessionToken, systemPrompt, tools, voiceName, candidateName, model, reconnectToken: initReconnectToken } = initData;
       candidateNameRef.current = candidateName;
       if (initReconnectToken) reconnectTokenRef.current = initReconnectToken;
 
@@ -669,9 +668,9 @@ export function useVoiceInterview(
         }
       }
 
-      // 4. Connect to Gemini Live WebSocket and wait for setupComplete
-      const wsUrl = `${GEMINI_WS_URL}?key=${apiKey}`;
-      console.log("[Voice] Connecting to Gemini Live...");
+      // 4. Connect to voice relay WebSocket (API key stays server-side)
+      const wsUrl = `${relayUrl}/ws?session=${encodeURIComponent(sessionToken)}`;
+      console.log("[Voice] Connecting to voice relay...");
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
 

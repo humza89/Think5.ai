@@ -12,6 +12,7 @@
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { generateReportInBackground } from "@/lib/report-generator";
+import { inngest } from "@/inngest/client";
 import { checkCandidateEligibility } from "@/lib/interview-eligibility";
 import { logInterviewActivity, getClientIp } from "@/lib/interview-audit";
 import { persistProctoringEvents } from "@/lib/proctoring-normalizer";
@@ -218,8 +219,13 @@ export async function POST(
       await deleteSessionState(id);
       await releaseSessionLock(id);
 
-      // Generate report in background
-      generateReportInBackground(id).catch(console.error);
+      // Generate report via durable Inngest queue (with in-process fallback)
+      inngest
+        .send({ name: "interview/completed", data: { interviewId: id } })
+        .catch((err: unknown) => {
+          console.error("Inngest dispatch failed, falling back to in-process:", err);
+          generateReportInBackground(id).catch(console.error);
+        });
 
       return Response.json({ ok: true, message: "Interview ended" });
     }

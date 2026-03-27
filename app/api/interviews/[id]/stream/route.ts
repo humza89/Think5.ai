@@ -7,6 +7,7 @@ import {
 } from "@/lib/aria-prompts";
 import { planToSystemContext } from "@/lib/interview-planner";
 import { generateReportInBackground } from "@/lib/report-generator";
+import { inngest } from "@/inngest/client";
 import { checkCandidateEligibility } from "@/lib/interview-eligibility";
 import { logInterviewActivity, getClientIp } from "@/lib/interview-audit";
 
@@ -137,10 +138,13 @@ export async function POST(
         ipAddress: getClientIp(request.headers),
       }).catch(() => {});
 
-      // Fire-and-forget report generation
-      generateReportInBackground(id).catch((err) =>
-        console.error("Background report generation failed:", err)
-      );
+      // Generate report via durable Inngest queue (with in-process fallback)
+      inngest
+        .send({ name: "interview/completed", data: { interviewId: id } })
+        .catch((err: unknown) => {
+          console.error("Inngest dispatch failed, falling back to in-process:", err);
+          generateReportInBackground(id).catch(console.error);
+        });
 
       const encoder = new TextEncoder();
       const stream = new ReadableStream({

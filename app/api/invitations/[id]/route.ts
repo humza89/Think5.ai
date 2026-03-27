@@ -1,8 +1,19 @@
+/**
+ * @deprecated This route will be consolidated under /api/interviews/invitations/[id].
+ * Deprecation headers are included in responses.
+ */
+
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireApprovedAccess, handleAuthError, getRecruiterForUser } from "@/lib/auth";
 import crypto from "crypto";
 import { sendEmail } from "@/lib/email/resend";
+
+const DEPRECATION_HEADERS = {
+  "Deprecation": "true",
+  "Sunset": "2026-06-27",
+  "Link": "</api/interviews/invitations>; rel=\"successor-version\"",
+};
 
 export async function PUT(
   request: NextRequest,
