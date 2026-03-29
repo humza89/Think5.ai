@@ -51,10 +51,20 @@ export async function GET() {
     checks.gemini = "unhealthy";
   }
 
-  // Inngest connectivity check
+  // Inngest connectivity check — send a test event to verify connectivity
   try {
-    const inngestUrl = process.env.INNGEST_EVENT_KEY;
-    checks.inngest = inngestUrl ? "configured" : "not_configured";
+    const inngestKey = process.env.INNGEST_EVENT_KEY;
+    if (inngestKey) {
+      const { inngest } = await import("@/inngest/client");
+      // Send a no-op health check event (no function listens for this)
+      await inngest.send({
+        name: "health/ping",
+        data: { timestamp: Date.now() },
+      });
+      checks.inngest = "healthy";
+    } else {
+      checks.inngest = "not_configured";
+    }
   } catch {
     checks.inngest = "unhealthy";
   }

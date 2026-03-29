@@ -119,6 +119,61 @@ export function classifyError(
     };
   }
 
+  // Not found (404)
+  if (statusCode === 404 || errorMessage.includes("not found")) {
+    return {
+      title: "Not Found",
+      message: "The requested interview could not be found.",
+      action: "Check your invitation link or contact support.",
+      severity: "error",
+      recoverable: false,
+    };
+  }
+
+  // Service unavailable (503)
+  if (statusCode === 503 || errorMessage.includes("unavailable")) {
+    return {
+      title: "Service Temporarily Unavailable",
+      message: "Our servers are temporarily overloaded. Your progress has been saved.",
+      action: "Please wait a minute and try again.",
+      severity: "warning",
+      recoverable: true,
+    };
+  }
+
+  // Gateway timeout (504)
+  if (statusCode === 504) {
+    return {
+      title: "Request Timed Out",
+      message: "The server took too long to respond. This is usually temporary.",
+      action: "Please try again in a few seconds.",
+      severity: "warning",
+      recoverable: true,
+    };
+  }
+
+  // Payload too large (413)
+  if (statusCode === 413 || errorMessage.includes("too large")) {
+    return {
+      title: "Data Too Large",
+      message: "The recording chunk was too large to upload.",
+      action: "This is usually temporary. The system will retry automatically.",
+      severity: "warning",
+      recoverable: true,
+    };
+  }
+
+  // Checksum mismatch (422)
+  if (statusCode === 422 || errorMessage.includes("checksum") || errorMessage.includes("corrupted")) {
+    return {
+      title: "Data Integrity Issue",
+      message: "A recording chunk was corrupted during upload. Retrying automatically.",
+      action: "No action needed — the system will retry.",
+      severity: "info",
+      recoverable: true,
+    };
+  }
+
   // Pause exceeded (410 with cancel)
   if (errorMessage.includes("pause") || errorMessage.includes("cancelled")) {
     return {
@@ -131,11 +186,12 @@ export function classifyError(
     };
   }
 
-  // Generic fallback
+  // Generic fallback — include error code for support reference
+  const errorCode = statusCode ? `ERR-${statusCode}` : "ERR-UNKNOWN";
   return {
     title: "Something Went Wrong",
-    message: "An unexpected error occurred. Your progress has been saved.",
-    action: "Try refreshing the page. If the issue persists, contact support.",
+    message: `An unexpected error occurred. Your progress has been saved. (Reference: ${errorCode})`,
+    action: "Try refreshing the page. If the issue persists, contact support with the reference code above.",
     severity: "error",
     recoverable: true,
   };

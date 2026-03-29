@@ -4,11 +4,33 @@
  * IndexedDB-backed transcript backup for voice interviews.
  * Provides data loss prevention when server checkpoints fail.
  * Pattern mirrors lib/chunk-queue.ts.
+ *
+ * Reports quota/write failures via onBackupError callback so the UI
+ * can notify the user that local backup is unavailable.
  */
 
 const DB_NAME = "transcript-backup";
 const STORE_NAME = "transcripts";
 const DB_VERSION = 1;
+
+// ── Backup health tracking ──
+let consecutiveFailures = 0;
+let backupErrorCallback: ((error: string) => void) | null = null;
+
+/**
+ * Register a callback for backup failures (e.g., quota exceeded).
+ * Call once from the interview component to surface errors to UI.
+ */
+export function onBackupError(callback: (error: string) => void): void {
+  backupErrorCallback = callback;
+}
+
+/**
+ * Check if the backup system is healthy (no recent failures).
+ */
+export function isBackupHealthy(): boolean {
+  return consecutiveFailures < 2;
+}
 
 function openDB(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -71,8 +93,21 @@ export async function backupTranscript(
       tx.onerror = () => reject(tx.error);
     });
     db.close();
-  } catch {
-    // IndexedDB unavailable — silent fallback
+    consecutiveFailures = 0; // Reset on success
+  } catch (err) {
+    consecutiveFailures++;
+    const isQuota = err instanceof DOMException && (
+      err.name === "QuotaExceededError" ||
+      err.name === "NS_ERROR_DOM_QUOTA_REACHED"
+    );
+    const errorMsg = isQuota
+      ? "Local backup storage is full. Your progress is being saved to the server, but local backup is unavailable."
+      : "Local backup unavailable. Your progress is being saved to the server.";
+
+    if (consecutiveFailures >= 2 && backupErrorCallback) {
+      backupErrorCallback(errorMsg);
+    }
+    console.warn(`[TranscriptBackup] Write failed (${consecutiveFailures} consecutive):`, err);
   }
 }
 

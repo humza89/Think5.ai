@@ -120,13 +120,23 @@ export async function generateIntegrityConformanceReport(interviewId: string): P
     conformanceGaps.push(`${bySeverity.HIGH} HIGH severity events — potential exam irregularity`);
   }
 
-  // Compute integrity score: start at 100, deduct per event severity
+  // Compute integrity score with diminishing returns per severity tier
+  // First event at full weight, subsequent events at decreasing impact
+  // This prevents 5 LOW events from being equivalent to 1 HIGH event
+  const diminishingDeduction = (count: number, baseWeight: number, minWeight: number): number => {
+    let total = 0;
+    for (let i = 0; i < count; i++) {
+      total += Math.max(minWeight, baseWeight * Math.pow(0.7, i));
+    }
+    return total;
+  };
+
   let integrityScore = 100;
-  integrityScore -= bySeverity.LOW * 1;
-  integrityScore -= bySeverity.MEDIUM * 3;
-  integrityScore -= bySeverity.HIGH * 8;
-  integrityScore -= bySeverity.CRITICAL * 20;
-  integrityScore = Math.max(0, Math.min(100, integrityScore));
+  integrityScore -= diminishingDeduction(bySeverity.LOW, 1, 0.3);
+  integrityScore -= diminishingDeduction(bySeverity.MEDIUM, 3, 1);
+  integrityScore -= diminishingDeduction(bySeverity.HIGH, 8, 3);
+  integrityScore -= diminishingDeduction(bySeverity.CRITICAL, 20, 10);
+  integrityScore = Math.max(0, Math.min(100, Math.round(integrityScore)));
 
   return {
     interviewId,

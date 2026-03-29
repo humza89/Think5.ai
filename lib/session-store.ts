@@ -81,6 +81,7 @@ export interface SessionState {
   candidateProfile?: CandidateProfile;
   sessionSummary?: string;
   summarizedTurnCount?: number;
+  lockOwnerToken?: string;
 }
 
 function sessionKey(interviewId: string): string {
@@ -365,25 +366,120 @@ export async function isSessionAlive(interviewId: string): Promise<boolean> {
   return !!val;
 }
 
+// ── Session Lock (Owner-Token Based) ────────────────────────────────
+
+const LOCK_TTL_SECONDS = 120; // 4x heartbeat interval (30s) for safety
+
+// In-memory lock owner tracking (fallback when Redis unavailable)
+const memoryLocks = new Map<string, string>();
+
 /**
  * Acquire an exclusive session lock to prevent duplicate sessions.
- * Uses Redis SETNX with 60s TTL.
+ * Stores a unique owner token so only the lock holder can release/swap.
+ * TTL: 120s, refreshed every 20s via heartbeat.
  */
-export async function acquireSessionLock(interviewId: string): Promise<boolean> {
+export async function acquireSessionLock(
+  interviewId: string,
+  ownerToken?: string
+): Promise<{ acquired: boolean; ownerToken: string }> {
+  const token = ownerToken || randomUUID();
   const redis = await getRedis();
-  if (!redis) return true; // Allow if Redis not available
+
+  if (!redis) {
+    const key = `voice-lock:${interviewId}`;
+    if (memoryLocks.has(key)) {
+      return { acquired: false, ownerToken: "" };
+    }
+    memoryLocks.set(key, token);
+    return { acquired: true, ownerToken: token };
+  }
+
   const key = `voice-lock:${interviewId}`;
-  const result = await redis.set(key, Date.now().toString(), { nx: true, ex: 60 });
-  return result === "OK";
+  const result = await redis.set(key, token, { nx: true, ex: LOCK_TTL_SECONDS });
+  return { acquired: result === "OK", ownerToken: result === "OK" ? token : "" };
 }
 
 /**
- * Release the session lock.
+ * Atomically swap the session lock owner (for reconnect).
+ * Only succeeds if the current lock is held by `oldOwnerToken`.
+ * This prevents the race condition where release+acquire is non-atomic.
  */
-export async function releaseSessionLock(interviewId: string): Promise<void> {
+export async function swapSessionLock(
+  interviewId: string,
+  oldOwnerToken: string,
+  newOwnerToken?: string
+): Promise<{ acquired: boolean; ownerToken: string }> {
+  const token = newOwnerToken || randomUUID();
   const redis = await getRedis();
-  if (!redis) return;
-  await redis.del(`voice-lock:${interviewId}`);
+
+  if (!redis) {
+    const key = `voice-lock:${interviewId}`;
+    const current = memoryLocks.get(key);
+    if (current === oldOwnerToken || !current) {
+      memoryLocks.set(key, token);
+      return { acquired: true, ownerToken: token };
+    }
+    return { acquired: false, ownerToken: "" };
+  }
+
+  const key = `voice-lock:${interviewId}`;
+
+  // Atomic compare-and-swap via Lua script
+  const luaScript = `
+    local current = redis.call('GET', KEYS[1])
+    if current == ARGV[1] or current == false then
+      redis.call('SET', KEYS[1], ARGV[2], 'EX', ARGV[3])
+      return 1
+    end
+    return 0
+  `;
+
+  try {
+    const result = await redis.eval(luaScript, [key], [oldOwnerToken, token, String(LOCK_TTL_SECONDS)]);
+    const acquired = result === 1;
+    return { acquired, ownerToken: acquired ? token : "" };
+  } catch (err) {
+    console.warn(`[${interviewId}] Lock swap failed, falling back to release+acquire:`, err);
+    // Fallback: try release then acquire (less safe but functional)
+    await releaseSessionLock(interviewId, oldOwnerToken);
+    return acquireSessionLock(interviewId, token);
+  }
+}
+
+/**
+ * Release the session lock (only if held by owner).
+ */
+export async function releaseSessionLock(
+  interviewId: string,
+  ownerToken?: string
+): Promise<void> {
+  const redis = await getRedis();
+  const key = `voice-lock:${interviewId}`;
+
+  if (!redis) {
+    if (!ownerToken || memoryLocks.get(key) === ownerToken) {
+      memoryLocks.delete(key);
+    }
+    return;
+  }
+
+  if (ownerToken) {
+    // Only release if we own it (Lua atomic check-and-delete)
+    const luaScript = `
+      if redis.call('GET', KEYS[1]) == ARGV[1] then
+        return redis.call('DEL', KEYS[1])
+      end
+      return 0
+    `;
+    try {
+      await redis.eval(luaScript, [key], [ownerToken]);
+    } catch {
+      // Fallback: unconditional delete
+      await redis.del(key);
+    }
+  } else {
+    await redis.del(key);
+  }
 }
 
 /**
@@ -392,5 +488,5 @@ export async function releaseSessionLock(interviewId: string): Promise<void> {
 export async function refreshSessionLock(interviewId: string): Promise<void> {
   const redis = await getRedis();
   if (!redis) return;
-  await redis.expire(`voice-lock:${interviewId}`, 60);
+  await redis.expire(`voice-lock:${interviewId}`, LOCK_TTL_SECONDS);
 }

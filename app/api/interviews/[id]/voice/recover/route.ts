@@ -63,13 +63,25 @@ export async function POST(
     // 4. Verify interview is still in a reconnectable state
     const interview = await prisma.interview.findUnique({
       where: { id },
-      select: { status: true },
+      select: { status: true, startedAt: true },
     });
 
     if (!interview || !["IN_PROGRESS", "DISCONNECTED"].includes(interview.status)) {
       return Response.json(
         { error: `Interview is ${interview?.status || "not found"} — cannot recover` },
         { status: 409 }
+      );
+    }
+
+    // Calculate remaining time (90-minute hard cap)
+    const MAX_DURATION_MS = 90 * 60 * 1000;
+    const elapsedMs = interview.startedAt ? Date.now() - new Date(interview.startedAt).getTime() : 0;
+    const remainingSeconds = Math.max(0, Math.floor((MAX_DURATION_MS - elapsedMs) / 1000));
+
+    if (remainingSeconds <= 0) {
+      return Response.json(
+        { error: "Maximum interview duration exceeded", forceEnd: true, remainingSeconds: 0 },
+        { status: 410 }
       );
     }
 
@@ -104,6 +116,7 @@ export async function POST(
         reconnectCount: updatedSession.reconnectCount,
         newReconnectToken,
         recoveryMs,
+        remainingSeconds,
       });
     } else {
       return Response.json({
@@ -115,6 +128,7 @@ export async function POST(
         reconnectCount: updatedSession.reconnectCount,
         newReconnectToken,
         recoveryMs,
+        remainingSeconds,
       });
     }
   } catch (error) {

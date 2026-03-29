@@ -47,20 +47,27 @@ export function useMediaRecording({
       const checksum = hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
 
       const maxAttempts = 3;
-      const backoffMs = [1000, 2000, 4000];
+      const baseBackoffMs = [1000, 2000, 4000];
 
       for (let attempt = 0; attempt < maxAttempts; attempt++) {
         try {
           const formData = new FormData();
           formData.append("chunk", blob);
           formData.append("chunkIndex", String(index));
-          formData.append("accessToken", accessToken);
           formData.append("checksum", checksum);
 
           const res = await fetch(`/api/interviews/${interviewId}/recording`, {
             method: "POST",
+            headers: { "Authorization": `Bearer ${accessToken}` },
             body: formData,
           });
+
+          if (res.status === 429) {
+            // Rate limited — wait longer
+            const retryAfter = 5000;
+            await new Promise((r) => setTimeout(r, retryAfter));
+            continue;
+          }
 
           if (!res.ok) {
             throw new Error(`Upload failed: ${res.status}`);
@@ -70,7 +77,10 @@ export function useMediaRecording({
           return; // Success
         } catch {
           if (attempt < maxAttempts - 1) {
-            await new Promise((r) => setTimeout(r, backoffMs[attempt]));
+            // Exponential backoff with ±30% jitter
+            const base = baseBackoffMs[attempt];
+            const jitter = base * 0.3 * (Math.random() * 2 - 1);
+            await new Promise((r) => setTimeout(r, base + jitter));
           }
         }
       }
@@ -141,10 +151,10 @@ export function useMediaRecording({
             const formData = new FormData();
             formData.append("chunk", chunk.blob);
             formData.append("chunkIndex", String(chunk.chunkIndex));
-            formData.append("accessToken", accessToken);
             formData.append("checksum", chunk.checksum);
             const res = await fetch(`/api/interviews/${interviewId}/recording`, {
               method: "POST",
+              headers: { "Authorization": `Bearer ${accessToken}` },
               body: formData,
             });
             if (res.ok) await removeChunk(chunk.id);
@@ -160,11 +170,13 @@ export function useMediaRecording({
       try {
         const gapRes = await fetch(`/api/interviews/${interviewId}/recording`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${accessToken}`,
+          },
           body: JSON.stringify({
             action: "check_gaps",
             totalChunks: chunkCountRef.current,
-            accessToken,
           }),
         });
         const gapData = await gapRes.json();
@@ -179,13 +191,15 @@ export function useMediaRecording({
       try {
         await fetch(`/api/interviews/${interviewId}/recording`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${accessToken}`,
+          },
           body: JSON.stringify({
             action: "finalize",
             totalChunks: chunkCountRef.current,
             format: "webm",
             durationSeconds,
-            accessToken,
           }),
         });
       } catch {
@@ -216,11 +230,11 @@ export function useMediaRecording({
             const formData = new FormData();
             formData.append("chunk", chunk.blob);
             formData.append("chunkIndex", String(chunk.chunkIndex));
-            formData.append("accessToken", accessToken);
             formData.append("checksum", chunk.checksum);
 
             const res = await fetch(`/api/interviews/${interviewId}/recording`, {
               method: "POST",
+              headers: { "Authorization": `Bearer ${accessToken}` },
               body: formData,
             });
             if (res.ok) {

@@ -29,13 +29,24 @@ async function getReportRedis() {
 
 async function acquireReportLock(interviewId: string): Promise<boolean> {
   const redis = await getReportRedis();
-  if (!redis) return true; // No Redis = allow (local dev)
-  try {
-    const result = await redis.set(`report-lock:${interviewId}`, "1", { nx: true, ex: REPORT_LOCK_TTL_SECONDS });
-    return result === "OK";
-  } catch {
-    return true; // On error, allow generation (fail-open)
+  if (!redis) return true; // No Redis = allow (local dev only)
+  // Retry lock acquisition up to 3 times with backoff (fail-closed)
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const result = await redis.set(`report-lock:${interviewId}`, "1", { nx: true, ex: REPORT_LOCK_TTL_SECONDS });
+      if (result === "OK") return true;
+      return false; // Lock held by another process
+    } catch (err) {
+      console.warn(`[Report Lock] Attempt ${attempt + 1}/3 failed for ${interviewId}:`, err);
+      if (attempt < 2) {
+        await new Promise((r) => setTimeout(r, 500 * Math.pow(2, attempt)));
+      }
+    }
   }
+  // All retries failed — fail-closed to prevent duplicate reports
+  console.error(`[Report Lock] All 3 attempts failed for ${interviewId} — blocking generation`);
+  Sentry.captureMessage(`Report lock acquisition failed after 3 attempts for ${interviewId}`, "error");
+  return false;
 }
 
 async function releaseReportLock(interviewId: string): Promise<void> {
@@ -140,12 +151,20 @@ export async function generateReportInBackground(
     );
 
     // Log AI usage for cost tracking
+    // Token estimation: ~4 tokens per word, average turn ~40 words = ~160 tokens/turn
+    // This is more accurate than the previous flat 50 tokens/turn estimate
+    const transcriptArr = Array.isArray(interview.transcript) ? interview.transcript as Array<{ content?: string; text?: string }> : [];
+    const estimatedInputTokens = transcriptArr.reduce((sum, turn) => {
+      const text = turn.content || turn.text || "";
+      // ~4 tokens per word (conservative for English)
+      return sum + Math.ceil(text.split(/\s+/).length * 4);
+    }, 0) + 500; // +500 for system prompt overhead
     logAIUsage({
       interviewId,
       operation: "report_generation",
       model: SCORER_MODEL_VERSION,
-      inputTokens: Array.isArray(interview.transcript) ? interview.transcript.length * 50 : 0, // estimate
-      outputTokens: 2000, // approximate report size
+      inputTokens: estimatedInputTokens,
+      outputTokens: 3000, // typical report: 2000-4000 tokens
       companyId: interview.job?.title ? undefined : undefined, // populated if available
       recruiterId: interview.recruiter?.id,
     });

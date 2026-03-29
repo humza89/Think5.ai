@@ -1226,7 +1226,7 @@ export function useVoiceInterview(
         } catch (err) { // F2: Error boundary catch
           audioProcessorErrorCountRef.current += 1;
           console.error("[Voice] Audio processor error:", err);
-          if (audioProcessorErrorCountRef.current >= 3) {
+          if (audioProcessorErrorCountRef.current >= 2) {
             onError?.("Audio processing issue detected. Your mic may need attention.");
           }
         }

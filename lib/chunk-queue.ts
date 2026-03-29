@@ -3,11 +3,21 @@
 /**
  * IndexedDB-backed queue for recording chunks that failed to upload.
  * Provides offline resilience for video recording.
+ * Reports quota failures so the UI can alert the user.
  */
 
 const DB_NAME = "recording-chunks";
 const STORE_NAME = "chunks";
 const DB_VERSION = 1;
+
+let chunkQueueErrorCallback: ((error: string) => void) | null = null;
+
+/**
+ * Register a callback for chunk queue failures (e.g., quota exceeded).
+ */
+export function onChunkQueueError(callback: (error: string) => void): void {
+  chunkQueueErrorCallback = callback;
+}
 
 function openDB(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -38,22 +48,34 @@ export async function enqueueChunk(
   blob: Blob,
   checksum: string
 ): Promise<void> {
-  const db = await openDB();
-  const tx = db.transaction(STORE_NAME, "readwrite");
-  const store = tx.objectStore(STORE_NAME);
-  store.put({
-    id: `${interviewId}-${chunkIndex}`,
-    interviewId,
-    chunkIndex,
-    blob,
-    checksum,
-    createdAt: Date.now(),
-  });
-  await new Promise<void>((resolve, reject) => {
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-  });
-  db.close();
+  try {
+    const db = await openDB();
+    const tx = db.transaction(STORE_NAME, "readwrite");
+    const store = tx.objectStore(STORE_NAME);
+    store.put({
+      id: `${interviewId}-${chunkIndex}`,
+      interviewId,
+      chunkIndex,
+      blob,
+      checksum,
+      createdAt: Date.now(),
+    });
+    await new Promise<void>((resolve, reject) => {
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+    db.close();
+  } catch (err) {
+    const isQuota = err instanceof DOMException && (
+      err.name === "QuotaExceededError" ||
+      err.name === "NS_ERROR_DOM_QUOTA_REACHED"
+    );
+    if (isQuota && chunkQueueErrorCallback) {
+      chunkQueueErrorCallback("Recording backup storage is full. Some recording chunks may not be saved locally.");
+    }
+    console.warn("[ChunkQueue] Enqueue failed:", err);
+    throw err; // Re-throw so caller knows it failed
+  }
 }
 
 export async function getQueuedChunks(interviewId: string): Promise<QueuedChunk[]> {

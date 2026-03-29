@@ -14,7 +14,7 @@ import { getInterviewTools } from "@/lib/gemini-live";
 import { checkCandidateEligibility } from "@/lib/interview-eligibility";
 import { logInterviewActivity, getClientIp } from "@/lib/interview-audit";
 import { isValidTransition } from "@/lib/interview-state-machine";
-import { acquireSessionLock, releaseSessionLock, saveSessionState, getSessionState, generateReconnectToken } from "@/lib/session-store";
+import { acquireSessionLock, swapSessionLock, saveSessionState, getSessionState, generateReconnectToken } from "@/lib/session-store";
 import { recordSLOEvent } from "@/lib/slo-monitor";
 import { classifyError } from "@/lib/error-classification";
 import * as Sentry from "@sentry/nextjs";
@@ -92,17 +92,30 @@ export async function POST(
     }
 
     // Acquire session lock to prevent duplicate sessions
-    // On reconnect: release old lock first, then re-acquire (same interview resuming)
+    // On reconnect: atomic swap (compare-and-swap) to avoid race condition
+    let lockOwnerToken = "";
     if (reconnect) {
-      await releaseSessionLock(id);
-    }
-    const lockAcquired = await acquireSessionLock(id);
-    if (!lockAcquired) {
-      await recordSLOEvent("interview.start.success_rate", false);
-      return Response.json(
-        { error: "This interview is already active in another tab or device." },
-        { status: 409 }
-      );
+      const existingState = await getSessionState(id);
+      const oldOwnerToken = existingState?.lockOwnerToken || "";
+      const swapResult = await swapSessionLock(id, oldOwnerToken);
+      if (!swapResult.acquired) {
+        await recordSLOEvent("interview.start.success_rate", false);
+        return Response.json(
+          { error: "This interview is already active in another tab or device." },
+          { status: 409 }
+        );
+      }
+      lockOwnerToken = swapResult.ownerToken;
+    } else {
+      const lockResult = await acquireSessionLock(id);
+      if (!lockResult.acquired) {
+        await recordSLOEvent("interview.start.success_rate", false);
+        return Response.json(
+          { error: "This interview is already active in another tab or device." },
+          { status: 409 }
+        );
+      }
+      lockOwnerToken = lockResult.ownerToken;
     }
 
     // Build system prompt — reconnect-aware
@@ -172,19 +185,21 @@ export async function POST(
     const reconnectToken = generateReconnectToken(id);
     if (reconnect) {
       // RECONNECT: Preserve existing session state, only update token and timestamp
-      const existingState = await getSessionState(id);
-      if (existingState) {
-        existingState.reconnectToken = reconnectToken;
-        existingState.lastActiveAt = new Date().toISOString();
-        existingState.reconnectCount = (existingState.reconnectCount || 0) + 1;
-        await saveSessionState(id, existingState);
-        console.log(`[voice-init] RECONNECT #${existingState.reconnectCount}: preserved ${existingState.transcript.length} transcript entries, ${existingState.questionCount} questions`);
+      const existingReconnectState = await getSessionState(id);
+      if (existingReconnectState) {
+        existingReconnectState.reconnectToken = reconnectToken;
+        existingReconnectState.lastActiveAt = new Date().toISOString();
+        existingReconnectState.reconnectCount = (existingReconnectState.reconnectCount || 0) + 1;
+        existingReconnectState.lockOwnerToken = lockOwnerToken;
+        await saveSessionState(id, existingReconnectState);
+        console.log(`[voice-init] RECONNECT #${existingReconnectState.reconnectCount}: preserved ${existingReconnectState.transcript.length} transcript entries, ${existingReconnectState.questionCount} questions`);
       } else {
         // No existing state found (edge case) — initialize fresh
         await saveSessionState(id, {
           interviewId: id, transcript: [], moduleScores: [], questionCount: 0,
           reconnectToken, lastActiveAt: new Date().toISOString(),
           checkpointDigest: "", lastTurnIndex: -1, reconnectCount: 1,
+          lockOwnerToken,
         });
       }
     } else {
@@ -193,6 +208,7 @@ export async function POST(
         interviewId: id, transcript: [], moduleScores: [], questionCount: 0,
         reconnectToken, lastActiveAt: new Date().toISOString(),
         checkpointDigest: "", lastTurnIndex: -1, reconnectCount: 0,
+        lockOwnerToken,
       });
     }
 
