@@ -14,7 +14,7 @@ import { getInterviewTools } from "@/lib/gemini-live";
 import { checkCandidateEligibility } from "@/lib/interview-eligibility";
 import { logInterviewActivity, getClientIp } from "@/lib/interview-audit";
 import { isValidTransition } from "@/lib/interview-state-machine";
-import { acquireSessionLock, saveSessionState, getSessionState, generateReconnectToken } from "@/lib/session-store";
+import { acquireSessionLock, releaseSessionLock, saveSessionState, getSessionState, generateReconnectToken } from "@/lib/session-store";
 import { recordSLOEvent } from "@/lib/slo-monitor";
 import { classifyError } from "@/lib/error-classification";
 import * as Sentry from "@sentry/nextjs";
@@ -92,6 +92,10 @@ export async function POST(
     }
 
     // Acquire session lock to prevent duplicate sessions
+    // On reconnect: release old lock first, then re-acquire (same interview resuming)
+    if (reconnect) {
+      await releaseSessionLock(id);
+    }
     const lockAcquired = await acquireSessionLock(id);
     if (!lockAcquired) {
       await recordSLOEvent("interview.start.success_rate", false);

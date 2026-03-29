@@ -261,10 +261,20 @@ wss.on("connection", (clientWs: WebSocket, req: IncomingMessage) => {
 
   // ── Proxy: Client → Gemini ──
   clientWs.on("message", (data: Buffer | string) => {
-    // Cache the first message (setup) for reconnect
+    // Cache setup messages for relay→Gemini reconnect.
+    // Always update cache if message contains "setup" (client may send reconnect-aware prompt).
     if (isFirstMessage) {
       setupMessage = data;
       isFirstMessage = false;
+    } else {
+      // Detect setup messages by content — update cache if client sends a new setup
+      try {
+        const text = typeof data === "string" ? data : data.toString("utf8");
+        if (text.includes('"setup"')) {
+          setupMessage = data;
+          console.log(`[Relay] Updated cached setup message for interview=${interviewId}`);
+        }
+      } catch { /* ignore parse errors for binary audio frames */ }
     }
 
     metrics.totalMessages++;

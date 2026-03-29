@@ -140,6 +140,7 @@ export function useVoiceInterview(
   const reconnectTokenRef = useRef<string>(""); // HMAC-signed reconnect token from server
   const reconnectStartTimeRef = useRef<number>(0); // Tracks reconnect latency for SLO
   const poorQualityCountRef = useRef(0); // Debounce: consecutive "poor" checks before triggering
+  const lastRecoveryCallRef = useRef<number>(0); // Rate-limit recovery API calls
 
   // ── Audio Resource Cleanup Helper ────────────────────────────────────
   // Called before reconnect and on unmount to prevent resource leaks
@@ -878,6 +879,19 @@ export function useVoiceInterview(
           return;
         }
 
+        // Flush any partial AI turn text into transcript before reconnect
+        if (currentTurnTextRef.current.trim()) {
+          const partialEntry: TranscriptEntry = {
+            role: "interviewer",
+            content: currentTurnTextRef.current.trim(),
+            timestamp: new Date().toISOString(),
+            finalized: true,
+          };
+          transcriptRef.current = [...transcriptRef.current, partialEntry];
+          setTranscript((prev) => [...prev, partialEntry]);
+          currentTurnTextRef.current = "";
+        }
+
         // Auto-reconnect: call recovery API first, then re-establish WebSocket
         lastCloseCodeRef.current = event.code;
         const adaptiveMax = getMaxReconnectAttempts(event.code);
@@ -896,8 +910,10 @@ export function useVoiceInterview(
 
           setTimeout(async () => {
             try {
-              // Step 1: Call recovery API for authoritative session reconciliation
-              if (reconnectTokenRef.current) {
+              // Step 1: Call recovery API (rate-limited: skip if called within 5s)
+              const timeSinceLastRecovery = Date.now() - lastRecoveryCallRef.current;
+              if (reconnectTokenRef.current && timeSinceLastRecovery > 5000) {
+                lastRecoveryCallRef.current = Date.now();
                 const recoveryRes = await fetch(`/api/interviews/${interviewId}/voice/recover`, {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
@@ -927,6 +943,8 @@ export function useVoiceInterview(
                 } else {
                   console.warn("[Voice] Recovery API failed, proceeding with WebSocket reconnect");
                 }
+              } else if (timeSinceLastRecovery <= 5000) {
+                console.log(`[Voice] Skipping recovery API — called ${timeSinceLastRecovery}ms ago (rate limit: 5s)`);
               }
 
               // Step 2: Re-establish WebSocket
@@ -969,14 +987,25 @@ export function useVoiceInterview(
       // 6. Send greeting or restore FULL context on reconnect
       const existingTranscript = transcriptRef.current;
       if (existingTranscript.length > 0) {
-        // Send up to 80 entries (~40 exchanges) for deep context restoration
-        console.log(`[Voice] Reconnecting — restoring ${Math.min(existingTranscript.length, 80)} of ${existingTranscript.length} transcript entries...`);
-        const recentEntries = existingTranscript
-          .slice(-80) // Up to 40 exchanges — uses Gemini's 128K context window
+        // Token-aware context restoration: ~4 chars/token, target 30K tokens = 120K chars
+        const TOKEN_CHAR_BUDGET = 120_000;
+        const MAX_ENTRY_CHARS = 2000; // Truncate individual entries longer than this
+
+        let recentEntries = existingTranscript
           .filter((entry) => entry.content && typeof entry.content === "string" && entry.content.trim().length > 0);
+
+        // Estimate total chars and adaptively trim from oldest entries
+        let totalChars = recentEntries.reduce((sum, e) => sum + Math.min(e.content.length, MAX_ENTRY_CHARS), 0);
+        while (totalChars > TOKEN_CHAR_BUDGET && recentEntries.length > 10) {
+          const removed = recentEntries.shift()!;
+          totalChars -= Math.min(removed.content.length, MAX_ENTRY_CHARS);
+        }
+
+        console.log(`[Voice] Reconnecting — restoring ${recentEntries.length} of ${existingTranscript.length} entries (~${Math.round(totalChars / 4)} tokens)`);
+
         const contextTurns = recentEntries.map((entry) => ({
           role: entry.role === "interviewer" ? "model" : "user",
-          parts: [{ text: entry.content }],
+          parts: [{ text: entry.content.length > MAX_ENTRY_CHARS ? entry.content.slice(0, MAX_ENTRY_CHARS) + "..." : entry.content }],
         }));
 
         // Build conversation summary for Gemini to understand interview state
@@ -1315,6 +1344,14 @@ export function useVoiceInterview(
   useEffect(() => {
     const emergencySave = () => {
       if (!transcriptRef.current.length || !accessToken) return;
+      // Write to IndexedDB first — available on tab refresh recovery
+      backupTranscript(
+        interviewId,
+        transcriptRef.current,
+        moduleScoresRef.current,
+        questionCountRef.current,
+      ).catch(() => {});
+      // Also fire sendBeacon to server
       const payload = JSON.stringify({
         accessToken,
         action: "checkpoint",
@@ -1334,6 +1371,45 @@ export function useVoiceInterview(
       window.removeEventListener("pagehide", emergencySave);
     };
   }, [interviewId, accessToken]);
+
+  // ── Tab Refresh Recovery: Restore from IndexedDB on Mount ────────
+  // If the page was refreshed mid-interview, IndexedDB may have a backup
+  // from the last checkpoint or emergency save. Hydrate refs so startInterview()
+  // detects this as a reconnect (transcriptRef.current.length > 0).
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const backup = await getBackedUpTranscript(interviewId);
+        if (cancelled || !backup) return;
+        // Only restore if backup is recent (< 2 hours) and has data
+        const age = Date.now() - backup.savedAt;
+        if (age > 7200_000 || backup.transcript.length === 0) return;
+
+        console.log(`[Voice] Restoring from IndexedDB: ${backup.transcript.length} entries, ${backup.questionCount} questions (age: ${Math.round(age / 1000)}s)`);
+        const restored = backup.transcript.map((t) => ({
+          role: t.role as "interviewer" | "candidate",
+          content: t.content,
+          timestamp: t.timestamp || new Date().toISOString(),
+          finalized: t.finalized ?? true,
+        }));
+        transcriptRef.current = restored;
+        setTranscript(restored);
+        moduleScoresRef.current = backup.moduleScores || [];
+        questionCountRef.current = backup.questionCount || 0;
+        setQuestionCount(backup.questionCount || 0);
+        // Extract asked questions from restored transcript for dedup
+        askedQuestionsRef.current = restored
+          .filter((e) => e.role === "interviewer" && e.content.includes("?"))
+          .map((e) => e.content)
+          .slice(-20);
+      } catch {
+        // IndexedDB unavailable — proceed with fresh start
+      }
+    })();
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [interviewId]);
 
   // ── Cleanup ────────────────────────────────────────────────────────
 
