@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Plus, ExternalLink, FileText, Send } from "lucide-react";
+import { Plus, ExternalLink, FileText, Send, X } from "lucide-react";
 import { ScheduleInterviewDialog } from "@/components/interview/ScheduleInterviewDialog";
 import Link from "next/link";
 
@@ -67,6 +67,12 @@ export default function InterviewsClient({
     setDialogOpen(false);
   };
 
+  const handleStatusChange = (interviewId: string, newStatus: string) => {
+    setInterviews((prev) =>
+      prev.map((i) => (i.id === interviewId ? { ...i, status: newStatus } : i))
+    );
+  };
+
   return (
     <div>
       {/* Header */}
@@ -102,7 +108,7 @@ export default function InterviewsClient({
       ) : (
         <div className="space-y-4">
           {interviews.map((interview) => (
-            <InterviewCard key={interview.id} interview={interview} candidateEmail={candidateEmail} />
+            <InterviewCard key={interview.id} interview={interview} candidateEmail={candidateEmail} onStatusChange={handleStatusChange} />
           ))}
         </div>
       )}
@@ -120,15 +126,38 @@ export default function InterviewsClient({
   );
 }
 
-function InterviewCard({ interview, candidateEmail }: { interview: Interview; candidateEmail: string }) {
+function InterviewCard({ interview, candidateEmail, onStatusChange }: { interview: Interview; candidateEmail: string; onStatusChange: (id: string, status: string) => void }) {
   const [expanded, setExpanded] = useState(false);
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
   const typeLabel = interview.type
     .replace(/_/g, " ")
     .replace(/\b\w/g, (c) => c.toUpperCase());
 
   const statusClass = STATUS_STYLES[interview.status] || STATUS_STYLES.PENDING;
+
+  const handleCancelInterview = async () => {
+    if (!window.confirm("Are you sure you want to cancel this interview invitation? This cannot be undone.")) return;
+    setCancelling(true);
+    try {
+      const res = await fetch(`/api/interviews/${interview.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "CANCELLED" }),
+      });
+      if (res.ok) {
+        onStatusChange(interview.id, "CANCELLED");
+      } else {
+        const data = await res.json().catch(() => ({}));
+        alert(data.error || "Failed to cancel interview");
+      }
+    } catch {
+      alert("Failed to cancel interview");
+    } finally {
+      setCancelling(false);
+    }
+  };
 
   const handleResendInvite = async () => {
     setSending(true);
@@ -168,15 +197,27 @@ function InterviewCard({ interview, candidateEmail }: { interview: Interview; ca
         <div className="flex items-center gap-3">
           {/* Resend invite for pending interviews */}
           {interview.status === "PENDING" && candidateEmail && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleResendInvite}
-              disabled={sending || sent}
-            >
-              <Send className="w-4 h-4 mr-1" />
-              {sent ? "Sent!" : sending ? "Sending..." : "Resend Invite"}
-            </Button>
+            <>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleResendInvite}
+                disabled={sending || sent}
+              >
+                <Send className="w-4 h-4 mr-1" />
+                {sent ? "Sent!" : sending ? "Sending..." : "Resend Invite"}
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleCancelInterview}
+                disabled={cancelling}
+                className="text-red-600 hover:text-red-700 hover:bg-red-50"
+              >
+                <X className="w-4 h-4 mr-1" />
+                {cancelling ? "Cancelling..." : "Cancel"}
+              </Button>
+            </>
           )}
 
           {/* Overall score */}

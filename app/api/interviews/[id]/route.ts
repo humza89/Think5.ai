@@ -8,7 +8,7 @@ import {
 import { logInterviewActivity, getClientIp } from "@/lib/interview-audit";
 import { isValidTransition, getAllowedTransitions } from "@/lib/interview-state-machine";
 import { inngest } from "@/inngest/client";
-import { cascadeInterviewStatus } from "@/lib/invitation-lifecycle";
+import { cascadeInterviewStatus, transitionInvitation } from "@/lib/invitation-lifecycle";
 
 // GET - Get interview details with report
 export async function GET(
@@ -155,7 +155,17 @@ export async function PATCH(
     });
 
     // Cascade interview status to invitation lifecycle
-    if (newStatus) {
+    if (newStatus === "CANCELLED") {
+      // Recruiter-initiated cancel → REVOKED (not ABANDONED)
+      const interviewForInvite = await prisma.interview.findUnique({
+        where: { id },
+        select: { invitationId: true },
+      });
+      if (interviewForInvite?.invitationId) {
+        const { user } = await getAuthenticatedUser();
+        transitionInvitation(interviewForInvite.invitationId, "REVOKED", { revokedBy: user.id }).catch(console.error);
+      }
+    } else if (newStatus) {
       cascadeInterviewStatus(id, newStatus).catch(console.error);
     }
 

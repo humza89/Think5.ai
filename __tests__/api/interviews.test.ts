@@ -6,7 +6,7 @@ vi.mock("@sentry/nextjs", () => ({
 
 describe("interview creation validation", () => {
   it("requires candidateId", () => {
-    const body = { templateId: "template-1" };
+    const body: Record<string, string> = { templateId: "template-1" };
     const errors: string[] = [];
 
     if (!body.candidateId) errors.push("candidateId is required");
