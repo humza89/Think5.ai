@@ -176,16 +176,20 @@ wss.on("connection", (clientWs: WebSocket, req: IncomingMessage) => {
       geminiAlive = true;
       console.log(`[Relay] Gemini connected for interview=${interviewId}`);
 
-      // If reconnecting, resend setup message and drain buffer
+      // If reconnecting, resend the cached setup message first
       if (isReconnecting && setupMessage) {
         console.log(`[Relay] Resending setup message for interview=${interviewId}`);
         ws.send(setupMessage);
+      }
+      // Always drain buffered messages (handles initial connect race + reconnect)
+      if (messageBuffer.length > 0) {
+        console.log(`[Relay] Draining ${messageBuffer.length} buffered message(s) for interview=${interviewId}`);
         while (messageBuffer.length > 0) {
           const msg = messageBuffer.shift()!;
           ws.send(msg);
         }
-        isReconnecting = false;
       }
+      isReconnecting = false;
     });
 
     ws.on("message", (data: Buffer | string) => {
@@ -267,8 +271,8 @@ wss.on("connection", (clientWs: WebSocket, req: IncomingMessage) => {
 
     if (geminiAlive && !isReconnecting) {
       geminiWs.send(data);
-    } else if (isReconnecting) {
-      // Buffer messages during reconnect (cap at limit)
+    } else {
+      // Buffer during initial connect OR reconnect (cap at limit)
       if (messageBuffer.length < MESSAGE_BUFFER_LIMIT) {
         messageBuffer.push(data);
       }
