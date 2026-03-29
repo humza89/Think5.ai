@@ -32,6 +32,31 @@ import { classifyError } from "@/lib/error-classification";
 import { validateTranscript, repairTranscript } from "@/lib/transcript-validator";
 import * as Sentry from "@sentry/nextjs";
 
+// C7: Per-interview checkpoint rate limiter (max 1 per 2 seconds)
+const checkpointTimestamps = new Map<string, number>();
+
+// C4: Validate moduleScores structure before DB write
+function validateModuleScores(scores: unknown): Array<{ module: string; score: number; reason: string; sectionNotes?: string }> {
+  if (!Array.isArray(scores)) return [];
+  return scores
+    .filter((s: unknown) => {
+      if (!s || typeof s !== "object") return false;
+      const r = s as Record<string, unknown>;
+      return typeof r.module === "string" && typeof r.score === "number" &&
+        typeof r.reason === "string" && r.score >= 0 && r.score <= 10;
+    })
+    .map((s: unknown) => {
+      const r = s as Record<string, unknown>;
+      return {
+        module: String(r.module).slice(0, 100),
+        score: Number(r.score),
+        reason: String(r.reason).slice(0, 500),
+        ...(typeof r.sectionNotes === "string" ? { sectionNotes: String(r.sectionNotes).slice(0, 1000) } : {}),
+      };
+    })
+    .slice(0, 20);
+}
+
 // ── Validate Access ────────────────────────────────────────────────────
 
 async function validateAccess(interviewId: string, accessToken: string | null) {
@@ -166,8 +191,19 @@ export async function POST(
     if (action === "checkpoint") {
       const checkpointStart = Date.now();
 
-      // Idempotency: skip write if transcript hasn't changed since last checkpoint
+      // C7: Rate limit checkpoints — max 1 per 2 seconds per interview
+      const lastCheckpoint = checkpointTimestamps.get(id);
+      const now = Date.now();
+      if (lastCheckpoint && now - lastCheckpoint < 2000) {
+        return Response.json({ ok: true, throttled: true });
+      }
+      checkpointTimestamps.set(id, now);
+
+      // H10: Reject oversized transcripts (>1MB serialized)
       const currentTranscript = transcript || [];
+      if (JSON.stringify(currentTranscript).length > 1_000_000) {
+        return Response.json({ error: "Transcript too large" }, { status: 413 });
+      }
       const incomingDigest = computeTranscriptChecksum(currentTranscript);
       const existingSession = await getSessionState(id);
       if (existingSession?.checkpointDigest === incomingDigest) {
@@ -178,11 +214,12 @@ export async function POST(
         return Response.json({ ok: true, deduplicated: true, checkpointMs, checkpointDigest: existingSession?.checkpointDigest });
       }
 
+      const validatedScores = validateModuleScores(moduleScores);
       await prisma.interview.update({
         where: { id },
         data: {
           transcript: currentTranscript,
-          skillModuleScores: moduleScores || [],
+          skillModuleScores: validatedScores,
         },
       });
 
@@ -202,15 +239,16 @@ export async function POST(
         if (Array.isArray(flaggedFollowUps) && flaggedFollowUps.length <= 20) {
           const validFollowUps = flaggedFollowUps.filter(
             (f: unknown) => f && typeof f === "object" &&
-              typeof (f as Record<string, unknown>).topic === "string" && ((f as Record<string, unknown>).topic as string).length <= 500 &&
-              typeof (f as Record<string, unknown>).reason === "string" && ((f as Record<string, unknown>).reason as string).length <= 500
+              typeof (f as Record<string, unknown>).topic === "string" && ((f as Record<string, unknown>).topic as string).trim().length > 0 && ((f as Record<string, unknown>).topic as string).length <= 500 &&
+              typeof (f as Record<string, unknown>).reason === "string" && ((f as Record<string, unknown>).reason as string).trim().length > 0 && ((f as Record<string, unknown>).reason as string).length <= 500
           );
           if (validFollowUps.length > 0) validatedMemory.flaggedFollowUps = validFollowUps;
         }
         if (Array.isArray(askedQuestions) && askedQuestions.length <= 50) {
-          validatedMemory.askedQuestions = askedQuestions
-            .filter((q: unknown) => typeof q === "string" && (q as string).length <= 500)
+          const filtered = askedQuestions
+            .filter((q: unknown) => typeof q === "string" && (q as string).trim().length > 0 && (q as string).length <= 500)
             .slice(0, 50);
+          validatedMemory.askedQuestions = [...new Set(filtered)];
         }
         if (candidateProfile && typeof candidateProfile === "object" && !Array.isArray(candidateProfile)) {
           const cp = candidateProfile as Record<string, unknown>;
@@ -229,7 +267,7 @@ export async function POST(
         await saveSessionState(id, {
           ...existingSession,
           transcript: currentTranscript,
-          moduleScores: moduleScores || [],
+          moduleScores: validatedScores,
           questionCount: questionCount || existingSession.questionCount,
           lastActiveAt: new Date().toISOString(),
           checkpointDigest: incomingDigest,
@@ -263,29 +301,10 @@ export async function POST(
         console.warn(`[${id}] Invalid voice end transition: ${currentStatus} → COMPLETED`);
       }
 
-      // Save transcript, scores, and mark complete
-      await prisma.interview.update({
-        where: { id },
-        data: {
-          status: "COMPLETED",
-          completedAt: new Date(),
-          transcript: transcript || [],
-          skillModuleScores: moduleScores || [],
-        },
-      });
-
-      // Persist structured proctoring events
-      const interviewData = await prisma.interview.findUnique({
-        where: { id },
-        select: { integrityEvents: true },
-      });
-      if (interviewData?.integrityEvents && Array.isArray(interviewData.integrityEvents)) {
-        persistProctoringEvents(id, interviewData.integrityEvents as any[]).catch(console.error);
-      }
-
-      // Validate and auto-repair transcript quality
-      if (transcript && transcript.length > 0) {
-        const validation = validateTranscript(transcript);
+      // C2: Validate and auto-repair transcript BEFORE database write
+      let finalTranscript = transcript || [];
+      if (finalTranscript.length > 0) {
+        const validation = validateTranscript(finalTranscript);
 
         // Record transcript anomaly SLO
         await recordSLOEvent("transcript.anomaly.rate", validation.valid);
@@ -298,16 +317,32 @@ export async function POST(
             level: "warning",
           });
 
-          // Auto-repair if issues found
-          const { repaired, repairs } = repairTranscript(transcript);
+          const { repaired, repairs } = repairTranscript(finalTranscript);
           if (repairs.length > 0) {
             console.log(`[${id}] Transcript auto-repair: ${repairs.join("; ")}`);
-            await prisma.interview.update({
-              where: { id },
-              data: { transcript: repaired },
-            });
+            finalTranscript = repaired;
           }
         }
+      }
+
+      // Save repaired transcript, validated scores, and mark complete
+      await prisma.interview.update({
+        where: { id },
+        data: {
+          status: "COMPLETED",
+          completedAt: new Date(),
+          transcript: finalTranscript,
+          skillModuleScores: validateModuleScores(moduleScores),
+        },
+      });
+
+      // C3: Persist structured proctoring events BEFORE report trigger
+      const interviewData = await prisma.interview.findUnique({
+        where: { id },
+        select: { integrityEvents: true },
+      });
+      if (interviewData?.integrityEvents && Array.isArray(interviewData.integrityEvents)) {
+        await persistProctoringEvents(id, interviewData.integrityEvents as any[]);
       }
 
       // Record session completion SLO

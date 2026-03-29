@@ -53,7 +53,8 @@ export async function POST(
     }
 
     // 3. Verify lock ownership (H4: prevents session hijacking with stolen reconnect token)
-    if (clientOwnerToken && session.lockOwnerToken && clientOwnerToken !== session.lockOwnerToken) {
+    // C1: Require owner token when session has one — omitting token no longer bypasses check
+    if (session.lockOwnerToken && (!clientOwnerToken || clientOwnerToken !== session.lockOwnerToken)) {
       return Response.json(
         { error: "Lock ownership mismatch — session belongs to another client" },
         { status: 403 }

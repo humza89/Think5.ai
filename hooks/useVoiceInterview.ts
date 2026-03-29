@@ -778,6 +778,7 @@ export function useVoiceInterview(
       // Clear stale question dedup on fresh start (not reconnect)
       if (transcriptRef.current.length === 0) {
         askedQuestionsRef.current = [];
+        introFilterActiveRef.current = false; // M2: Reset intro filter on fresh start
       }
       cleanupAudioResources();
       // Close old WebSocket if still open
@@ -1105,6 +1106,10 @@ export function useVoiceInterview(
                       setTranscript(serverTranscript);
                     } else {
                       console.warn(`[Voice] Server transcript shorter (${serverLen}) than client (${clientLen}) — keeping client transcript`);
+                    }
+                    // H6: Restore module scores from server on diverged reconnect
+                    if (recovery.moduleScores && Array.isArray(recovery.moduleScores)) {
+                      moduleScoresRef.current = recovery.moduleScores;
                     }
                   }
                   setReconnectPhase("re-synced");
@@ -1492,6 +1497,10 @@ export function useVoiceInterview(
               })
             );
             setTranscript(serverTranscript);
+            // H6: Restore module scores from server on diverged reconnect
+            if (recovery.moduleScores && Array.isArray(recovery.moduleScores)) {
+              moduleScoresRef.current = recovery.moduleScores;
+            }
           }
           setReconnectPhase("re-synced");
         }

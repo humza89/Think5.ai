@@ -1,3 +1,14 @@
+// C6: Sanitize user-generated content before prompt injection
+// Strips patterns that could be interpreted as prompt instructions
+function sanitizeForPrompt(text: string): string {
+  return text
+    .replace(/[<>{}[\]]/g, "") // Strip XML/JSON delimiters
+    .replace(/```/g, "") // Strip code fences
+    .replace(/\n{3,}/g, "\n\n") // Collapse excessive newlines
+    .replace(/#{1,6}\s/g, "") // Strip markdown headings (could look like prompt sections)
+    .slice(0, 500); // Hard limit per field
+}
+
 export interface AriaPromptConfig {
   interviewType: "TECHNICAL" | "BEHAVIORAL" | "DOMAIN_EXPERT" | "LANGUAGE" | "CASE_STUDY";
   candidateName: string;
@@ -519,14 +530,14 @@ export function buildReconnectSystemPrompt(
 
   // Build follow-ups section
   const followUpsSection = flaggedFollowUps && flaggedFollowUps.length > 0
-    ? `\n## TOPICS FLAGGED FOR FOLLOW-UP (address these when relevant)\n${flaggedFollowUps.map((f, i) => `${i + 1}. **${f.topic}** — ${f.reason}${f.depth ? ` (depth: ${f.depth})` : ""}`).join("\n")}`
+    ? `\n## TOPICS FLAGGED FOR FOLLOW-UP (address these when relevant)\n${flaggedFollowUps.map((f, i) => `${i + 1}. **${sanitizeForPrompt(f.topic)}** — ${sanitizeForPrompt(f.reason)}${f.depth ? ` (depth: ${f.depth})` : ""}`).join("\n")}`
     : "";
 
-  // Build candidate profile section
+  // Build candidate profile section (C6: sanitize to prevent prompt injection)
   const profileSection = candidateProfile
     ? `\n## CANDIDATE PROFILE (observed so far — use this to calibrate your questions)
-- Strengths: ${candidateProfile.strengths.join(", ") || "none observed yet"}
-- Weaknesses: ${candidateProfile.weaknesses.join(", ") || "none observed yet"}${candidateProfile.communicationStyle ? `\n- Communication style: ${candidateProfile.communicationStyle}` : ""}${candidateProfile.confidenceLevel ? `\n- Confidence level: ${candidateProfile.confidenceLevel}` : ""}${candidateProfile.notableObservations ? `\n- Notable: ${candidateProfile.notableObservations}` : ""}`
+- Strengths: ${candidateProfile.strengths.map(sanitizeForPrompt).join(", ") || "none observed yet"}
+- Weaknesses: ${candidateProfile.weaknesses.map(sanitizeForPrompt).join(", ") || "none observed yet"}${candidateProfile.communicationStyle ? `\n- Communication style: ${sanitizeForPrompt(candidateProfile.communicationStyle)}` : ""}${candidateProfile.confidenceLevel ? `\n- Confidence level: ${candidateProfile.confidenceLevel}` : ""}${candidateProfile.notableObservations ? `\n- Notable: ${sanitizeForPrompt(candidateProfile.notableObservations)}` : ""}`
     : "";
 
   // Build session summary section

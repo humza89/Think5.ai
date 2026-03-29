@@ -30,6 +30,12 @@ function checkRateLimit(interviewId: string): boolean {
   const entry = uploadCounters.get(interviewId);
   if (!entry || now - entry.windowStart > 60_000) {
     uploadCounters.set(interviewId, { count: 1, windowStart: now });
+    // H8: Evict stale entries to prevent memory leak
+    if (uploadCounters.size > 100) {
+      for (const [key, val] of uploadCounters) {
+        if (now - val.windowStart > 120_000) uploadCounters.delete(key);
+      }
+    }
     return true;
   }
   entry.count++;

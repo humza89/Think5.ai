@@ -74,6 +74,7 @@ export function useMediaRecording({
           }
 
           failedChunksRef.current = 0;
+          setRecordingWarning(false); // H2: Clear warning on successful upload
           return; // Success
         } catch {
           if (attempt < maxAttempts - 1) {
