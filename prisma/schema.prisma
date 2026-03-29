@@ -610,6 +610,10 @@ model Interview {
   videoUrl        String?           // Future: webcam recording URL
   audioUrl        String?           // Future: audio recording URL
 
+  // Continuous memory pipeline
+  knowledgeGraph  Json?             // Ongoing assembled semantic memory graph
+  transcripts     InterviewTranscript[] // Full un-truncated postgres transcripts
+
   // Voice interview fields
   voiceProvider     String?         @default("text-sse") // "gemini-live" | "text-sse"
   recordingUrl      String?         // R2 signed URL for video/audio recording
@@ -713,6 +717,26 @@ model Interview {
   @@index([jobId])
   @@index([mode])
   @@index([reconnectToken])
+}
+
+// ============================================
+// Scalable Transcript Storage
+// ============================================
+
+model InterviewTranscript {
+  id              String    @id @default(uuid())
+  interviewId     String
+  interview       Interview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+  role            String    // 'interviewer' | 'candidate'
+  content         String    @db.Text
+  turnIndex       Int       // To maintain chronological order safely
+  timestamp       DateTime  @default(now())
+  finalized       Boolean   @default(true)
+
+  createdAt       DateTime  @default(now())
+
+  @@unique([interviewId, turnIndex])
+  @@index([interviewId])
 }
 
 // ============================================

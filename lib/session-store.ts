@@ -114,10 +114,11 @@ export async function saveSessionState(
 
   // H7/R5: Enforce session state size limit — truncate transcript to keep under 512KB
   if (sizeBytes > 512_000) {
-    console.warn(`[${interviewId}] Session state too large (${Math.round(sizeBytes / 1024)}KB), truncating transcript tail`);
-    // Keep only the last 100 transcript entries to reduce size while preserving recent context
-    if (state.transcript.length > 100) {
-      state.transcript = state.transcript.slice(-100);
+    console.warn(`[${interviewId}] Session state too large (${Math.round(sizeBytes / 1024)}KB), truncating transcript tail to 20 turns (Caller must rehydrate from Postgres)`);
+    // Keep only the last 20 transcript entries to reduce size.
+    // Full durable storage is maintained in PostgreSQL by the checkpoint route.
+    if (state.transcript.length > 20) {
+      state.transcript = state.transcript.slice(-20);
       serialized = JSON.stringify(state);
       sizeBytes = Buffer.byteLength(serialized, "utf8");
     }
