@@ -480,6 +480,14 @@ Reliability, continuity, and auditability are equal in importance to conversatio
 In every turn, produce exactly one clear, natural interviewer response that ends with one relevant question unless the conversation clearly requires a brief acknowledgment, recovery, or closing statement instead.`;
 }
 
+export interface KnowledgeGraph {
+  verified_claims?: string[];
+  behavioral_signals?: string[];
+  technical_stack?: string[];
+  timeline?: Array<{ year: string | number; event: string }>;
+  notable_quotes?: string[];
+}
+
 export interface ReconnectContext {
   questionCount: number;
   moduleScores: Array<{ module: string; score: number; reason: string; sectionNotes?: string }>;
@@ -497,6 +505,8 @@ export interface ReconnectContext {
     notableObservations?: string;
   };
   sessionSummary?: string;
+  // LLM-powered semantic memory (from inngest/functions/update-aria-memory.ts)
+  knowledgeGraph?: KnowledgeGraph | null;
 }
 
 /**
@@ -510,7 +520,7 @@ export function buildReconnectSystemPrompt(
   context: ReconnectContext
 ): string {
   const { questionCount, moduleScores, askedQuestions, currentModule,
-    currentDifficultyLevel, flaggedFollowUps, candidateProfile, sessionSummary } = context;
+    currentDifficultyLevel, flaggedFollowUps, candidateProfile, sessionSummary, knowledgeGraph } = context;
   const safeName = sanitizeForPrompt(context.candidateName, 100);
 
   const scoresSummary = moduleScores.length > 0
@@ -540,6 +550,31 @@ export function buildReconnectSystemPrompt(
 - Strengths: ${candidateProfile.strengths.map(sanitizeForPrompt).join(", ") || "none observed yet"}
 - Weaknesses: ${candidateProfile.weaknesses.map(sanitizeForPrompt).join(", ") || "none observed yet"}${candidateProfile.communicationStyle ? `\n- Communication style: ${sanitizeForPrompt(candidateProfile.communicationStyle)}` : ""}${candidateProfile.confidenceLevel ? `\n- Confidence level: ${candidateProfile.confidenceLevel}` : ""}${candidateProfile.notableObservations ? `\n- Notable: ${sanitizeForPrompt(candidateProfile.notableObservations)}` : ""}`
     : "";
+
+  // Build knowledge graph section (LLM-extracted semantic memory)
+  let knowledgeGraphSection = "";
+  if (knowledgeGraph && typeof knowledgeGraph === "object") {
+    const kg = knowledgeGraph;
+    const parts: string[] = [];
+    if (kg.verified_claims?.length) {
+      parts.push(`Verified Claims:\n${kg.verified_claims.map(c => `- ${sanitizeForPrompt(c, 300)}`).join("\n")}`);
+    }
+    if (kg.behavioral_signals?.length) {
+      parts.push(`Behavioral Signals:\n${kg.behavioral_signals.map(s => `- ${sanitizeForPrompt(s, 300)}`).join("\n")}`);
+    }
+    if (kg.technical_stack?.length) {
+      parts.push(`Technical Stack: ${kg.technical_stack.map(t => sanitizeForPrompt(t, 100)).join(", ")}`);
+    }
+    if (kg.timeline?.length) {
+      parts.push(`Timeline:\n${kg.timeline.map(t => `- ${sanitizeForPrompt(String(t.year), 10)}: ${sanitizeForPrompt(t.event, 200)}`).join("\n")}`);
+    }
+    if (kg.notable_quotes?.length) {
+      parts.push(`Notable Quotes:\n${kg.notable_quotes.map(q => `- "${sanitizeForPrompt(q, 300)}"`).join("\n")}`);
+    }
+    if (parts.length > 0) {
+      knowledgeGraphSection = `\n## CANDIDATE KNOWLEDGE GRAPH (semantic memory from prior analysis)\nUse these facts to personalize questions, verify consistency, and avoid redundant probing.\n${parts.join("\n\n")}`;
+    }
+  }
 
   // Build session summary section
   const summarySection = sessionSummary
@@ -571,6 +606,7 @@ ${difficultySection}
 - Module scores so far:
 ${scoresSummary}
 ${profileSection}
+${knowledgeGraphSection}
 ${followUpsSection}
 ${summarySection}
 

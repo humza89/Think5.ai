@@ -129,6 +129,8 @@ export function useVoiceInterview(
   const lastSendTimeRef = useRef(Date.now()); // Tracks last data sent to Gemini (for keep-alive)
   const qualityCheckIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const droppedFramesRef = useRef(0); // Consecutive frames dropped due to backpressure
+  const audioQueueRef = useRef<string[]>([]); // Bounded ring buffer for backpressure (max 50 base64 PCM frames)
+  const knowledgeGraphRef = useRef<Record<string, unknown> | null>(null); // LLM-powered semantic memory from recovery
   const silentFramesRef = useRef(0); // Consecutive silent audio frames
   const checkpointResultsRef = useRef<boolean[]>([]); // Rolling window of last 5 checkpoint results
   const consecutiveSetupFailuresRef = useRef(0); // Circuit breaker counter
@@ -181,9 +183,10 @@ export function useVoiceInterview(
     // 3. Reset playback timing so new context starts fresh
     nextPlayTimeRef.current = 0;
 
-    // 4. Reset turn text accumulators
+    // 4. Reset turn text accumulators and audio queue
     currentTurnTextRef.current = "";
     currentCandidateTextRef.current = "";
+    audioQueueRef.current = [];
 
     // 5. Clear heartbeat, quality monitoring, and checkpoint intervals
     if (heartbeatIntervalRef.current) {
@@ -1099,6 +1102,10 @@ export function useVoiceInterview(
                   if (Array.isArray(recovery.askedQuestions)) {
                     askedQuestionsRef.current = recovery.askedQuestions;
                   }
+                  // Store knowledge graph from recovery for reconnect context
+                  if (recovery.knowledgeGraph) {
+                    knowledgeGraphRef.current = recovery.knowledgeGraph;
+                  }
 
                   // If diverged, reconcile transcript from server (M5: only accept if server has more data)
                   if (recovery.status === "diverged" && recovery.canonicalTranscript) {
@@ -1180,9 +1187,11 @@ export function useVoiceInterview(
       // 6. Send greeting or restore FULL context on reconnect
       const existingTranscript = transcriptRef.current;
       if (existingTranscript.length > 0) {
-        // Token-aware context restoration: ~4 chars/token, target 30K tokens = 120K chars
-        const TOKEN_CHAR_BUDGET = 120_000;
-        const MAX_ENTRY_CHARS = 2000; // Truncate individual entries longer than this
+        // Token-aware context restoration: ~4 chars/token
+        // If knowledge graph is available, it carries semantic weight — reduce raw transcript budget
+        const hasKnowledgeGraph = knowledgeGraphRef.current && Object.keys(knowledgeGraphRef.current).length > 0;
+        const TOKEN_CHAR_BUDGET = hasKnowledgeGraph ? 80_000 : 120_000; // 20K or 30K tokens
+        const MAX_ENTRY_CHARS = 4000; // Individual entry cap (increased: knowledge graph handles summarization)
 
         let recentEntries = existingTranscript
           .filter((entry) => entry.content && typeof entry.content === "string" && entry.content.trim().length > 0);
@@ -1211,7 +1220,25 @@ export function useVoiceInterview(
         const sessionSummaryBlock = sessionSummaryRef.current
           ? `\n\nEARLIER INTERVIEW CONTEXT (summarized):\n${sessionSummaryRef.current}`
           : "";
-        const summaryText = `[RECONNECT — SESSION RESUMED. Questions completed: ${qCount}. Modules scored: ${scoresSummary}. Total transcript entries: ${existingTranscript.length}. Difficulty: ${difficultyLevelRef.current}. DO NOT re-introduce yourself. DO NOT repeat any prior questions. Say "We're back, let's continue." and resume the conversation thread.${sessionSummaryBlock}]`;
+        // Include knowledge graph if available (LLM-extracted semantic memory)
+        let knowledgeGraphBlock = "";
+        if (hasKnowledgeGraph && knowledgeGraphRef.current) {
+          const kg = knowledgeGraphRef.current;
+          const kgParts: string[] = [];
+          if (Array.isArray(kg.verified_claims) && kg.verified_claims.length) {
+            kgParts.push(`Verified claims: ${(kg.verified_claims as string[]).slice(0, 10).join("; ")}`);
+          }
+          if (Array.isArray(kg.technical_stack) && kg.technical_stack.length) {
+            kgParts.push(`Tech stack: ${(kg.technical_stack as string[]).join(", ")}`);
+          }
+          if (Array.isArray(kg.behavioral_signals) && kg.behavioral_signals.length) {
+            kgParts.push(`Behavioral: ${(kg.behavioral_signals as string[]).slice(0, 5).join("; ")}`);
+          }
+          if (kgParts.length > 0) {
+            knowledgeGraphBlock = `\n\nCANDIDATE KNOWLEDGE GRAPH:\n${kgParts.join("\n")}`;
+          }
+        }
+        const summaryText = `[RECONNECT — SESSION RESUMED. Questions completed: ${qCount}. Modules scored: ${scoresSummary}. Total transcript entries: ${existingTranscript.length}. Difficulty: ${difficultyLevelRef.current}. DO NOT re-introduce yourself. DO NOT repeat any prior questions. Say "We're back, let's continue." and resume the conversation thread.${knowledgeGraphBlock}${sessionSummaryBlock}]`;
 
         ws.send(JSON.stringify({
           clientContent: {
@@ -1278,30 +1305,50 @@ export function useVoiceInterview(
           if (micIsSilent) setMicIsSilent(false);
         }
 
-        // ── Backpressure: skip frame if WebSocket buffer is overloaded ──
-        if (ws2.bufferedAmount > 100_000) { // 100KB threshold
-          droppedFramesRef.current += 1;
-          if (droppedFramesRef.current === 10) {
-            setConnectionQuality("fair");
-          } else if (droppedFramesRef.current === 50) {
-            setConnectionQuality("poor");
-            console.warn("[Voice] 50+ consecutive frames dropped — network severely congested");
-          }
-          return; // Drop this frame
-        }
-        droppedFramesRef.current = 0;
-
+        // ── Backpressure: enqueue frames when WebSocket buffer is overloaded ──
         const pcm16 = float32ToPCM16(inputData);
         const base64 = arrayBufferToBase64(pcm16.buffer as ArrayBuffer);
 
-        ws2.send(JSON.stringify({
-          realtimeInput: {
-            mediaChunks: [{
-              mimeType: "audio/pcm;rate=24000",
-              data: base64,
-            }],
-          },
-        }));
+        if (ws2.bufferedAmount > 100_000) { // 100KB threshold
+          // Enqueue instead of dropping — bounded ring buffer (max 50 frames ≈ 8.5s at 170ms/frame)
+          if (audioQueueRef.current.length >= 50) {
+            audioQueueRef.current.shift(); // Drop oldest frame
+            droppedFramesRef.current += 1;
+          }
+          audioQueueRef.current.push(base64);
+          if (audioQueueRef.current.length === 10) {
+            setConnectionQuality("fair");
+          } else if (droppedFramesRef.current >= 50) {
+            setConnectionQuality("poor");
+            console.warn("[Voice] Audio queue overflow — network severely congested");
+          }
+          return;
+        }
+
+        // WS is clear — send current frame
+        const sendFrame = (data: string) => {
+          ws2.send(JSON.stringify({
+            realtimeInput: {
+              mediaChunks: [{
+                mimeType: "audio/pcm;rate=24000",
+                data,
+              }],
+            },
+          }));
+        };
+
+        // Flush queued frames first (up to 5 per cycle to avoid burst)
+        let flushed = 0;
+        while (audioQueueRef.current.length > 0 && flushed < 5 && ws2.bufferedAmount < 100_000) {
+          sendFrame(audioQueueRef.current.shift()!);
+          flushed++;
+        }
+        if (flushed > 0 && audioQueueRef.current.length === 0) {
+          droppedFramesRef.current = 0;
+          setConnectionQuality("good");
+        }
+
+        sendFrame(base64);
         lastSendTimeRef.current = Date.now();
         } catch (err) { // F2: Error boundary catch
           audioProcessorErrorCountRef.current += 1;

@@ -288,6 +288,15 @@ export async function POST(
       const checkpointMs = Date.now() - checkpointStart;
       await recordSLOEvent("transcript.checkpoint.latency_p99", checkpointMs < 500, checkpointMs);
 
+      // Task 4: Trigger knowledge graph update every 10 transcript turns
+      if (currentTranscript.length > 0 && currentTranscript.length % 10 === 0) {
+        inngest
+          .send({ name: "interview/transcript_updated", data: { interviewId: id } })
+          .catch((err: unknown) => {
+            console.warn(`[${id}] Failed to trigger memory graph update:`, err);
+          });
+      }
+
       return Response.json({ ok: true, checkpointDigest: incomingDigest });
     }
 

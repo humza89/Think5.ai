@@ -2,58 +2,75 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
+import { Trash2 } from "lucide-react";
 import { deleteCandidate } from "@/app/(dashboard)/candidates/actions";
+import { Button } from "@/components/ui/button";
+import {
+  ResponsiveDialog,
+  ResponsiveDialogContent,
+  ResponsiveDialogHeader,
+  ResponsiveDialogTitle,
+  ResponsiveDialogDescription,
+  ResponsiveDialogFooter,
+  ResponsiveDialogClose,
+} from "@/components/ui/responsive-dialog";
 
 export default function DeleteCandidateButton({ candidateId, candidateName }: { candidateId: string; candidateName: string }) {
-  const [showConfirm, setShowConfirm] = useState(false);
+  const [open, setOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
   const handleDelete = async () => {
     setIsDeleting(true);
+    const promise = deleteCandidate(candidateId);
+    toast.promise(promise, {
+      loading: "Deleting candidate...",
+      success: `${candidateName} has been deleted`,
+      error: "Failed to delete candidate. Please try again.",
+    });
     try {
-      await deleteCandidate(candidateId);
-    } catch (error) {
-      console.error("Failed to delete candidate:", error);
+      await promise;
+      setOpen(false);
+    } catch {
       setIsDeleting(false);
-      toast.error("Failed to delete candidate. Please try again.");
     }
   };
 
-  if (showConfirm) {
-    return (
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-        <div className="bg-white rounded-lg shadow-xl p-6 max-w-md w-full mx-4">
-          <h3 className="text-lg font-semibold text-gray-900 mb-2">Delete Candidate</h3>
-          <p className="text-sm text-gray-600 mb-6">
-            Are you sure you want to delete <strong>{candidateName}</strong>? This action cannot be undone.
-          </p>
-          <div className="flex gap-3 justify-end">
-            <button
-              onClick={() => setShowConfirm(false)}
-              disabled={isDeleting}
-              className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Cancel
-            </button>
-            <button
+  return (
+    <>
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => setOpen(true)}
+        className="text-red-600 border-red-300 hover:bg-red-50"
+      >
+        <Trash2 className="h-4 w-4 mr-1" />
+        Delete
+      </Button>
+
+      <ResponsiveDialog open={open} onOpenChange={setOpen}>
+        <ResponsiveDialogContent>
+          <ResponsiveDialogHeader>
+            <ResponsiveDialogTitle>Delete Candidate</ResponsiveDialogTitle>
+            <ResponsiveDialogDescription>
+              Are you sure you want to delete <strong>{candidateName}</strong>? This action cannot be undone.
+            </ResponsiveDialogDescription>
+          </ResponsiveDialogHeader>
+          <ResponsiveDialogFooter>
+            <ResponsiveDialogClose asChild>
+              <Button variant="outline" disabled={isDeleting}>
+                Cancel
+              </Button>
+            </ResponsiveDialogClose>
+            <Button
+              variant="destructive"
               onClick={handleDelete}
               disabled={isDeleting}
-              className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-md hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isDeleting ? "Deleting..." : "Delete"}
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <button
-      onClick={() => setShowConfirm(true)}
-      className="text-sm px-4 py-2 bg-white text-red-600 border border-red-300 rounded-md hover:bg-red-50 transition-colors"
-    >
-      Delete
-    </button>
+            </Button>
+          </ResponsiveDialogFooter>
+        </ResponsiveDialogContent>
+      </ResponsiveDialog>
+    </>
   );
 }

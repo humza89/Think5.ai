@@ -6,12 +6,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
+import { toast } from "sonner";
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+  ResponsiveDialog,
+  ResponsiveDialogContent,
+  ResponsiveDialogHeader,
+  ResponsiveDialogTitle,
+} from "@/components/ui/responsive-dialog";
 
 const INTERVIEW_TYPES = [
   { value: "TECHNICAL", label: "Technical", description: "Coding, system design, architecture" },
@@ -55,7 +56,6 @@ export function ScheduleInterviewDialog({
   const [customQuestions, setCustomQuestions] = useState("");
   const [hmNotes, setHmNotes] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   const toggleType = (value: string) => {
     setSelectedTypes((prev) =>
@@ -75,9 +75,8 @@ export function ScheduleInterviewDialog({
 
   const handleSubmit = async () => {
     setIsSubmitting(true);
-    setError(null);
 
-    try {
+    const schedulePromise = (async () => {
       // Build comprehensive objectives from multi-select
       const focusObjectives: string[] = [];
       if (selectedTypes.length > 1) {
@@ -145,20 +144,31 @@ export function ScheduleInterviewDialog({
         }
       }
 
+      return interview;
+    })();
+
+    toast.promise(schedulePromise, {
+      loading: "Scheduling interview...",
+      success: `Interview scheduled for ${candidateName}`,
+      error: (err) => err instanceof Error ? err.message : "Failed to schedule interview",
+    });
+
+    try {
+      const interview = await schedulePromise;
       onScheduled(interview);
-    } catch (err: any) {
-      setError(err.message);
+    } catch {
+      // error already shown via toast
     } finally {
       setIsSubmitting(false);
     }
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg max-h-[85vh] flex flex-col">
-        <DialogHeader>
-          <DialogTitle>Schedule AI Interview</DialogTitle>
-        </DialogHeader>
+    <ResponsiveDialog open={open} onOpenChange={onOpenChange}>
+      <ResponsiveDialogContent className="sm:max-w-lg max-h-[85vh] flex flex-col">
+        <ResponsiveDialogHeader>
+          <ResponsiveDialogTitle>Schedule AI Interview</ResponsiveDialogTitle>
+        </ResponsiveDialogHeader>
 
         <div className="space-y-5 py-4 overflow-y-auto flex-1 pr-1">
           {/* Candidate name */}
@@ -303,9 +313,6 @@ export function ScheduleInterviewDialog({
             </div>
           )}
 
-          {error && (
-            <p className="text-sm text-red-600">{error}</p>
-          )}
         </div>
 
         <div className="flex justify-end gap-3">
@@ -320,7 +327,7 @@ export function ScheduleInterviewDialog({
             {isSubmitting ? "Scheduling..." : "Schedule Interview"}
           </Button>
         </div>
-      </DialogContent>
-    </Dialog>
+      </ResponsiveDialogContent>
+    </ResponsiveDialog>
   );
 }

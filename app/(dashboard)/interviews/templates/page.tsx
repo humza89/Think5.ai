@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { toast } from "sonner";
 import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -31,13 +32,23 @@ export default function InterviewTemplatesPage() {
   }, []);
 
   async function handleDelete(id: string) {
-    if (!confirm("Delete this template?")) return;
-    try {
+    const deletePromise = (async () => {
       const res = await fetch(`/api/interview-templates/${id}`, { method: "DELETE" });
-      if (res.ok) {
-        setTemplates((prev) => prev.filter((t) => t.id !== id));
-      }
-    } catch {}
+      if (!res.ok) throw new Error("Failed to delete template");
+    })();
+
+    toast.promise(deletePromise, {
+      loading: "Deleting template...",
+      success: "Template deleted",
+      error: "Failed to delete template",
+    });
+
+    try {
+      await deletePromise;
+      setTemplates((prev) => prev.filter((t) => t.id !== id));
+    } catch {
+      // error shown via toast
+    }
   }
 
   return (

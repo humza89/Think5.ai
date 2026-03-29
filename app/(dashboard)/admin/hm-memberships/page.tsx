@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { toast } from "sonner";
 import Link from "next/link";
 
 interface Membership {
@@ -79,9 +80,8 @@ export default function AdminHmMembershipsPage() {
   }
 
   async function handleRevoke(id: string) {
-    if (!confirm("Revoke this membership? The user will lose access.")) return;
     setRevokingId(id);
-    try {
+    const revokePromise = (async () => {
       const res = await fetch(`/api/admin/hm-memberships?id=${id}`, {
         method: "DELETE",
       });
@@ -89,9 +89,19 @@ export default function AdminHmMembershipsPage() {
         const data = await res.json();
         throw new Error(data.error || "Revoke failed");
       }
+    })();
+
+    toast.promise(revokePromise, {
+      loading: "Revoking membership...",
+      success: "Membership revoked",
+      error: (err) => err instanceof Error ? err.message : "Revoke failed",
+    });
+
+    try {
+      await revokePromise;
       await fetchMemberships();
-    } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : "Revoke failed");
+    } catch {
+      // error shown via toast
     } finally {
       setRevokingId(null);
     }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Plus, ExternalLink, FileText, Send, X } from "lucide-react";
@@ -138,22 +139,30 @@ function InterviewCard({ interview, candidateEmail, onStatusChange }: { intervie
   const statusClass = STATUS_STYLES[interview.status] || STATUS_STYLES.PENDING;
 
   const handleCancelInterview = async () => {
-    if (!window.confirm("Are you sure you want to cancel this interview invitation? This cannot be undone.")) return;
     setCancelling(true);
-    try {
+    const cancelPromise = (async () => {
       const res = await fetch(`/api/interviews/${interview.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: "CANCELLED" }),
       });
-      if (res.ok) {
-        onStatusChange(interview.id, "CANCELLED");
-      } else {
+      if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        alert(data.error || "Failed to cancel interview");
+        throw new Error(data.error || "Failed to cancel interview");
       }
+    })();
+
+    toast.promise(cancelPromise, {
+      loading: "Cancelling interview...",
+      success: "Interview cancelled",
+      error: (err) => err instanceof Error ? err.message : "Failed to cancel interview",
+    });
+
+    try {
+      await cancelPromise;
+      onStatusChange(interview.id, "CANCELLED");
     } catch {
-      alert("Failed to cancel interview");
+      // error shown via toast
     } finally {
       setCancelling(false);
     }

@@ -72,7 +72,7 @@ export async function POST(
     // 4. Verify interview is still in a reconnectable state
     const interview = await prisma.interview.findUnique({
       where: { id },
-      select: { status: true, startedAt: true },
+      select: { status: true, startedAt: true, knowledgeGraph: true },
     });
 
     if (!interview || !["IN_PROGRESS", "DISCONNECTED"].includes(interview.status)) {
@@ -118,6 +118,9 @@ export async function POST(
     ]);
 
     // 8. Return recovery instructions
+    // Include knowledge graph if available (for client-side context restoration)
+    const knowledgeGraph = interview.knowledgeGraph || null;
+
     if (digestMatch) {
       return Response.json({
         status: "synced",
@@ -128,6 +131,7 @@ export async function POST(
         remainingSeconds,
         checkpointDigest: serverDigest,
         askedQuestions: session.askedQuestions || [],
+        knowledgeGraph,
       });
     } else {
       return Response.json({
@@ -142,6 +146,7 @@ export async function POST(
         remainingSeconds,
         checkpointDigest: serverDigest,
         askedQuestions: session.askedQuestions || [],
+        knowledgeGraph,
       });
     }
   } catch (error) {

@@ -184,20 +184,27 @@ export default function InterviewsDashboard() {
 
   // E6: Cancel interview
   const handleCancel = async (interviewId: string) => {
-    if (!confirm("Cancel this interview? This cannot be undone.")) return;
     setActionLoading(`cancel-${interviewId}`);
-    try {
+    const cancelPromise = (async () => {
       const res = await fetch(`/api/interviews/${interviewId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: "CANCELLED" }),
       });
-      if (res.ok) {
-        toast.success("Interview cancelled");
-        fetchInterviews();
-      }
+      if (!res.ok) throw new Error("Failed to cancel interview");
+    })();
+
+    toast.promise(cancelPromise, {
+      loading: "Cancelling interview...",
+      success: "Interview cancelled",
+      error: "Failed to cancel interview",
+    });
+
+    try {
+      await cancelPromise;
+      fetchInterviews();
     } catch {
-      toast.error("Failed to cancel interview");
+      // error shown via toast
     } finally {
       setActionLoading(null);
     }

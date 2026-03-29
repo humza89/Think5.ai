@@ -70,11 +70,22 @@ export default function PassiveProfilesPage() {
   }
 
   async function handleDelete(id: string) {
-    if (!confirm("Delete this profile?")) return;
+    const deletePromise = fetch(`/api/passive-profiles/${id}`, { method: "DELETE" }).then((res) => {
+      if (!res.ok) throw new Error("Failed to delete profile");
+    });
+
+    toast.promise(deletePromise, {
+      loading: "Deleting profile...",
+      success: "Profile deleted",
+      error: "Failed to delete profile",
+    });
+
     try {
-      await fetch(`/api/passive-profiles/${id}`, { method: "DELETE" });
+      await deletePromise;
       setProfiles((prev) => prev.filter((p) => p.id !== id));
-    } catch {}
+    } catch {
+      // error shown via toast
+    }
   }
 
   return (

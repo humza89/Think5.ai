@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { toast } from "sonner";
 import Link from "next/link";
 
 interface SharedReport {
@@ -57,10 +58,8 @@ export default function AdminSharedReportsPage() {
   }
 
   async function handleRevoke(report: SharedReport) {
-    if (!confirm("Revoke this shared report link? The recipient will lose access."))
-      return;
     setRevokingId(report.id);
-    try {
+    const revokePromise = (async () => {
       const res = await fetch(
         `/api/interviews/${report.interview.id}/report/share/revoke`,
         { method: "DELETE" }
@@ -69,9 +68,19 @@ export default function AdminSharedReportsPage() {
         const data = await res.json();
         throw new Error(data.error || "Failed to revoke");
       }
+    })();
+
+    toast.promise(revokePromise, {
+      loading: "Revoking shared link...",
+      success: "Shared report link revoked",
+      error: (err) => err instanceof Error ? err.message : "Revoke failed",
+    });
+
+    try {
+      await revokePromise;
       setReports((prev) => prev.filter((r) => r.id !== report.id));
-    } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : "Revoke failed");
+    } catch {
+      // error shown via toast
     } finally {
       setRevokingId(null);
     }

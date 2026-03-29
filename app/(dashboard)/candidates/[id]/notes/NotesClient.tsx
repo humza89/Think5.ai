@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -35,7 +36,6 @@ export default function NotesClient({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editContent, setEditContent] = useState("");
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   // Activity tracking state for new notes
   const [callAnswered, setCallAnswered] = useState(false);
@@ -53,14 +53,13 @@ export default function NotesClient({
     // Require at least a note OR an activity to be selected
     const hasActivity = callAnswered || voicemailLeft || smsSent || emailSent;
     if (!newNote.trim() && !hasActivity) {
-      setError("Please add a note or select at least one activity");
+      toast.error("Please add a note or select at least one activity");
       return;
     }
 
     setLoading(true);
-    setError(null);
 
-    try {
+    const createPromise = (async () => {
       const response = await fetch(`/api/candidates/${candidateId}/notes`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -74,8 +73,17 @@ export default function NotesClient({
       });
 
       if (!response.ok) throw new Error("Failed to create note");
+      return response.json();
+    })();
 
-      const note = await response.json();
+    toast.promise(createPromise, {
+      loading: "Adding note...",
+      success: "Note added",
+      error: "Failed to create note",
+    });
+
+    try {
+      const note = await createPromise;
       setNotes([note, ...notes]);
       setNewNote("");
       setCallAnswered(false);
@@ -83,8 +91,8 @@ export default function NotesClient({
       setSmsSent(false);
       setEmailSent(false);
       router.refresh();
-    } catch (err: any) {
-      setError(err.message || "Failed to create note");
+    } catch {
+      // error shown via toast
     } finally {
       setLoading(false);
     }
@@ -94,14 +102,13 @@ export default function NotesClient({
     // Require at least a note OR an activity to be selected
     const hasActivity = editCallAnswered || editVoicemailLeft || editSmsSent || editEmailSent;
     if (!editContent.trim() && !hasActivity) {
-      setError("Please add a note or select at least one activity");
+      toast.error("Please add a note or select at least one activity");
       return;
     }
 
     setLoading(true);
-    setError(null);
 
-    try {
+    const updatePromise = (async () => {
       const response = await fetch(
         `/api/candidates/${candidateId}/notes/${noteId}`,
         {
@@ -118,8 +125,17 @@ export default function NotesClient({
       );
 
       if (!response.ok) throw new Error("Failed to update note");
+      return response.json();
+    })();
 
-      const updatedNote = await response.json();
+    toast.promise(updatePromise, {
+      loading: "Saving changes...",
+      success: "Note updated",
+      error: "Failed to update note",
+    });
+
+    try {
+      const updatedNote = await updatePromise;
       setNotes(notes.map((n) => (n.id === noteId ? updatedNote : n)));
       setEditingId(null);
       setEditContent("");
@@ -128,35 +144,56 @@ export default function NotesClient({
       setEditSmsSent(false);
       setEditEmailSent(false);
       router.refresh();
-    } catch (err: any) {
-      setError(err.message || "Failed to update note");
+    } catch {
+      // error shown via toast
     } finally {
       setLoading(false);
     }
   };
 
-  const handleDeleteNote = async (noteId: string) => {
-    if (!confirm("Are you sure you want to delete this note?")) return;
+  const undoDeleteRef = useRef(false);
 
-    setLoading(true);
-    setError(null);
+  const handleDeleteNote = (noteId: string) => {
+    const noteToDelete = notes.find((n) => n.id === noteId);
+    if (!noteToDelete) return;
 
+    // Optimistically remove
+    setNotes((prev) => prev.filter((n) => n.id !== noteId));
+    undoDeleteRef.current = false;
+
+    toast("Note deleted", {
+      action: {
+        label: "Undo",
+        onClick: () => {
+          undoDeleteRef.current = true;
+          // Restore the note in its original position
+          setNotes((prev) => {
+            const restored = [...prev, noteToDelete].sort(
+              (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+            );
+            return restored;
+          });
+        },
+      },
+      duration: 5000,
+      onAutoClose: () => executeDelete(noteId),
+      onDismiss: () => executeDelete(noteId),
+    });
+  };
+
+  const executeDelete = async (noteId: string) => {
+    if (undoDeleteRef.current) return;
     try {
       const response = await fetch(
         `/api/candidates/${candidateId}/notes/${noteId}`,
-        {
-          method: "DELETE",
-        }
+        { method: "DELETE" }
       );
-
       if (!response.ok) throw new Error("Failed to delete note");
-
-      setNotes(notes.filter((n) => n.id !== noteId));
       router.refresh();
-    } catch (err: any) {
-      setError(err.message || "Failed to delete note");
-    } finally {
-      setLoading(false);
+    } catch {
+      toast.error("Failed to delete note. Restoring...");
+      // Re-fetch to restore state
+      router.refresh();
     }
   };
 
@@ -180,12 +217,6 @@ export default function NotesClient({
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">
-      {error && (
-        <div className="bg-destructive/15 border border-destructive/30 text-destructive px-4 py-3 rounded-lg">
-          <p className="text-sm font-medium">{error}</p>
-        </div>
-      )}
-
       {/* Create new note */}
       <Card className="border-2 shadow-sm">
         <CardHeader>

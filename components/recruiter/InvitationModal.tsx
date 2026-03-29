@@ -3,13 +3,13 @@
 import { useState, useEffect, useCallback } from "react";
 import { toast } from "sonner";
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-} from "@/components/ui/dialog";
+  ResponsiveDialog,
+  ResponsiveDialogContent,
+  ResponsiveDialogHeader,
+  ResponsiveDialogTitle,
+  ResponsiveDialogDescription,
+  ResponsiveDialogFooter,
+} from "@/components/ui/responsive-dialog";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -180,7 +180,7 @@ Looking forward to hearing from you!`;
 
   async function handleSend() {
     setSending(true);
-    try {
+    const sendPromise = (async () => {
       const res = await fetch(`/api/passive-profiles/${profileId}/invite`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -194,30 +194,36 @@ Looking forward to hearing from you!`;
         const data = await res.json();
         throw new Error(data.error || "Failed to send invitation");
       }
+    })();
 
-      toast.success("Invitation sent successfully!");
+    toast.promise(sendPromise, {
+      loading: "Sending invitation...",
+      success: `Invitation sent to ${profileName}`,
+      error: (err) => err instanceof Error ? err.message : "Failed to send invitation",
+    });
+
+    try {
+      await sendPromise;
       onClose();
-    } catch (err) {
-      toast.error(
-        err instanceof Error ? err.message : "Failed to send invitation"
-      );
+    } catch {
+      // error shown via toast
     } finally {
       setSending(false);
     }
   }
 
   return (
-    <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
-      <DialogContent className="sm:max-w-[520px]">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
+    <ResponsiveDialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
+      <ResponsiveDialogContent className="sm:max-w-[520px]">
+        <ResponsiveDialogHeader>
+          <ResponsiveDialogTitle className="flex items-center gap-2">
             <Send className="h-5 w-5" />
             Send Interview Invitation
-          </DialogTitle>
-          <DialogDescription>
+          </ResponsiveDialogTitle>
+          <ResponsiveDialogDescription>
             Invite {profileName} to interview on Think5.
-          </DialogDescription>
-        </DialogHeader>
+          </ResponsiveDialogDescription>
+        </ResponsiveDialogHeader>
 
         <StepIndicator currentStep={step} />
 
@@ -288,7 +294,7 @@ Looking forward to hearing from you!`;
               </Card>
             )}
 
-            <DialogFooter className="flex-row justify-between sm:justify-between">
+            <ResponsiveDialogFooter className="flex-row justify-between sm:justify-between">
               <Button
                 variant="ghost"
                 size="sm"
@@ -304,7 +310,7 @@ Looking forward to hearing from you!`;
                 Next
                 <ArrowRight className="h-4 w-4 ml-1" />
               </Button>
-            </DialogFooter>
+            </ResponsiveDialogFooter>
           </div>
         )}
 
@@ -326,7 +332,7 @@ Looking forward to hearing from you!`;
               </p>
             </div>
 
-            <DialogFooter className="flex-row justify-between sm:justify-between">
+            <ResponsiveDialogFooter className="flex-row justify-between sm:justify-between">
               <Button variant="outline" onClick={handleBack}>
                 <ArrowLeft className="h-4 w-4 mr-1" />
                 Back
@@ -335,7 +341,7 @@ Looking forward to hearing from you!`;
                 Next
                 <ArrowRight className="h-4 w-4 ml-1" />
               </Button>
-            </DialogFooter>
+            </ResponsiveDialogFooter>
           </div>
         )}
 
@@ -393,7 +399,7 @@ Looking forward to hearing from you!`;
               </CardContent>
             </Card>
 
-            <DialogFooter className="flex-row justify-between sm:justify-between">
+            <ResponsiveDialogFooter className="flex-row justify-between sm:justify-between">
               <Button variant="outline" onClick={handleBack} disabled={sending}>
                 <ArrowLeft className="h-4 w-4 mr-1" />
                 Back
@@ -406,10 +412,10 @@ Looking forward to hearing from you!`;
                 )}
                 {sending ? "Sending..." : "Send Invitation"}
               </Button>
-            </DialogFooter>
+            </ResponsiveDialogFooter>
           </div>
         )}
-      </DialogContent>
-    </Dialog>
+      </ResponsiveDialogContent>
+    </ResponsiveDialog>
   );
 }

@@ -1,9 +1,14 @@
 /**
  * Conversation Summary Generator
  *
- * Generates a structured summary of interview conversations for context
- * compression. Used when transcript exceeds the token budget for Gemini
- * context injection — early turns are replaced by this summary.
+ * @deprecated This module uses heuristic regex extraction which is being replaced
+ * by the LLM-powered knowledge graph pipeline (inngest/functions/update-aria-memory.ts).
+ * The knowledge graph extracts verified claims, behavioral signals, technical stack,
+ * timeline, and notable quotes via Gemini — far richer than regex pattern matching.
+ *
+ * This module is kept as a zero-latency fallback for reconnect context until
+ * the knowledge graph is fully integrated into the rehydration flow.
+ * New code should read from Interview.knowledgeGraph instead.
  *
  * Heuristic extraction (no LLM call — zero latency):
  * 1. Interviewer turns: extract first sentence (the question)
@@ -45,6 +50,10 @@ function firstSentence(text: string): string {
 /**
  * Extract key claims from candidate responses — sentences containing
  * numbers, percentages, company/tech terms, or action verbs.
+ *
+ * @deprecated Use Interview.knowledgeGraph.verified_claims instead.
+ * The LLM knowledge graph (update-aria-memory.ts) extracts richer,
+ * semantically verified claims via Gemini rather than regex heuristics.
  */
 function extractKeyClaims(text: string): string[] {
   const sentences = text.split(/(?<=[.!?])\s+/).filter((s) => s.length > 10);
@@ -67,6 +76,10 @@ function extractKeyClaims(text: string): string[] {
 
 /**
  * Generate a structured conversation summary from transcript data.
+ *
+ * @deprecated Kept as a zero-latency fallback for reconnect context compression.
+ * Prefer Interview.knowledgeGraph for semantic interview memory.
+ * See inngest/functions/update-aria-memory.ts for the LLM-powered replacement.
  *
  * @param transcript Full interview transcript
  * @param moduleScores Completed module scores

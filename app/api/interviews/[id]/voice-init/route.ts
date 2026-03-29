@@ -139,6 +139,13 @@ export async function POST(
     // Merge client-provided context with server-side persisted state (server wins for memory fields)
     if (reconnect && reconnectContext) {
       const serverState = await getSessionState(id);
+
+      // Fetch LLM-powered knowledge graph from Postgres (built by inngest/update-aria-memory)
+      const interviewWithGraph = await prisma.interview.findUnique({
+        where: { id },
+        select: { knowledgeGraph: true },
+      });
+
       fullPrompt = buildReconnectSystemPrompt(fullPrompt, {
         questionCount: reconnectContext.questionCount || serverState?.questionCount || 0,
         moduleScores: serverState?.moduleScores || reconnectContext.moduleScores || [],
@@ -150,6 +157,8 @@ export async function POST(
         flaggedFollowUps: serverState?.flaggedFollowUps,
         candidateProfile: serverState?.candidateProfile,
         sessionSummary: serverState?.sessionSummary,
+        // LLM-powered semantic memory from knowledge graph pipeline
+        knowledgeGraph: interviewWithGraph?.knowledgeGraph as Record<string, unknown> | null,
       });
     }
 
