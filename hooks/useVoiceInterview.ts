@@ -139,6 +139,7 @@ export function useVoiceInterview(
   const askedQuestionsRef = useRef<string[]>([]); // Question dedup: track AI questions to prevent repeats
   const reconnectTokenRef = useRef<string>(""); // HMAC-signed reconnect token from server
   const reconnectStartTimeRef = useRef<number>(0); // Tracks reconnect latency for SLO
+  const poorQualityCountRef = useRef(0); // Debounce: consecutive "poor" checks before triggering
 
   // ── Audio Resource Cleanup Helper ────────────────────────────────────
   // Called before reconnect and on unmount to prevent resource leaks
@@ -666,11 +667,24 @@ export function useVoiceInterview(
         return;
       }
 
-      // 1. Get config from server
+      // 1. Get config from server — pass reconnect context if resuming
+      const isReconnect = transcriptRef.current.length > 0;
+      const initBody: Record<string, unknown> = { accessToken };
+      if (isReconnect) {
+        initBody.reconnect = true;
+        initBody.reconnectContext = {
+          questionCount: questionCountRef.current,
+          moduleScores: moduleScoresRef.current,
+          askedQuestions: askedQuestionsRef.current,
+          currentModule: moduleScoresRef.current.length > 0
+            ? moduleScoresRef.current[moduleScoresRef.current.length - 1].module
+            : null,
+        };
+      }
       const initRes = await fetch(`/api/interviews/${interviewId}/voice-init`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ accessToken }),
+        body: JSON.stringify(initBody),
       });
 
       if (!initRes.ok) {
@@ -889,7 +903,7 @@ export function useVoiceInterview(
                   headers: { "Content-Type": "application/json" },
                   body: JSON.stringify({
                     reconnectToken: reconnectTokenRef.current,
-                    clientCheckpointDigest: null, // Server computes if missing
+                    clientTranscriptLength: transcriptRef.current.length,
                     clientTurnIndex: transcriptRef.current.length - 1,
                   }),
                 });
@@ -924,6 +938,11 @@ export function useVoiceInterview(
               setConnectionQuality("good");
               reportSLOEvent("session.reconnect.success_rate", true);
               reportSLOEvent("session.reconnect.context_loss.rate", true);
+              // Record reconnect latency
+              if (reconnectStartTimeRef.current > 0) {
+                const latencyMs = Date.now() - reconnectStartTimeRef.current;
+                console.log(`[Voice] Reconnect succeeded in ${latencyMs}ms`);
+              }
             } catch {
               setIsReconnecting(false);
               setReconnectPhase(null);
@@ -947,26 +966,31 @@ export function useVoiceInterview(
         }
       };
 
-      // 6. Send greeting or restore context on reconnect
+      // 6. Send greeting or restore FULL context on reconnect
       const existingTranscript = transcriptRef.current;
       if (existingTranscript.length > 0) {
-        // F12: Restore last 12 entries (6 exchanges) with validation and system instruction
-        console.log("[Voice] Reconnecting — restoring transcript context...");
+        // Send up to 80 entries (~40 exchanges) for deep context restoration
+        console.log(`[Voice] Reconnecting — restoring ${Math.min(existingTranscript.length, 80)} of ${existingTranscript.length} transcript entries...`);
         const recentEntries = existingTranscript
-          .slice(-12) // Last 6 exchanges (up from 3)
-          .filter((entry) => entry.content && entry.content.trim().length > 0); // Validate non-empty
+          .slice(-80) // Up to 40 exchanges — uses Gemini's 128K context window
+          .filter((entry) => entry.content && typeof entry.content === "string" && entry.content.trim().length > 0);
         const contextTurns = recentEntries.map((entry) => ({
           role: entry.role === "interviewer" ? "model" : "user",
           parts: [{ text: entry.content }],
         }));
+
+        // Build conversation summary for Gemini to understand interview state
+        const qCount = questionCountRef.current;
+        const scores = moduleScoresRef.current;
+        const scoresSummary = scores.length > 0
+          ? scores.map((s) => `${s.module}: ${s.score}/10`).join(", ")
+          : "none yet";
+        const summaryText = `[RECONNECT — SESSION RESUMED. Questions completed: ${qCount}. Modules scored: ${scoresSummary}. Total transcript entries: ${existingTranscript.length}. DO NOT re-introduce yourself. DO NOT repeat any prior questions. Say "We're back, let's continue." and resume the conversation thread.]`;
+
         ws.send(JSON.stringify({
           clientContent: {
             turns: [
-              // F12: System-level instruction instead of user turn for context restoration
-              {
-                role: "model",
-                parts: [{ text: `[Session reconnected. The following is the recent conversation history. Continue the interview seamlessly without re-introducing yourself or repeating questions.${askedQuestionsRef.current.length > 0 ? `\n\nQuestions already asked (DO NOT repeat these):\n${askedQuestionsRef.current.slice(-10).map((q, i) => `${i + 1}. ${q.slice(0, 120)}`).join("\n")}` : ""}]` }],
-              },
+              { role: "model", parts: [{ text: summaryText }] },
               ...contextTurns,
             ],
             turnComplete: true,
@@ -1091,26 +1115,36 @@ export function useVoiceInterview(
         }
 
         const silenceMs = Date.now() - lastMessageTimeRef.current;
-        // Only trigger heartbeat timeout when AI is idle/listening — NOT during thinking/speaking
-        // (Gemini goes quiet during long candidate responses and during its own processing)
-        const aiIdle = aiStateRef.current === "listening" || aiStateRef.current === "idle";
-        if (silenceMs > 45_000 && aiIdle && !tabHiddenRef.current) {
-          console.warn("[Voice] Heartbeat timeout — no server message for 45s, triggering reconnect");
+        // Only trigger heartbeat timeout when AI is truly idle — NOT during thinking/speaking/listening
+        // Increased to 60s: Gemini processing + long candidate pauses can legitimately exceed 45s
+        const aiIdle = aiStateRef.current === "idle";
+        if (silenceMs > 60_000 && aiIdle && !tabHiddenRef.current) {
+          console.warn("[Voice] Heartbeat timeout — no server message for 60s, triggering reconnect");
           intentionalCloseRef.current = false;
           ws2.close(4000, "Heartbeat timeout");
         }
       }, 20_000); // Check every 20s
 
       // 10. Start connection quality monitoring
+      // AI-state-aware: don't flag "poor" when Gemini is naturally silent (speaking/processing/thinking)
       qualityCheckIntervalRef.current = setInterval(() => {
         if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+        if (reconnectAttemptsRef.current > 0) return; // Skip during reconnect
         const gap = Date.now() - lastMessageTimeRef.current;
-        if (gap < 2_000) {
+        const aiActive = aiStateRef.current === "speaking" || aiStateRef.current === "thinking";
+        if (gap < 5_000) {
           setConnectionQuality("good");
-        } else if (gap < 5_000) {
-          setConnectionQuality("fair");
+          poorQualityCountRef.current = 0;
+        } else if (gap < 15_000 || aiActive) {
+          // During AI speaking/thinking, treat as "fair" at most (Gemini goes quiet naturally)
+          setConnectionQuality(gap < 8_000 ? "good" : "fair");
+          poorQualityCountRef.current = 0;
         } else {
-          setConnectionQuality("poor");
+          // Only set "poor" after 2 consecutive checks (debounce)
+          poorQualityCountRef.current++;
+          if (poorQualityCountRef.current >= 2) {
+            setConnectionQuality("poor");
+          }
         }
       }, 5_000); // Check every 5s
 

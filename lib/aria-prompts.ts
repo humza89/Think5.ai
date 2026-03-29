@@ -430,6 +430,70 @@ Reliability, continuity, and auditability are equal in importance to conversatio
 In every turn, produce exactly one clear, natural interviewer response that ends with one relevant question unless the conversation clearly requires a brief acknowledgment, recovery, or closing statement instead.`;
 }
 
+export interface ReconnectContext {
+  questionCount: number;
+  moduleScores: Array<{ module: string; score: number; reason: string }>;
+  askedQuestions: string[];
+  currentModule: string | null;
+  candidateName: string;
+}
+
+/**
+ * Build a reconnect-aware system prompt that prevents Aria from re-introducing
+ * herself and ensures continuity after a network interruption.
+ *
+ * Appends a RECONNECT DIRECTIVE to the base prompt with full interview state.
+ */
+export function buildReconnectSystemPrompt(
+  basePrompt: string,
+  context: ReconnectContext
+): string {
+  const { questionCount, moduleScores, askedQuestions, currentModule, candidateName } = context;
+
+  const scoresSummary = moduleScores.length > 0
+    ? moduleScores.map((s) => `- ${s.module}: ${s.score}/10 (${s.reason})`).join("\n")
+    : "No modules scored yet.";
+
+  const questionsList = askedQuestions.length > 0
+    ? askedQuestions.map((q, i) => `${i + 1}. ${q.slice(0, 150)}`).join("\n")
+    : "No questions tracked yet.";
+
+  const reconnectDirective = `
+
+## ⚠️ RECONNECT DIRECTIVE — MANDATORY OVERRIDE
+This is a RESUMED session after a technical interruption. The following rules OVERRIDE the opening instructions above.
+
+**DO NOT:**
+- Re-introduce yourself
+- Say "Hi ${candidateName}" or "Thanks for joining"
+- Explain the interview format again
+- Start from the beginning
+- Ask any question that was already asked (see list below)
+
+**DO:**
+- Say ONE brief sentence: "We're back. Let's continue where we left off."
+- Resume the exact conversation thread that was interrupted
+- Reference the candidate's prior answers naturally
+- Continue from question ${questionCount + 1}
+
+## INTERVIEW STATE AT RECONNECT
+- Questions completed: ${questionCount}
+- Current section: ${currentModule || "Unknown — infer from transcript context"}
+- Module scores so far:
+${scoresSummary}
+
+## QUESTIONS ALREADY ASKED (DO NOT REPEAT ANY OF THESE)
+${questionsList}
+
+## RECONNECT BEHAVIOR
+- Pick up the conversation mid-flow, not from scratch
+- If the last exchange was incomplete, ask the candidate to briefly recap: "You were telling me about X — what was the key outcome?"
+- Maintain the same difficulty level and tone as before the interruption
+- Do NOT apologize more than once for the interruption`;
+
+  return basePrompt + reconnectDirective;
+}
+
 export function countQuestionsFromTranscript(
   transcript: Array<{ role: string; content: string }>
 ): number {

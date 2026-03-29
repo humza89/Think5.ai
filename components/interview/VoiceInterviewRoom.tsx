@@ -243,13 +243,22 @@ export function VoiceInterviewRoom({
   }, [interviewState, isPaused, toggleMic, endInterview, pauseInterview, resumeInterview]);
 
   // ── Progressive Degradation ─────────────────────────────────────
+  // Toast fires ONCE per session (no reset on "good") and only after 30s of persistent "poor"
   const poorNotifiedRef = useRef(false);
+  const poorSinceRef = useRef<number | null>(null);
   useEffect(() => {
-    if (connectionQuality === "poor" && !poorNotifiedRef.current) {
-      poorNotifiedRef.current = true;
-      toast.warning("Switching to low-bandwidth mode — connection quality degraded.", { duration: 5000 });
-    } else if (connectionQuality === "good") {
-      poorNotifiedRef.current = false;
+    if (connectionQuality === "poor") {
+      // Track when quality first became poor
+      if (!poorSinceRef.current) poorSinceRef.current = Date.now();
+      // Only show toast if poor for 30+ consecutive seconds AND never shown before
+      const poorDuration = Date.now() - poorSinceRef.current;
+      if (poorDuration >= 30_000 && !poorNotifiedRef.current) {
+        poorNotifiedRef.current = true; // Never resets — once per session
+        toast.info("Connection quality degraded. Your responses are safely backed up.", { duration: 3000 });
+      }
+    } else {
+      // Reset the "poor since" timer (but NOT the notification flag)
+      poorSinceRef.current = null;
     }
     if (connectionQuality === "fair" || connectionQuality === "poor") {
       if (!degradationTimerRef.current) {

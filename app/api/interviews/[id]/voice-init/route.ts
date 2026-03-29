@@ -8,13 +8,13 @@
 
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { buildAriaVoicePrompt } from "@/lib/aria-prompts";
+import { buildAriaVoicePrompt, buildReconnectSystemPrompt } from "@/lib/aria-prompts";
 import { planToSystemContext } from "@/lib/interview-planner";
 import { getInterviewTools } from "@/lib/gemini-live";
 import { checkCandidateEligibility } from "@/lib/interview-eligibility";
 import { logInterviewActivity, getClientIp } from "@/lib/interview-audit";
 import { isValidTransition } from "@/lib/interview-state-machine";
-import { acquireSessionLock, saveSessionState, generateReconnectToken } from "@/lib/session-store";
+import { acquireSessionLock, saveSessionState, getSessionState, generateReconnectToken } from "@/lib/session-store";
 import { recordSLOEvent } from "@/lib/slo-monitor";
 import { classifyError } from "@/lib/error-classification";
 import * as Sentry from "@sentry/nextjs";
@@ -29,7 +29,7 @@ export async function POST(
 
   try {
     const body = await request.json();
-    const { accessToken } = body;
+    const { accessToken, reconnect, reconnectContext } = body;
 
     if (!accessToken) {
       return Response.json({ error: "Access token required" }, { status: 400 });
@@ -101,8 +101,8 @@ export async function POST(
       );
     }
 
-    // Build system prompt
-    const systemPrompt = buildAriaVoicePrompt({
+    // Build system prompt — reconnect-aware
+    const basePrompt = buildAriaVoicePrompt({
       interviewType: interview.type as "TECHNICAL" | "BEHAVIORAL" | "DOMAIN_EXPERT" | "LANGUAGE" | "CASE_STUDY",
       candidateName: interview.candidate.fullName,
       candidateTitle: interview.candidate.currentTitle,
@@ -112,10 +112,21 @@ export async function POST(
       resumeText: interview.candidate.resumeText,
     });
 
-    let fullPrompt = systemPrompt;
+    let fullPrompt = basePrompt;
     if (interview.interviewPlan) {
       const planContext = planToSystemContext(interview.interviewPlan as any);
       fullPrompt += "\n\n" + planContext;
+    }
+
+    // On reconnect: enrich system prompt with interview state so Gemini resumes seamlessly
+    if (reconnect && reconnectContext) {
+      fullPrompt = buildReconnectSystemPrompt(fullPrompt, {
+        questionCount: reconnectContext.questionCount || 0,
+        moduleScores: reconnectContext.moduleScores || [],
+        askedQuestions: reconnectContext.askedQuestions || [],
+        currentModule: reconnectContext.currentModule || null,
+        candidateName: interview.candidate.fullName,
+      });
     }
 
     // Get tool definitions
@@ -140,25 +151,39 @@ export async function POST(
     // Audit log
     logInterviewActivity({
       interviewId: id,
-      action: "interview.voice_started",
+      action: reconnect ? "interview.voice_reconnected" : "interview.voice_started",
       userId: interview.candidate.id,
       userRole: "candidate",
       ipAddress: getClientIp(request.headers),
     }).catch(() => {});
 
-    // Initialize durable session state with reconnect token
+    // Initialize or preserve durable session state
     const reconnectToken = generateReconnectToken(id);
-    await saveSessionState(id, {
-      interviewId: id,
-      transcript: [],
-      moduleScores: [],
-      questionCount: 0,
-      reconnectToken,
-      lastActiveAt: new Date().toISOString(),
-      checkpointDigest: "",
-      lastTurnIndex: -1,
-      reconnectCount: 0,
-    });
+    if (reconnect) {
+      // RECONNECT: Preserve existing session state, only update token and timestamp
+      const existingState = await getSessionState(id);
+      if (existingState) {
+        existingState.reconnectToken = reconnectToken;
+        existingState.lastActiveAt = new Date().toISOString();
+        existingState.reconnectCount = (existingState.reconnectCount || 0) + 1;
+        await saveSessionState(id, existingState);
+        console.log(`[voice-init] RECONNECT #${existingState.reconnectCount}: preserved ${existingState.transcript.length} transcript entries, ${existingState.questionCount} questions`);
+      } else {
+        // No existing state found (edge case) — initialize fresh
+        await saveSessionState(id, {
+          interviewId: id, transcript: [], moduleScores: [], questionCount: 0,
+          reconnectToken, lastActiveAt: new Date().toISOString(),
+          checkpointDigest: "", lastTurnIndex: -1, reconnectCount: 1,
+        });
+      }
+    } else {
+      // FIRST CONNECT: Initialize fresh state
+      await saveSessionState(id, {
+        interviewId: id, transcript: [], moduleScores: [], questionCount: 0,
+        reconnectToken, lastActiveAt: new Date().toISOString(),
+        checkpointDigest: "", lastTurnIndex: -1, reconnectCount: 0,
+      });
+    }
 
     // Record successful start SLO
     await recordSLOEvent("interview.start.success_rate", true);
