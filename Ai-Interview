@@ -1,0 +1,382 @@
+# Enterprise-Grade Onboarding and AI-Interview Platform Blueprint Benchmarking Micro1 and Mercor
+
+## Executive summary
+
+Micro1 and Mercor are converging on a similar core product: **high-throughput, AI-mediated vetting** that produces **recruiter-ready evidence** (structured profiles + interviews + evaluations) at scale. Micro1’s public documentation reveals a *highly configurable AI interviewer* (“Zara”) with **modular interview types**, a **multi-modal composite score (0–100%)**, and **optional proctoring** that can enforce full-screen share + webcam + single-monitor constraints, producing a **shareable interview report** (video + transcript + subscores). citeturn10view0turn8view0turn7view0turn9view0turn28view0 Mercor’s public docs emphasize a **standard AI interview (~20 minutes), recorded and transcribed**, generally **reusable across applications**, with **retake mechanics**, **explicit integrity rules** (including restrictions on LLM usage), and a broader “assessment-first” posture (assessments are reused across listings; copy/paste and AI usage can be restricted). citeturn33view0turn17view1turn18view0
+
+To “clone or improve” on both for an **enterprise-grade onboarding + AI-interview platform** (with your requirements: **mandatory resume + LinkedIn**, **recruiter invites**, **self-signup gated by admin approval**, and **interview access only after approval**), the architecture and product spec should be designed around:
+
+- **High-signal data capture upfront** (resume + LinkedIn mandatory; structured preferences; verified constraints) with automated parsing and consistency checks.
+- **A governed approval funnel** (admin review queue, risk flags, and “accept/reject/request-info” workflows) before interviews—particularly for self-signups (your gatekeeping rule).
+- **An interview engine that is modular and evidence-rich**: role- and candidate-personalized question plans, multi-modal capture (video/audio + optional screen share), time-aligned transcripts, and rubric-based scoring with versioned models and audit logs.
+- **Candidate experience and trust**: transparent recording/usage notices, practice modes, accessibility, and well-scoped feedback—because applicant trust is materially affected by “tangibility and transparency” features in AI video interviews. citeturn2search3
+- **Compliance by design**: jurisdictions like NYC restrict “automated employment decision tools” unless annual bias-audit and notice requirements are met, and GDPR restricts decisions “based solely on automated processing” that significantly affect individuals—both directly relevant to AI-screening products. citeturn2search2turn24search0turn24search6
+
+This report details what Micro1 and Mercor publicly reveal about interview depth, question types, personalization, scoring, recording/storage, and feedback loops; proposes an enterprise-grade onboarding and governance model; evaluates LLM and voice/media stack options (OpenAI, Google Gemini/Vertex, Anthropic Claude, ElevenLabs); and provides a blueprint including a data model, taxonomy approach (O*NET/ESCO + embeddings), recommended API endpoints, event flows, and a database schema table.
+
+## Micro1 vs Mercor: what their public materials reveal about AI interviews
+
+### Interview depth and structure
+
+Micro1 exposes a **modular interview model** in its knowledge base: “skills” are conversational modules (~5 minutes each) that drive dynamic questioning and are scored on a 4-level ladder (Not Experienced → Junior → Experienced → Senior). citeturn8view0 Micro1’s “Standard interview” supports assessing up to **5 skills** and adding up to **10 custom questions** (and other interview types allow more custom questions or coding-only formats). citeturn1search12turn5search11
+
+Mercor’s AI interview is commonly described as a **single interview experience (~20 minutes)**, though duration can vary; Mercor explicitly notes some interviews require “deep discussion of prior experience,” while others test “language or reasoning skills,” and some include a whiteboard and/or full-screen screen sharing. citeturn33view0turn33view3
+
+### Question types, personalization, and “scripted vs adaptive” modes
+
+Micro1 is very explicit that its interviews are **adaptive and not strictly scripted**: skill modules dynamically generate questions and follow-ups (no guarantee candidates get the same questions), while “custom questions” are verbatim scripted prompts where every candidate receives the same question and responses are scored on a simple rubric (Not Impressive / Average / Good). citeturn8view0turn5search0 Micro1’s candidate-facing pages reinforce this: “No two candidates receive the same questions,” and Zara adapts to a candidate’s background and often role requirements. citeturn0search1
+
+Mercor states its AI interviewer **poses role-specific questions** and produces a transcript and evaluation. citeturn33view0 Mercor’s data/AI policy is more explicit about personalization inputs: it states the AI interviewer “generates questions based on your résumé and the job description,” transcribes responses, and evaluates performance. citeturn16view3
+
+### Scoring models and explainability signals
+
+Micro1 publishes a **composite “AI Match Score” (0–100%)** derived from **résumé analysis, structured interviews, live exercises, and soft skills evaluation**, and it can be customized via recruiter “Advanced Settings” instructions that change weighting/interpretation. citeturn10view0 Micro1 also publishes a **Talent Pool** feature that uses configurable certification rules (minimum skill ratings, soft-skill rating threshold, exercise threshold, and minimum proctoring score like 70%+) to automatically add qualifying candidates to a “Certified Talent Pool.” citeturn28view0
+
+Mercor’s public candidate docs do not describe an equivalent single composite score, but do emphasize that the AI interviewer “evaluates your performance,” and that completed steps (including interviews) can be reused across applications. citeturn33view0 Mercor’s assessments documentation is clearer about governance: many assessments are reused across listings; integrity restrictions can disable copy/paste and forbid using AI/LLM tools to generate responses; and humans may review assessments to verify suitability. citeturn17view1
+
+### Video vs text, recording, transcript access, and storage posture
+
+Micro1’s “Interview Report” includes **video recording + transcript** with interactive time navigation (“clicking on any sentence will jump the video to that moment”), and it explicitly notes low-resolution video is available immediately while high-resolution may take up to ~30 minutes to process. citeturn9view0 Micro1 also allows sharing a public URL to the report (with an explicit warning that anyone with the link can access it). citeturn9view0 Micro1’s candidate privacy notice states it uses **audio, video, and screen sharing** to generate assessments and proctoring score, and that “screen and camera” recordings are included in the AI interview report. citeturn6search3
+
+Mercor states it retains **video/audio recordings and an AI-generated transcript of official interviews** to evaluate candidacy and recommend profiles; it does **not sell interview data**; practice interviews are not shared with companies; and it does not share interview recordings or transcripts to candidates (stored internally for evaluation). citeturn33view0 Mercor also states interview data will not be used to train AI models and that it procures additional training data separately. citeturn33view0turn16view3
+
+### Candidate and recruiter feedback loops
+
+Micro1’s research write-up on “Zara: An LLM-based Candidate Interview Feedback System” describes a four-phase design: role-specific mock/practice interview → 20–40 minute AI-led interview with branching questioning → structured skills report (technical + CEFR-style soft-skill rubric) + follow-up feedback on request → automated email Q&A via vector search + GPT-4o with human escalation. citeturn31view0 It reports (in a “three-day production window”) 4,820 interviews, 10.7% requesting a full feedback letter, and 75% of candidate emails resolved without human involvement. citeturn31view0
+
+Mercor’s assessments page states “dedicated teams actively review feedback” to enhance AI systems and candidate experience, and that humans may review assessments. citeturn17view1 This implies a feedback loop, but Mercor’s public candidate docs emphasize that official interview recordings/transcripts are not shared to candidates. citeturn33view0
+
+### Product and valuation signals
+
+From a “procurement readiness” perspective, both companies signal scale and defensibility. TechCrunch reported Micro1 raised a $35M Series A at a $500M valuation and that Micro1 built Zara to interview/vet candidates (“experts”). citeturn13view0 TechCrunch also reported Mercor (a) targeting a $10B+ valuation on ~$450M run-rate revenue (Sept 2025) and later (b) confirming a $350M Series C at a $10B valuation (Oct 2025). citeturn15view0turn15view1
+
+## Enterprise onboarding and governance design aligned to your requirements
+
+### Candidate onboarding with mandatory resume + LinkedIn and self-signup gating
+
+Your requirements—**resume and LinkedIn are mandatory**; **recruiters can invite candidates by email with a unique link**; **candidates can self-register but must be approved by an admin before interviewing**—are consistent with enterprise-grade quality control and are conceptually similar to Mercor’s use of verification to reduce fraud/duplicates (phone verification) and Micro1’s use of proctoring/integrity tools to protect signal quality. citeturn19view0turn7view0
+
+A best-in-class candidate onboarding flow should be built as:
+
+Candidate identity and access:
+- Two entry modes: (1) recruiter-invite link (signed, expiring token), and (2) self-signup.
+- Self-signup creates a profile in `PENDING_ADMIN_APPROVAL` and **cannot start an interview session** until approved (hard authorization gate).
+
+Mandatory proof of professional history:
+- **Resume upload** + **LinkedIn URL** required to pass onboarding completeness.
+- Parse resume into structured experience/skills and cross-check with LinkedIn (consistency tests).
+- Because Mercor’s policy explicitly uses resume + public profiles (e.g., LinkedIn/GitHub) as signals for search and matching, this is aligned with market expectations—but your “LinkedIn required” rule is stricter than Mercor’s “LinkedIn or indicate you don’t have one.” citeturn16view3turn19view1
+
+Preferences and constraints (high-signal structured data):
+- Preferred locations, work mode, compensation expectations, job titles, preferred/excluded companies, availability, and work authorization.
+- Keep these structured (enums + ranges) so recruiters can filter and scoring can incorporate hard constraints.
+
+Trust and consent:
+- Explicit recording consent (video/audio; optional screen share) and clarity about how recordings are used and retained—this is especially important given that both Micro1 and Mercor retain recordings/transcripts for evaluation. citeturn6search3turn33view0
+
+### Recruiter onboarding and enterprise tenant setup
+
+Micro1’s KB shows a recruiter/tenant setup that includes interview configuration, company context/branding, team invites, and job workflows. citeturn0search7 Your enterprise onboarding should include:
+
+Enterprise identity and access:
+- Work email verification, domain-based tenant creation, optional manual review for suspicious domains.
+- RBAC roles (Admin, Recruiter, Hiring Manager, Auditor).
+- SSO readiness: OpenAI explicitly highlights SAML SSO for enterprise authentication; enterprise buyers expect comparable controls in your own product. citeturn4search0
+
+Role and interview definition:
+- Job creation creates a structured “ideal candidate profile,” required skills, weights, and constraints.
+- Interview template creation must support two paradigms (mirroring Micro1’s split):
+  - **Adaptive skill modules** (dynamic follow-ups, deeper evaluation).
+  - **Scripted compliance/standard questions** (fixed wording, consistent prompt + simple rubric). citeturn8view0turn6search4
+
+Inviting candidates:
+- Unique invite link per candidate, optional bulk upload, tracking from “invited → onboarding completed → pending admin approval → approved → interview completed.”
+- Micro1’s “Invite Applications to Interview” demonstrates multiple invite modes (copy link, manual invite, auto-invite, CSV upload). These are enterprise-essential, but your system must additionally integrate the **admin-approval gate** for self-signups and optionally also for invited candidates depending on policy. citeturn27view1
+
+### Admin onboarding and governance workflows
+
+Your platform’s “enterprise from day one” differentiator depends heavily on an admin layer with real operational tooling:
+
+Admin approval queue:
+- Queue for self-signups (and optionally high-risk invites) with automated “risk and quality” summaries (resume/LinkedIn consistency, skill confidence, flags).
+- Decisions: Approve, Reject (with reason codes), Request More Info, Hold.
+
+Governed model/rubric versioning:
+- Every interview template, rubric, and scorer model version is immutable once used; subsequent edits create a new version.
+- Micro1 emphasizes risk & security governance and layered mitigation; copying this posture is essential for enterprise sales. citeturn32search0
+
+Compliance exports:
+- Bias audit datasets and logs for customers in regulated jurisdictions (e.g., NYC AEDT law). citeturn2search2
+
+## AI interview engine: generation, recording, scoring, feedback, and dashboards
+
+### Interview generation: planning → real-time adaptation → evidence bundle
+
+A robust interview engine should use a two-stage approach:
+
+Interview plan generation (pre-session):
+- Inputs: structured job spec + required skills taxonomy + candidate resume parse + LinkedIn extracted signals + policy constraints (e.g., prohibited topics).
+- Output: a deterministic “interview plan” object (sections, question objectives, difficulty ramp, required evidence targets) that can be audited later.
+- This matches Micro1’s capability to tailor interviews by skill instructions and to customize weighting of the overall score. citeturn8view0turn10view0
+
+Real-time orchestration (session):
+- Adaptive follow-ups, clarifications, and branching based on candidate answers—consistent with Micro1’s dynamic skill modules and Mercor’s streaming interview behavior (including interrupt handling guidance). citeturn8view0turn33view3
+
+Evidence bundle (post-session):
+- Raw media (webcam video, mic audio; optional screen share), derived transcript with timestamps, proctoring events, subscores, and a composite score with explanations.
+- Micro1’s Interview Report is a strong public reference for an evidence bundle: interactive transcript-to-video navigation + report PDF + immediate low-res / delayed high-res. citeturn9view0
+
+### Video/audio recording and storage: enterprise-grade patterns
+
+Publicly, Micro1 and Mercor both retain recordings/transcripts; Micro1 includes screen+camera in the report and Mercor retains official interview recordings and transcripts for evaluation. citeturn6search3turn33view0
+
+Recommended storage architecture:
+- Store raw media in object storage (e.g., S3/GCS/Azure Blob) with envelope encryption (KMS) and per-tenant encryption keys (enterprise isolation).
+- Store derived artifacts (transcript segments, embeddings, scores) in a relational DB + vector DB (where needed).
+- Provide controlled access via short-lived signed URLs; avoid “anyone with the link can access” unless explicitly enabled (Micro1’s approach highlights the risk). citeturn9view0
+- Define retention policies per tenant and per artifact class (raw media vs transcript vs scores). OpenAI highlights retention controls for enterprise; your product must provide the same control surface to match procurement expectations. citeturn4search0turn4search12
+
+### Scoring: composite ranking plus explainable subscores
+
+Micro1’s composite “AI Match Score” (0–100%) is explicitly multi-modal (resume + interview + exercises + soft skills) and configurable by instructions. citeturn10view0 Micro1 also operationalizes certification thresholds via “Talent Pool” rules (skill ratings, soft skills rating, exercise rating, proctoring score). citeturn28view0
+
+A defensible scoring system should include:
+- A composite score for ranking, but never as the only decision. (This matters for GDPR automated decision-making constraints.) citeturn24search0turn24search6
+- Subscores aligned to explicit rubrics (skill modules, custom questions, soft skills, exercises, integrity/proctoring).
+- Model and rubric version stamps stored with every score (auditability).
+
+Soft skills: proceed carefully
+- Micro1 evaluates soft skills (critical thinking, empathy/listening, communication clarity, adaptability/composure) and rates them Average/Good/Excellent. citeturn11view0
+- Academic and practitioner literature warns that multimodal behavioral inference can create fairness/privacy risks; build soft-skill scoring as *text- and rubric-based* rather than facial-expression inference unless you have strong validated evidence and bias audits. (The Oxford Academic chapter notes growth in AI-scored video interviews and emphasizes both promise and risk management concerns.) citeturn2search11turn5search17
+
+### Integrity, proctoring, and anti-cheating
+
+Micro1 provides a clear proctoring reference implementation:
+- When proctoring is enabled, candidates must share entire screen, use webcam throughout, and limit setup to one screen; violations can suspend the interview until compliance is restored; proctoring is analyzed by “Ava” and yields a proctoring score with flagged behaviors and AI-generated response detection signals. citeturn7view0turn27view2  
+- Micro1 claims Ava catches 93% of cheaters and was trained on 30,000+ expert-labeled data points. citeturn27view2
+
+Mercor’s integrity approach is more policy- and UX-driven:
+- Explicit LLM usage policy: grammar/diction assistance allowed, but model-composed responses and certain uses (evaluating answers, generating rationales) are prohibited; AI-generated submissions can be flagged. citeturn18view0  
+- Assessments can disable copy/paste to deter plagiarism and AI-generated responses. citeturn17view1
+
+Recommendation:
+- Offer three integrity tiers: **none**, **light** (policy + telemetry + copy/paste controls), and **strict** (screen share + webcam + anomaly detection + proctoring score).
+- Treat proctoring as **optional per tenant** because proctoring can be interpreted as biometric/sensitive processing in some jurisdictions, increasing compliance burden and candidate friction (noting that proctoring privacy concerns are a documented market issue). citeturn6search11turn6search15
+
+### Feedback loops and recruiter dashboards
+
+Micro1 demonstrates that post-interview feedback and automated candidate support can be a major operational lever: practice interview, structured skills report, feedback letters for rejected applicants, and automated email handling with human escalation. citeturn31view0 Mercor reports human teams review feedback to improve systems, but with less transparency to candidates on official interview artifacts. citeturn17view1turn33view0
+
+For enterprise recruiting dashboards:
+- Provide a pipeline dashboard (invited → onboarding → pending approval → approved → interview completed → scored → shortlisted) and a “report bundle” viewer (video/transcript/scores).
+- If you allow report sharing externally, log every view and add watermarking; Micro1 warns about link-sharing risks. citeturn9view0
+
+## AI and voice/media stack evaluation and recommended architecture
+
+### LLM platform comparison: OpenAI vs Google Gemini/Vertex vs Anthropic Claude
+
+The table below focuses on capabilities relevant to real-time interviews, multimodal scoring, enterprise controls, and customization.
+
+| Criterion | OpenAI (API) | Google Gemini / Vertex AI | Anthropic Claude |
+|---|---|---|
+| Real-time interview support | Realtime API supports low-latency multimodal interaction (audio, image, text inputs; audio/text outputs) and can connect via WebRTC, WebSocket, or SIP. citeturn1search10turn20search3turn20search19 | Gemini Live API supports low-latency, real-time voice/video interactions, session lifecycle management, and WebSocket-based sessions. citeturn21search0turn21search1turn21search5turn21search2 | Claude is strong for reasoning and tool-use; multimodal (vision) is supported, and prompt caching is mature, but Anthropic docs do not position Claude as a first-class speech-to-speech real-time stack like OpenAI/Gemini Live. citeturn22search0turn22search2turn22search5 |
+| Fine-tuning / customization | OpenAI supports fine-tuning for some models; pricing page lists fine-tuning and also reinforcement fine-tuning for certain models. citeturn26view0 | Vertex AI supports supervised fine-tuning for Gemini models via tuning APIs. citeturn1search11turn1search19 | Anthropic’s glossary states the Claude API “does not currently offer fine-tuning” (directly). citeturn3search0 |
+| Cost levers | Batch API offers 50% lower costs with a 24-hour async window; prompt caching supported (including for Realtime). citeturn20search0turn20search1turn20search2 | Vertex pricing offers cached input token pricing; Google’s context caching materials describe significant discounts (e.g., 10% for cached tokens in some configurations). citeturn25view0turn21search6turn21search3 | Anthropic pricing states cache hits cost 10% of standard input price; has its own caching and batch modifiers. citeturn2search0turn22search5 |
+| Enterprise privacy posture | OpenAI enterprise privacy: “We do not train our models on your data by default,” plus retention controls and SAML SSO. citeturn4search0turn4search12 | Vertex AI “training restriction” states Google won’t use your data to train/fine-tune models without permission; zero retention options exist. citeturn3search2 | Anthropic privacy center states that for commercial products, inputs/outputs are not used to train models by default (with exceptions like explicit opt-in or safety review). citeturn22search3turn22search7 |
+| Tool use / agent integrations | Supports tool calling via modern OpenAI platform (not detailed here), plus Realtime sessions can incorporate structured events; WebRTC recommended with Agents SDK in docs. citeturn1search2turn20search3 | Live sessions with developer-controlled lifecycle; strong integration within Google Cloud ecosystem. citeturn21search1turn21search7 | Tool-use docs describe how Claude constructs a tool-use system prompt from tool definitions (useful for structured scoring pipelines). citeturn22search0 |
+
+### Voice/media layer: ElevenLabs vs “native” model audio
+
+ElevenLabs provides specialized TTS and STT APIs plus enterprise controls (data residency, zero retention mode for eligible enterprise customers, and a trust/compliance center). citeturn2search1turn2search9turn2search13turn2search5
+
+| Option | Strengths | Tradeoffs | Good fit for |
+|---|---|---|---|
+| OpenAI Realtime (speech-to-speech) | Single vendor for real-time conversation and transcription; supports WebRTC/SIP/WebSocket; caching benefits for multi-turn sessions. citeturn1search10turn20search2turn20search3 | Audio token costs can be high; vendor lock-in for voice experience. (Pricing shown per 1M audio tokens.) citeturn26view0 | Premium interviewer UX where latency is a top priority. |
+| Gemini Live (voice/video sessions) | Real-time voice/video; developer-managed sessions; works naturally in GCP enterprise environments. citeturn21search0turn21search1turn21search5 | Integration complexity if your stack isn’t already on GCP; cost comparability across “audio tokens” is not 1:1 between vendors (assumption). citeturn25view0 | Enterprises already standardized on GCP and requiring tight data governance controls. |
+| ElevenLabs STT/TTS + text LLM | Strong voice quality, feature depth, and enterprise options; transparent API pricing for STT (per hour) and TTS (per 1K characters). citeturn2search1turn2search9 | Two-vendor architecture; orchestration and latency tuning needed. | When voice branding/quality is paramount and you want decoupled STT/TTS economics. |
+
+### Pricing and cost estimates: how to model per-interview spend
+
+Because costs vary by model choice, token volume, and whether you run speech-to-speech vs STT/TTS+text, the most defensible approach is to publish a **cost model** (formula + assumptions) rather than a single number.
+
+Representative official price points (March 2026):
+- OpenAI Realtime (text tokens): e.g., gpt-realtime costs $4 / 1M input tokens and $16 / 1M output tokens; gpt-realtime-mini is $0.60 / 1M input and $2.40 / 1M output. citeturn26view0
+- OpenAI Realtime (audio tokens): gpt-realtime audio pricing is listed (e.g., $32 / 1M audio input tokens and $64 / 1M audio output tokens; gpt-realtime-mini audio listed as $10 / 1M input and $20 / 1M output). citeturn26view0
+- Vertex AI Gemini token pricing appears on the Vertex “Generative AI pricing” page with separate pricing for modalities (including audio for certain models) and cached inputs. citeturn25view0
+- OpenAI Batch API: “50% lower costs” for async processing over 24 hours. citeturn20search0turn26view0
+- ElevenLabs STT/TTS have explicit per-hour / per-character price tables. citeturn2search1
+
+A pragmatic, enterprise-friendly way to estimate:
+1. Treat *real-time interview conversation* as the premium cost center (latency-sensitive).
+2. Treat *scoring + report writing + aggregation* as batchable (cheap).
+
+Example estimate (explicitly an estimate):
+- Suppose your post-interview scoring consumes **30,000 input tokens** and produces **5,000 output tokens**. With OpenAI GPT-5.4 mini pricing ($0.750 / 1M input; $4.50 / 1M output), that’s roughly $0.0225 + $0.0225 ≈ **$0.045** per candidate for this step. citeturn26view0 (Estimate: token volumes.)
+- If you batch that scoring, you can cut costs by ~50% for that component. citeturn20search0turn26view0
+- If you transcribe with ElevenLabs STT and your interview is 20 minutes, that’s 1/3 hour. At **$0.22–$0.48 per additional hour** (varies by plan), that’s roughly **$0.07–$0.16**. citeturn2search1 (Estimate: assumes billed at “additional hour” rates.)
+
+Important caveat: “audio token” pricing across LLM vendors is not directly comparable because audio tokenization differs (assumption; vendors do not standardize). Use vendor pricing to compare *within vendor* and validate with real logs before committing to a single-vendor architecture.
+
+### Recommended architecture: hybrid by default, single-vendor per tenant when required
+
+For enterprise readiness and cost control, a **hybrid architecture** is generally best:
+
+- **Real-time interview**: choose either OpenAI Realtime (WebRTC) or Gemini Live (sessions over WebSockets) depending on your enterprise customer base (Azure/OpenAI vs GCP standardization). citeturn20search3turn21search1  
+- **Async scoring/reporting**: use cheaper text models, batch processing, and caching. OpenAI’s Batch API and prompt caching are built for this pattern. citeturn20search0turn20search1turn20search2  
+- **Optional second-opinion scoring**: route borderline cases to a “judge” model (could be a different vendor) to reduce single-model brittleness (design recommendation; assumption).
+
+A **single-vendor** approach can be offered as an enterprise option for customers who require vendor consolidation and contractual simplicity, but you should preserve abstraction layers to avoid long-term lock-in.
+
+## Data model, skill taxonomy normalization, APIs, and lifecycle flow
+
+### Skill and taxonomy normalization: O*NET/ESCO + embeddings
+
+To achieve Micro1/Mercor-level “search and match,” normalize skills and roles using public taxonomies:
+
+- O*NET (U.S. Department of Labor) describes occupations in terms of worker requirements (knowledge, skills, abilities) and tasks/work activities. citeturn23search0turn23search7  
+- ESCO (European Commission) provides a multilingual classification of skills/competences, qualifications, and occupations, with preferred/non-preferred terms across 28 languages and skill metadata. citeturn23search1turn23search16  
+- O*NET Resource Center provides an ESCO crosswalk and notes the mapping between ESCO and O*NET-SOC was produced via AI techniques with human validation—this is a strong precedent for an embeddings+human approach. citeturn3search7
+
+Recommended normalization pipeline:
+- Build a canonical `skills` table.
+- Ingest ESCO skills and O*NET skills/KSAs; store synonyms, descriptions, and hierarchy/relationships.
+- Use embeddings to map resume/LinkedIn extracted phrases to canonical skills; keep a human review workflow for uncertain mappings and for new/emerging skills.
+- Maintain tenant-specific overlays (“customer skill aliases”) without polluting the global taxonomy (enterprise customization).
+
+### Recommended API endpoints
+
+Below is a baseline API design (REST + streaming), scoped to your onboarding + interview lifecycle:
+
+Candidate:
+- `POST /v1/candidates/signup` → creates candidate + profile in `PENDING_ADMIN_APPROVAL`
+- `POST /v1/candidates/invites/claim` → claim recruiter invite token
+- `POST /v1/candidates/profile/resume` (upload) and `POST /v1/candidates/profile/linkedin`
+- `POST /v1/candidates/profile/preferences` (location/salary/titles/companies)
+- `GET /v1/candidates/status` (approval + onboarding completeness)
+- `POST /v1/candidates/interviews/{template_id}/start` (requires approved)
+- `POST /v1/candidates/interviews/{session_id}/events` (telemetry/proctoring)
+- `POST /v1/candidates/interviews/{session_id}/finish`
+
+Recruiter:
+- `POST /v1/tenants` (provision org) / `POST /v1/tenants/sso` (enterprise)
+- `POST /v1/jobs` and `POST /v1/interview-templates`
+- `POST /v1/candidate-invites` (email invite; optional bulk)
+- `GET /v1/reports/{session_id}` (secure report viewer + evidence bundle)
+- `POST /v1/reports/{session_id}/share` (scoped, expiring share token)
+
+Admin:
+- `GET /v1/admin/candidates?status=pending`
+- `POST /v1/admin/candidates/{id}/approve|reject|request-info`
+- `GET /v1/admin/audit-logs`
+- `GET /v1/admin/compliance/bias-audit-export`
+
+### Database schema table
+
+A minimal enterprise schema (Postgres suggested; JSONB for flexible subdocuments; object storage for media):
+
+| Table | Key columns | Purpose |
+|---|---|---|
+| `tenants` | `id`, `name`, `domain`, `region`, `sso_config`, `retention_policy_id` | Enterprise tenant boundary + governance. |
+| `users` | `id`, `tenant_id`, `email`, `role`, `status`, `mfa_enabled` | Recruiters/admins/auditors with RBAC. |
+| `candidates` | `id`, `global_user_id`, `source` (invite/self), `approval_status`, `created_at` | Enforces self-signup gating. |
+| `candidate_profiles` | `candidate_id`, `resume_asset_id`, `linkedin_url`, `parse_json`, `preferences_json`, `constraints_json` | Mandatory resume+LinkedIn + structured preferences. |
+| `candidate_invites` | `id`, `tenant_id`, `email`, `job_id`, `token_hash`, `expires_at`, `created_by` | Secure unique invite links. |
+| `jobs` | `id`, `tenant_id`, `title`, `jd_text`, `constraints_json`, `skill_weights_json`, `status` | Match target; drives interview personalization. |
+| `interview_templates` | `id`, `tenant_id`, `type`, `rubric_version`, `proctoring_policy`, `language_policy` | Modular templates (adaptive vs scripted). |
+| `interview_sessions` | `id`, `candidate_id`, `job_id`, `template_id`, `state`, `started_at`, `ended_at` | Interview lifecycle state machine. |
+| `media_assets` | `id`, `session_id`, `kind` (webcam/audio/screen), `storage_uri`, `codec`, `encryption_key_id` | Raw & derived media storage pointers. |
+| `transcripts` | `id`, `session_id`, `segments_json` (timecodes), `provider`, `version` | Time-aligned transcript like Micro1’s report UX. citeturn9view0 |
+| `scores` | `id`, `session_id`, `overall_score`, `subscores_json`, `explanations_json`, `model_versions_json` | Composite + explainability + versioning. |
+| `proctoring_events` | `id`, `session_id`, `event_type`, `severity`, `payload_json`, `timestamp` | Integrity flags and audit trail. |
+| `audit_logs` | `id`, `tenant_id`, `actor_id`, `action`, `object_type`, `object_id`, `payload_json`, `timestamp` | Enterprise audit logs for all sensitive operations. |
+
+### Mermaid timeline/flowchart: onboarding + interview lifecycle
+
+```mermaid
+flowchart TD
+  A[Recruiter creates Job + Interview Template] --> B[Recruiter invites Candidate via email\n(signed expiring link)]
+  C[Candidate self-signup] --> D[Profile created: PENDING_ADMIN_APPROVAL]
+  B --> E[Candidate onboarding starts]
+  D --> E
+
+  E --> F[Upload Resume (mandatory)\nProvide LinkedIn URL (mandatory)\nStructured preferences & constraints]
+  F --> G[Auto-parse + normalize skills\nResume↔LinkedIn consistency checks]
+
+  G --> H{Admin approval required?}
+  H -->|Self-signup: yes| I[Admin review queue\nApprove / Reject / Request info]
+  H -->|Invite: policy-based| I
+
+  I -->|Approved| J[Pre-interview system checks\ncamera/mic/screen share if required]
+  I -->|Rejected| K[Candidate notified\n(tenant-configurable feedback)]
+  I -->|Need more info| E
+
+  J --> L[AI Interview Session\nVoice/video + optional screen share]
+  L --> M[Transcribe + Score\nrubrics + subscores + integrity signals]
+  M --> N[Generate Evidence Bundle\nVideo + transcript + score + explanations]
+  N --> O[Recruiter dashboard updates\nfilters, ranking, report viewer]
+```
+
+## Security, compliance, scalability, anti-abuse, and cost optimization
+
+### Compliance landscape you must design for
+
+NYC AEDT (Local Law 144):
+- NYC states Local Law 144 prohibits using an “automated employment decision tool” unless it has undergone a bias audit within the prior year, audit information is publicly available, and required notices are provided. citeturn2search2  
+This implies your platform should support: bias audit data exports, public “bias audit summary” pages per tenant, and candidate notices.
+
+GDPR automation constraints:
+- GDPR Article 22 gives individuals the right not to be subject to decisions based solely on automated processing that have legal/similarly significant effects; Recital 71 explicitly references “e-recruiting practices” without human intervention. citeturn24search0turn24search6  
+Therefore: implement human-in-the-loop controls and ensure the platform supports review/override workflows.
+
+EEOC and disability discrimination:
+- EEOC guidance emphasizes federal discrimination laws protect workers when AI systems discriminate; DOJ ADA guidance addresses how AI can lead to disability discrimination in hiring. citeturn4search3turn4search7  
+Implication: avoid inaccessible interview designs, offer accommodations (captions, alternative formats), and monitor adverse impact risks.
+
+EU AI Act positioning:
+- Annex III lists employment-related high-risk use cases; Article 43 describes conformity assessment routes for high-risk systems. citeturn24search1turn4search2  
+If you sell into EU enterprise, you should be prepared to produce technical documentation, risk management, and governance evidence.
+
+### Data privacy and vendor compliance controls
+
+Vendor assurances matter for enterprise sales and must be reflected in your offer:
+- OpenAI enterprise privacy: no training on customer data by default, SAML SSO, encryption in transit/at rest, and retention controls (enterprise tiers). citeturn4search0  
+- OpenAI API data controls: API data not used for training unless you opt in. citeturn4search12  
+- Google Vertex AI: training restriction and documented zero data retention controls. citeturn3search2  
+- Anthropic: commercial inputs/outputs not used for training by default. citeturn22search3  
+- ElevenLabs: data residency configuration and enterprise “Zero Retention Mode” (restricted availability). citeturn2search9turn2search13turn2search5  
+
+### Anti-abuse and scalability measures
+
+Anti-abuse should be multi-layered:
+- Identity verification: Mercor uses passwordless email verification and phone verification to prevent fraudulent sign-ups and duplicate accounts. citeturn19view0  
+- Proctoring tiers: Micro1’s enforcement model shows what strict proctoring looks like (full screen share + webcam + single monitor + suspension on violation) and yields a proctoring score. citeturn7view0turn9view0  
+- LLM misuse policy: Mercor’s explicit allowed vs prohibited LLM uses is a strong template for integrity enforcement and candidate clarity. citeturn18view0  
+
+Scalability patterns:
+- Real-time interview service is stateful; isolate it as its own horizontally scalable service (stateless signaling layer + distributed session store).
+- Post-processing (transcription cleanup, scoring, report generation) should be asynchronous and queue-driven. Use OpenAI Batch API where appropriate to cut costs and decouple throughput from latency requirements. citeturn20search0
+
+### Cost optimization toolbox
+
+Your cost posture will be scrutinized by enterprise buyers (and investors). The key levers are:
+
+Batching:
+- OpenAI Batch API offers 50% lower costs for async workloads (24-hour window). citeturn20search0turn26view0
+
+Caching:
+- OpenAI prompt caching offers discounts and lower latency; Realtime sessions also support caching and recommend keeping session history “static” to maximize cache rate. citeturn20search1turn20search2  
+- Google context caching exists for Gemini API; Google’s context caching materials describe large discounts for cached tokens (example: pay only 10% of standard input token cost for cached tokens on supported models). citeturn21search3turn21search6  
+- Anthropic pricing indicates cache hits cost 10% of standard input price (with additional cache write multipliers). citeturn2search0turn22search5  
+
+Model selection:
+- Use expensive real-time models only for the interactive interview; use cheaper models for rubric scoring and report writing.
+- Store compact “session summaries” and retrieved evidence instead of replaying full transcripts into every downstream model call (design recommendation; assumption).
+
+On-prem vs cloud (enterprise option):
+- For highly regulated customers: consider self-hosting certain components (e.g., embeddings model, taxonomy services, or even STT) while keeping frontier LLM interview logic in a managed environment. This can reduce data egress and lock-in but increases operational burden (assumption).
+
+---
+
+**Bottom line:** Micro1’s public materials show that “enterprise-grade AI interviewing” is not just question generation—it is **configuration, integrity enforcement, evidence bundling, scoring explainability, and governance**. citeturn8view0turn7view0turn9view0turn10view0turn32search0 Mercor’s public materials show that “scale-grade AI interviewing” also depends on **reusable credential signals, strict integrity rules, and clear data policies**, even if candidate visibility into official artifacts is limited. citeturn33view0turn17view1turn16view3
+
+Designing your platform to *match and exceed* them means: adopt Micro1’s evidence-rich report + multi-modal scoring + proctoring tiers, adopt Mercor’s reuse and integrity policy posture, and add your differentiator—**admin-gated curation from day one**—implemented as an auditable state machine with enterprise controls and compliance exports.
