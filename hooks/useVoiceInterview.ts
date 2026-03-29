@@ -12,6 +12,7 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { backupTranscript, clearTranscriptBackup, getBackedUpTranscript } from "@/lib/transcript-backup";
 import { generateConversationSummary } from "@/lib/conversation-summary";
+import type { CandidateProfile } from "@/lib/session-store";
 
 // ── Types ──────────────────────────────────────────────────────────────
 
@@ -135,6 +136,7 @@ export function useVoiceInterview(
   const circuitBreakerStateRef = useRef<"CLOSED" | "OPEN" | "HALF_OPEN">("CLOSED"); // F3: Circuit breaker state
   const circuitBreakerTimerRef = useRef<NodeJS.Timeout | null>(null); // F3: OPEN → HALF_OPEN timer
   const endInterviewInternalRef = useRef<() => void>(() => {}); // Forward ref for checkpoint→endInterview
+  const checkpointTranscriptRef = useRef<() => void>(() => {}); // Forward ref for handleToolCall→checkpoint
   const audioProcessorErrorCountRef = useRef(0); // F2: Error counter for audio processor
   const micRevokedRef = useRef(false); // F6: Track mic revocation
   const askedQuestionsRef = useRef<string[]>([]); // Question dedup: track AI questions to prevent repeats
@@ -143,7 +145,7 @@ export function useVoiceInterview(
   const difficultyLevelRef = useRef<string>("mid");
   const flaggedFollowUpsRef = useRef<Array<{ topic: string; reason: string; depth?: string }>>([]);
   const currentModuleRef = useRef<string>("");
-  const candidateProfileRef = useRef<{ strengths: string[]; weaknesses: string[]; communicationStyle?: string; confidenceLevel?: "low" | "moderate" | "high"; notableObservations?: string } | null>(null);
+  const candidateProfileRef = useRef<CandidateProfile | null>(null);
   const sessionSummaryRef = useRef<string>("");
   const lastSummaryCountRef = useRef<number>(0); // transcript length when last summary was generated
   const interviewStartTimeRef = useRef<number>(0); // for adaptive checkpoint intervals
@@ -179,7 +181,7 @@ export function useVoiceInterview(
     currentTurnTextRef.current = "";
     currentCandidateTextRef.current = "";
 
-    // 5. Clear heartbeat and quality monitoring intervals
+    // 5. Clear heartbeat, quality monitoring, and checkpoint intervals
     if (heartbeatIntervalRef.current) {
       clearInterval(heartbeatIntervalRef.current);
       heartbeatIntervalRef.current = null;
@@ -187,6 +189,10 @@ export function useVoiceInterview(
     if (qualityCheckIntervalRef.current) {
       clearInterval(qualityCheckIntervalRef.current);
       qualityCheckIntervalRef.current = null;
+    }
+    if (checkpointTimerRef.current) {
+      clearInterval(checkpointTimerRef.current);
+      checkpointTimerRef.current = null;
     }
 
     // 6. Reset monitoring counters
@@ -446,7 +452,7 @@ export function useVoiceInterview(
       const now = Date.now();
       if (now - lastCheckpointTimeRef.current > 5000) {
         lastCheckpointTimeRef.current = now;
-        checkpointTranscript();
+        checkpointTranscriptRef.current();
       }
     };
 
@@ -710,7 +716,8 @@ export function useVoiceInterview(
     onInterviewEnd?.();
   }, [interviewId, accessToken, onInterviewEnd, cleanupAudioResources]);
 
-  // Keep ref in sync for forward-reference from checkpoint callback
+  // Keep refs in sync for forward-references from callbacks
+  checkpointTranscriptRef.current = checkpointTranscript;
   endInterviewInternalRef.current = endInterviewInternal;
 
   // ── Start Interview ────────────────────────────────────────────────
@@ -799,9 +806,19 @@ export function useVoiceInterview(
       }
 
       const initData = await initRes.json();
-      const { relayUrl, sessionToken, systemPrompt, tools, voiceName, candidateName, model, reconnectToken: initReconnectToken } = initData;
+      const { relayUrl, sessionToken, systemPrompt, tools, voiceName, candidateName, model, reconnectToken: initReconnectToken, enterpriseMemory } = initData;
       candidateNameRef.current = candidateName;
       if (initReconnectToken) reconnectTokenRef.current = initReconnectToken;
+
+      // Restore enterprise memory refs from server state (server wins over stale client)
+      if (enterpriseMemory) {
+        if (enterpriseMemory.currentDifficultyLevel) difficultyLevelRef.current = enterpriseMemory.currentDifficultyLevel;
+        if (enterpriseMemory.flaggedFollowUps) flaggedFollowUpsRef.current = enterpriseMemory.flaggedFollowUps;
+        if (enterpriseMemory.currentModule) currentModuleRef.current = enterpriseMemory.currentModule;
+        if (enterpriseMemory.candidateProfile) candidateProfileRef.current = enterpriseMemory.candidateProfile;
+        if (enterpriseMemory.sessionSummary) sessionSummaryRef.current = enterpriseMemory.sessionSummary;
+        console.log(`[Voice] Restored enterprise memory from server: difficulty=${enterpriseMemory.currentDifficultyLevel}, module=${enterpriseMemory.currentModule}, followUps=${enterpriseMemory.flaggedFollowUps?.length || 0}`);
+      }
 
       // 2. Set up audio context for playback
       const audioContext = new AudioContext({ sampleRate: 24000 });

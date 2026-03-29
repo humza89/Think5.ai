@@ -214,6 +214,21 @@ export async function POST(
 
     console.log(`[voice-init] SUCCESS: relayUrl=${relayUrl}, tokenLen=${sessionToken.length}, candidate=${interview.candidate.fullName}`);
 
+    // On reconnect, include server-side enterprise memory fields so client refs stay in sync
+    let enterpriseMemory: Record<string, unknown> | undefined;
+    if (reconnect) {
+      const serverState = await getSessionState(id);
+      if (serverState) {
+        enterpriseMemory = {
+          currentDifficultyLevel: serverState.currentDifficultyLevel,
+          flaggedFollowUps: serverState.flaggedFollowUps,
+          currentModule: serverState.currentModule,
+          candidateProfile: serverState.candidateProfile,
+          sessionSummary: serverState.sessionSummary,
+        };
+      }
+    }
+
     return Response.json({
       relayUrl,
       sessionToken,
@@ -223,6 +238,7 @@ export async function POST(
       candidateName: interview.candidate.fullName,
       model: "models/gemini-2.5-flash-native-audio-latest",
       reconnectToken,
+      ...(enterpriseMemory ? { enterpriseMemory } : {}),
     }, {
       headers: {
         "X-Content-Type-Options": "nosniff",

@@ -188,6 +188,39 @@ export async function POST(
 
       // Sync to durable session store with checkpoint digest + enterprise memory fields
       if (existingSession) {
+        // Validate enterprise memory fields before persisting (silently drop invalid)
+        const validatedMemory: Record<string, unknown> = {};
+        if (typeof currentDifficultyLevel === "string" && currentDifficultyLevel.length <= 50) {
+          validatedMemory.currentDifficultyLevel = currentDifficultyLevel;
+        }
+        if (typeof currentModule === "string" && currentModule.length <= 100) {
+          validatedMemory.currentModule = currentModule;
+        }
+        if (typeof sessionSummary === "string" && sessionSummary.length <= 5000) {
+          validatedMemory.sessionSummary = sessionSummary;
+        }
+        if (Array.isArray(flaggedFollowUps) && flaggedFollowUps.length <= 20) {
+          const validFollowUps = flaggedFollowUps.filter(
+            (f: unknown) => f && typeof f === "object" &&
+              typeof (f as Record<string, unknown>).topic === "string" && ((f as Record<string, unknown>).topic as string).length <= 500 &&
+              typeof (f as Record<string, unknown>).reason === "string" && ((f as Record<string, unknown>).reason as string).length <= 500
+          );
+          if (validFollowUps.length > 0) validatedMemory.flaggedFollowUps = validFollowUps;
+        }
+        if (candidateProfile && typeof candidateProfile === "object" && !Array.isArray(candidateProfile)) {
+          const cp = candidateProfile as Record<string, unknown>;
+          if (Array.isArray(cp.strengths) && cp.strengths.length <= 20 &&
+              Array.isArray(cp.weaknesses) && cp.weaknesses.length <= 20) {
+            validatedMemory.candidateProfile = {
+              strengths: (cp.strengths as string[]).filter(s => typeof s === "string" && s.length <= 200).slice(0, 20),
+              weaknesses: (cp.weaknesses as string[]).filter(s => typeof s === "string" && s.length <= 200).slice(0, 20),
+              ...(typeof cp.communicationStyle === "string" && cp.communicationStyle.length <= 100 ? { communicationStyle: cp.communicationStyle } : {}),
+              ...(typeof cp.confidenceLevel === "string" && ["low", "moderate", "high"].includes(cp.confidenceLevel) ? { confidenceLevel: cp.confidenceLevel } : {}),
+              ...(typeof cp.notableObservations === "string" && cp.notableObservations.length <= 500 ? { notableObservations: cp.notableObservations } : {}),
+            };
+          }
+        }
+
         await saveSessionState(id, {
           ...existingSession,
           transcript: currentTranscript,
@@ -196,12 +229,7 @@ export async function POST(
           lastActiveAt: new Date().toISOString(),
           checkpointDigest: incomingDigest,
           lastTurnIndex: currentTranscript.length - 1,
-          // Enterprise memory fields — merge from client checkpoint
-          ...(currentDifficultyLevel && { currentDifficultyLevel }),
-          ...(flaggedFollowUps && { flaggedFollowUps }),
-          ...(currentModule && { currentModule }),
-          ...(candidateProfile && { candidateProfile }),
-          ...(sessionSummary && { sessionSummary }),
+          ...validatedMemory,
         });
       }
       await refreshSessionTTL(id);

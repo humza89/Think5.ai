@@ -352,8 +352,8 @@ export function getInterviewTools(): GeminiLiveTool[] {
           },
           reason: {
             type: "string",
-            enum: ["mastery_demonstrated", "sufficient_coverage", "candidate_struggling", "time_constraint"],
-            description: "Reason for moving to the next section",
+            enum: ["mastery_demonstrated", "sufficient_coverage", "candidate_struggling", "time_constraint", "candidate_request", "topic_exhausted"],
+            description: "Reason for moving to the next section. Use exactly one of: mastery_demonstrated, sufficient_coverage, candidate_struggling, time_constraint, candidate_request, topic_exhausted",
           },
           sectionScore: {
             type: "number",
@@ -395,7 +395,7 @@ export function getInterviewTools(): GeminiLiveTool[] {
     {
       name: "updateCandidateProfile",
       description:
-        "Update the running assessment of the candidate's profile. Call this after each section transition or when you observe a significant strength, weakness, or communication pattern. This data persists across reconnects.",
+        "Update the running assessment of the candidate's profile. Call this after each section transition or when you observe a significant strength, weakness, or communication pattern. This data persists across reconnects. IMPORTANT: This tool merges with prior calls — only include NEW strengths/weaknesses discovered in this section. Previously reported items are retained automatically.",
       parameters: {
         type: "object",
         properties: {
