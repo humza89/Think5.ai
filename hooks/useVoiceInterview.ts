@@ -142,6 +142,8 @@ export function useVoiceInterview(
   const askedQuestionsRef = useRef<string[]>([]); // Question dedup: track AI questions to prevent repeats
   const reconnectTokenRef = useRef<string>(""); // HMAC-signed reconnect token from server
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null); // H1: Cancel on unmount to prevent stale closures
+  const lastCheckpointDigestRef = useRef<string | null>(null); // Fix 2: Track last checkpoint digest for reconciliation
+  const introFilterActiveRef = useRef(false); // Fix 3: Suppress AI re-introductions after reconnect
   // Enterprise memory refs — persisted across reconnects
   const difficultyLevelRef = useRef<string>("mid");
   const flaggedFollowUpsRef = useRef<Array<{ topic: string; reason: string; depth?: string }>>([]);
@@ -395,7 +397,25 @@ export function useVoiceInterview(
         // Turn complete — finalize the accumulated transcript entry
         if (serverContent.turnComplete) {
           if (currentTurnTextRef.current.trim()) {
-            const finalText = currentTurnTextRef.current.trim();
+            let finalText = currentTurnTextRef.current.trim();
+
+            // Fix 3: Suppress AI re-introductions after reconnect
+            if (introFilterActiveRef.current) {
+              const introPatterns = [
+                /hi,?\s+i'?m\s+aria/i,
+                /welcome\s+to/i,
+                /thanks?\s+for\s+joining/i,
+                /let\s+me\s+introduce/i,
+                /i'll\s+be\s+conducting/i,
+                /my\s+name\s+is/i,
+              ];
+              if (introPatterns.some((p) => p.test(finalText))) {
+                console.warn("[Voice] Suppressed AI re-introduction after reconnect");
+                finalText = "Let's continue where we left off.";
+              }
+              introFilterActiveRef.current = false;
+            }
+
             setTranscript((prev) => {
               const last = prev[prev.length - 1];
               if (last && last.role === "interviewer") {
@@ -406,6 +426,9 @@ export function useVoiceInterview(
             // Count questions and track for dedup
             if (finalText.includes("?")) {
               setQuestionCount((prev) => prev + 1);
+              if (askedQuestionsRef.current.length >= 50) {
+                askedQuestionsRef.current = askedQuestionsRef.current.slice(-49);
+              }
               askedQuestionsRef.current.push(finalText);
             }
           }
@@ -552,10 +575,18 @@ export function useVoiceInterview(
           currentModule: currentModuleRef.current,
           candidateProfile: candidateProfileRef.current,
           sessionSummary: sessionSummaryRef.current || undefined,
+          askedQuestions: askedQuestionsRef.current.slice(0, 50),
         }),
       });
       if (res.ok) {
         checkpointResultsRef.current = [...checkpointResultsRef.current.slice(-4), true];
+        // Store checkpoint digest for reconciliation on reconnect
+        try {
+          const checkpointData = await res.json();
+          if (checkpointData.checkpointDigest) {
+            lastCheckpointDigestRef.current = checkpointData.checkpointDigest;
+          }
+        } catch { /* response already consumed or empty */ }
         // Clear IndexedDB backup on successful server save
         clearTranscriptBackup(interviewId).catch(() => {});
         // F8: Refresh session TTL on successful checkpoint
@@ -1042,6 +1073,7 @@ export function useVoiceInterview(
                   headers: { "Content-Type": "application/json" },
                   body: JSON.stringify({
                     reconnectToken: reconnectTokenRef.current,
+                    clientCheckpointDigest: lastCheckpointDigestRef.current,
                     clientTranscriptLength: transcriptRef.current.length,
                     clientTurnIndex: transcriptRef.current.length - 1,
                   }),
@@ -1049,6 +1081,13 @@ export function useVoiceInterview(
                 if (recoveryRes.ok) {
                   const recovery = await recoveryRes.json();
                   reconnectTokenRef.current = recovery.newReconnectToken;
+                  if (recovery.checkpointDigest) {
+                    lastCheckpointDigestRef.current = recovery.checkpointDigest;
+                  }
+                  introFilterActiveRef.current = true; // Fix 3: Arm intro suppression for next AI turn
+                  if (Array.isArray(recovery.askedQuestions)) {
+                    askedQuestionsRef.current = recovery.askedQuestions;
+                  }
 
                   // If diverged, reconcile transcript from server (M5: only accept if server has more data)
                   if (recovery.status === "diverged" && recovery.canonicalTranscript) {
@@ -1056,9 +1095,9 @@ export function useVoiceInterview(
                     const clientLen = transcriptRef.current.length;
                     if (serverLen >= clientLen) {
                       const serverTranscript = recovery.canonicalTranscript.map(
-                        (t: { role: string; text: string; timestamp: string }) => ({
+                        (t: { role: string; content: string; timestamp: string }) => ({
                           role: t.role === "interviewer" ? "interviewer" as const : "candidate" as const,
-                          content: t.text,
+                          content: t.content,
                           timestamp: t.timestamp,
                           finalized: true,
                         })
@@ -1429,18 +1468,25 @@ export function useVoiceInterview(
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             reconnectToken: reconnectTokenRef.current,
-            clientCheckpointDigest: null,
+            clientCheckpointDigest: lastCheckpointDigestRef.current,
             clientTurnIndex: transcriptRef.current.length - 1,
           }),
         });
         if (recoveryRes.ok) {
           const recovery = await recoveryRes.json();
           reconnectTokenRef.current = recovery.newReconnectToken;
+          if (recovery.checkpointDigest) {
+            lastCheckpointDigestRef.current = recovery.checkpointDigest;
+          }
+          introFilterActiveRef.current = true; // Fix 3: Arm intro suppression for next AI turn
+          if (Array.isArray(recovery.askedQuestions)) {
+            askedQuestionsRef.current = recovery.askedQuestions;
+          }
           if (recovery.status === "diverged" && recovery.canonicalTranscript) {
             const serverTranscript = recovery.canonicalTranscript.map(
-              (t: { role: string; text: string; timestamp: string }) => ({
+              (t: { role: string; content: string; timestamp: string }) => ({
                 role: t.role === "interviewer" ? "interviewer" as const : "candidate" as const,
-                content: t.text,
+                content: t.content,
                 timestamp: t.timestamp,
                 finalized: true,
               })
@@ -1517,6 +1563,7 @@ export function useVoiceInterview(
         currentModule: currentModuleRef.current,
         candidateProfile: candidateProfileRef.current,
         sessionSummary: sessionSummaryRef.current || undefined,
+        askedQuestions: askedQuestionsRef.current.slice(0, 50),
       });
       navigator.sendBeacon(
         `/api/interviews/${interviewId}/voice`,
@@ -1561,7 +1608,7 @@ export function useVoiceInterview(
         askedQuestionsRef.current = restored
           .filter((e) => e.role === "interviewer" && e.content.includes("?"))
           .map((e) => e.content)
-          .slice(-20);
+          .slice(-50);
         // Restore enterprise memory fields
         if (backup.currentDifficultyLevel) difficultyLevelRef.current = backup.currentDifficultyLevel;
         if (backup.flaggedFollowUps) flaggedFollowUpsRef.current = backup.flaggedFollowUps;

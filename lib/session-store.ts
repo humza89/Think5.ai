@@ -78,7 +78,7 @@ export interface CandidateProfile {
 
 export interface SessionState {
   interviewId: string;
-  transcript: Array<{ role: string; text: string; timestamp: string }>;
+  transcript: Array<{ role: string; content: string; timestamp: string }>;
   moduleScores: Array<{ module: string; score: number; reason: string; sectionNotes?: string }>;
   questionCount: number;
   reconnectToken: string;
@@ -94,6 +94,7 @@ export interface SessionState {
   sessionSummary?: string;
   summarizedTurnCount?: number;
   lockOwnerToken?: string;
+  askedQuestions?: string[];
 }
 
 function sessionKey(interviewId: string): string {
@@ -260,10 +261,10 @@ export async function validateReconnectToken(
  * Compute SHA-256 checksum of a transcript for integrity verification.
  */
 export function computeTranscriptChecksum(
-  transcript: Array<{ role: string; text: string; timestamp: string }>
+  transcript: Array<{ role: string; content: string; timestamp: string }>
 ): string {
   const canonical = JSON.stringify(
-    transcript.map((t) => ({ role: t.role, text: t.text, timestamp: t.timestamp }))
+    transcript.map((t) => ({ role: t.role, content: t.content, timestamp: t.timestamp }))
   );
   return createHash("sha256").update(canonical).digest("hex");
 }

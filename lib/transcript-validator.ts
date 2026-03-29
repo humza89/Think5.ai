@@ -28,7 +28,7 @@ export interface TranscriptValidationResult {
 }
 
 export interface TranscriptRepairResult {
-  repaired: Array<{ role: string; text: string; timestamp: string }>;
+  repaired: Array<{ role: string; content: string; timestamp: string }>;
   repairs: string[];
 }
 
@@ -87,7 +87,7 @@ export function validateTranscript(
     return { valid: true, issues: [] };
   }
 
-  const aiTurns: { text: string; index: number }[] = [];
+  const aiTurns: { content: string; index: number }[] = [];
 
   for (let i = 0; i < entries.length; i++) {
     const entry = entries[i];
@@ -132,14 +132,14 @@ export function validateTranscript(
 
     // Collect AI turns for duplicate detection
     if (entry.role === "interviewer" && text.trim().length > 20) {
-      aiTurns.push({ text: text.trim(), index: i });
+      aiTurns.push({ content: text.trim(), index: i });
     }
   }
 
   // Duplicate question detection (Jaccard similarity > 0.8)
   for (let i = 0; i < aiTurns.length; i++) {
     for (let j = i + 1; j < aiTurns.length; j++) {
-      const similarity = wordSimilarity(aiTurns[i].text, aiTurns[j].text);
+      const similarity = wordSimilarity(aiTurns[i].content, aiTurns[j].content);
       if (similarity > 0.8) {
         issues.push({
           type: "duplicate_question",
@@ -156,9 +156,9 @@ export function validateTranscript(
   for (let i = 1; i < aiTurns.length; i++) {
     const prev = aiTurns[i - 1];
     const curr = aiTurns[i];
-    const similarity = wordSimilarity(prev.text, curr.text);
-    const isTransition = TRANSITION_PHRASES.some((p) => curr.text.toLowerCase().includes(p));
-    if (similarity < 0.1 && !isTransition && curr.text.length > 30) {
+    const similarity = wordSimilarity(prev.content, curr.content);
+    const isTransition = TRANSITION_PHRASES.some((p) => curr.content.toLowerCase().includes(p));
+    if (similarity < 0.1 && !isTransition && curr.content.length > 30) {
       issues.push({
         type: "non_sequitur",
         severity: "warning",
@@ -273,23 +273,29 @@ export function validateTurnIndices(
  * - Deduplicate exact-match turns
  */
 export function repairTranscript(
-  entries: Array<{ role: string; text: string; timestamp: string }>
+  entries: Array<{ role: string; text?: string; content?: string; timestamp: string }>
 ): TranscriptRepairResult {
   const repairs: string[] = [];
-  let repaired = [...entries];
+
+  // Normalize: accept both `text` and `content` fields, unify on `content`
+  let repaired = entries.map((e) => ({
+    role: e.role,
+    content: e.content || e.text || "",
+    timestamp: e.timestamp,
+  }));
 
   // 1. Remove empty fragments
   const beforeEmpty = repaired.length;
-  repaired = repaired.filter((e) => e.text && e.text.trim().length > 0);
+  repaired = repaired.filter((e) => e.content && e.content.trim().length > 0);
   if (repaired.length < beforeEmpty) {
     repairs.push(`Removed ${beforeEmpty - repaired.length} empty fragment(s)`);
   }
 
-  // 2. Deduplicate exact-match turns (same role + text + timestamp)
+  // 2. Deduplicate exact-match turns (same role + content + timestamp)
   const seen = new Set<string>();
   const beforeDedup = repaired.length;
   repaired = repaired.filter((e) => {
-    const key = `${e.role}:${e.text}:${e.timestamp}`;
+    const key = `${e.role}:${e.content}:${e.timestamp}`;
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
@@ -318,7 +324,7 @@ export function repairTranscript(
   for (const entry of repaired) {
     const last = merged[merged.length - 1];
     if (last && last.role === entry.role) {
-      last.text = `${last.text} ${entry.text}`;
+      last.content = `${last.content} ${entry.content}`;
       last.timestamp = entry.timestamp; // Use later timestamp
       repairs.push(`Merged consecutive ${entry.role} turns`);
     } else {

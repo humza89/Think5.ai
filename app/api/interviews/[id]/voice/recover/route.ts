@@ -125,6 +125,8 @@ export async function POST(
         newReconnectToken,
         recoveryMs,
         remainingSeconds,
+        checkpointDigest: serverDigest,
+        askedQuestions: session.askedQuestions || [],
       });
     } else {
       return Response.json({
@@ -137,6 +139,8 @@ export async function POST(
         newReconnectToken,
         recoveryMs,
         remainingSeconds,
+        checkpointDigest: serverDigest,
+        askedQuestions: session.askedQuestions || [],
       });
     }
   } catch (error) {

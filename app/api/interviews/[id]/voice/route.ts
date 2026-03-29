@@ -72,7 +72,7 @@ export async function POST(
   try {
     const body = await request.json();
     const { action, accessToken, transcript, moduleScores, questionCount,
-      currentDifficultyLevel, flaggedFollowUps, currentModule, candidateProfile, sessionSummary } = body;
+      currentDifficultyLevel, flaggedFollowUps, currentModule, candidateProfile, sessionSummary, askedQuestions } = body;
 
     // Validate access
     const interview = await validateAccess(id, accessToken);
@@ -175,7 +175,7 @@ export async function POST(
         await refreshSessionTTL(id);
         const checkpointMs = Date.now() - checkpointStart;
         await recordSLOEvent("transcript.checkpoint.latency_p99", checkpointMs < 500, checkpointMs);
-        return Response.json({ ok: true, deduplicated: true, checkpointMs });
+        return Response.json({ ok: true, deduplicated: true, checkpointMs, checkpointDigest: existingSession?.checkpointDigest });
       }
 
       await prisma.interview.update({
@@ -206,6 +206,11 @@ export async function POST(
               typeof (f as Record<string, unknown>).reason === "string" && ((f as Record<string, unknown>).reason as string).length <= 500
           );
           if (validFollowUps.length > 0) validatedMemory.flaggedFollowUps = validFollowUps;
+        }
+        if (Array.isArray(askedQuestions) && askedQuestions.length <= 50) {
+          validatedMemory.askedQuestions = askedQuestions
+            .filter((q: unknown) => typeof q === "string" && (q as string).length <= 500)
+            .slice(0, 50);
         }
         if (candidateProfile && typeof candidateProfile === "object" && !Array.isArray(candidateProfile)) {
           const cp = candidateProfile as Record<string, unknown>;
@@ -238,7 +243,7 @@ export async function POST(
       const checkpointMs = Date.now() - checkpointStart;
       await recordSLOEvent("transcript.checkpoint.latency_p99", checkpointMs < 500, checkpointMs);
 
-      return Response.json({ ok: true });
+      return Response.json({ ok: true, checkpointDigest: incomingDigest });
     }
 
     // ── End Interview: final save + report generation ──
