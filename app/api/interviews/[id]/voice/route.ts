@@ -71,7 +71,8 @@ export async function POST(
 
   try {
     const body = await request.json();
-    const { action, accessToken, transcript, moduleScores, questionCount } = body;
+    const { action, accessToken, transcript, moduleScores, questionCount,
+      currentDifficultyLevel, flaggedFollowUps, currentModule, candidateProfile, sessionSummary } = body;
 
     // Validate access
     const interview = await validateAccess(id, accessToken);
@@ -185,7 +186,7 @@ export async function POST(
         },
       });
 
-      // Sync to durable session store with checkpoint digest
+      // Sync to durable session store with checkpoint digest + enterprise memory fields
       if (existingSession) {
         await saveSessionState(id, {
           ...existingSession,
@@ -195,6 +196,12 @@ export async function POST(
           lastActiveAt: new Date().toISOString(),
           checkpointDigest: incomingDigest,
           lastTurnIndex: currentTranscript.length - 1,
+          // Enterprise memory fields — merge from client checkpoint
+          ...(currentDifficultyLevel && { currentDifficultyLevel }),
+          ...(flaggedFollowUps && { flaggedFollowUps }),
+          ...(currentModule && { currentModule }),
+          ...(candidateProfile && { candidateProfile }),
+          ...(sessionSummary && { sessionSummary }),
         });
       }
       await refreshSessionTTL(id);

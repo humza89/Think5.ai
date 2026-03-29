@@ -122,14 +122,21 @@ export async function POST(
       fullPrompt += "\n\n" + planContext;
     }
 
-    // On reconnect: enrich system prompt with interview state so Gemini resumes seamlessly
+    // On reconnect: enrich system prompt with full interview state so Gemini resumes seamlessly
+    // Merge client-provided context with server-side persisted state (server wins for memory fields)
     if (reconnect && reconnectContext) {
+      const serverState = await getSessionState(id);
       fullPrompt = buildReconnectSystemPrompt(fullPrompt, {
-        questionCount: reconnectContext.questionCount || 0,
-        moduleScores: reconnectContext.moduleScores || [],
+        questionCount: reconnectContext.questionCount || serverState?.questionCount || 0,
+        moduleScores: serverState?.moduleScores || reconnectContext.moduleScores || [],
         askedQuestions: reconnectContext.askedQuestions || [],
-        currentModule: reconnectContext.currentModule || null,
+        currentModule: serverState?.currentModule || reconnectContext.currentModule || null,
         candidateName: interview.candidate.fullName,
+        // Enterprise memory fields from server-side persisted state
+        currentDifficultyLevel: serverState?.currentDifficultyLevel,
+        flaggedFollowUps: serverState?.flaggedFollowUps,
+        candidateProfile: serverState?.candidateProfile,
+        sessionSummary: serverState?.sessionSummary,
       });
     }
 

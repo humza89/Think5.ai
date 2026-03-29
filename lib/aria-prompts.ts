@@ -366,6 +366,7 @@ When they say "we built it" — push for clarity: "What part did you personally 
 - Go deeper when answers are strong. Use adjustDifficulty to increase difficulty.
 - Simplify or guide when answers are weak. Use adjustDifficulty to decrease difficulty.
 - Use flagForFollowUp for interesting claims worth probing deeper.
+- After each section transition, call updateCandidateProfile to record your running assessment of the candidate's strengths, weaknesses, and communication style. Include sectionNotes when calling moveToNextSection.
 - Target ${targetQuestions} questions across multiple skill areas.
 
 ## FORBIDDEN BEHAVIORS
@@ -432,10 +433,21 @@ In every turn, produce exactly one clear, natural interviewer response that ends
 
 export interface ReconnectContext {
   questionCount: number;
-  moduleScores: Array<{ module: string; score: number; reason: string }>;
+  moduleScores: Array<{ module: string; score: number; reason: string; sectionNotes?: string }>;
   askedQuestions: string[];
   currentModule: string | null;
   candidateName: string;
+  // Enterprise memory fields
+  currentDifficultyLevel?: string;
+  flaggedFollowUps?: Array<{ topic: string; reason: string; depth?: string }>;
+  candidateProfile?: {
+    strengths: string[];
+    weaknesses: string[];
+    communicationStyle?: string;
+    confidenceLevel?: "low" | "moderate" | "high";
+    notableObservations?: string;
+  };
+  sessionSummary?: string;
 }
 
 /**
@@ -448,15 +460,41 @@ export function buildReconnectSystemPrompt(
   basePrompt: string,
   context: ReconnectContext
 ): string {
-  const { questionCount, moduleScores, askedQuestions, currentModule, candidateName } = context;
+  const { questionCount, moduleScores, askedQuestions, currentModule, candidateName,
+    currentDifficultyLevel, flaggedFollowUps, candidateProfile, sessionSummary } = context;
 
   const scoresSummary = moduleScores.length > 0
-    ? moduleScores.map((s) => `- ${s.module}: ${s.score}/10 (${s.reason})`).join("\n")
+    ? moduleScores.map((s) => {
+        const notes = s.sectionNotes ? ` — ${s.sectionNotes}` : "";
+        return `- ${s.module}: ${s.score}/10 (${s.reason})${notes}`;
+      }).join("\n")
     : "No modules scored yet.";
 
   const questionsList = askedQuestions.length > 0
     ? askedQuestions.map((q, i) => `${i + 1}. ${q.slice(0, 150)}`).join("\n")
     : "No questions tracked yet.";
+
+  // Build difficulty section
+  const difficultySection = currentDifficultyLevel
+    ? `- Current difficulty level: **${currentDifficultyLevel}** (adjusted during interview — maintain this level)`
+    : "";
+
+  // Build follow-ups section
+  const followUpsSection = flaggedFollowUps && flaggedFollowUps.length > 0
+    ? `\n## TOPICS FLAGGED FOR FOLLOW-UP (address these when relevant)\n${flaggedFollowUps.map((f, i) => `${i + 1}. **${f.topic}** — ${f.reason}${f.depth ? ` (depth: ${f.depth})` : ""}`).join("\n")}`
+    : "";
+
+  // Build candidate profile section
+  const profileSection = candidateProfile
+    ? `\n## CANDIDATE PROFILE (observed so far — use this to calibrate your questions)
+- Strengths: ${candidateProfile.strengths.join(", ") || "none observed yet"}
+- Weaknesses: ${candidateProfile.weaknesses.join(", ") || "none observed yet"}${candidateProfile.communicationStyle ? `\n- Communication style: ${candidateProfile.communicationStyle}` : ""}${candidateProfile.confidenceLevel ? `\n- Confidence level: ${candidateProfile.confidenceLevel}` : ""}${candidateProfile.notableObservations ? `\n- Notable: ${candidateProfile.notableObservations}` : ""}`
+    : "";
+
+  // Build session summary section
+  const summarySection = sessionSummary
+    ? `\n## INTERVIEW SUMMARY (covering earlier exchanges not in transcript context)\n${sessionSummary}`
+    : "";
 
   const reconnectDirective = `
 
@@ -479,8 +517,12 @@ This is a RESUMED session after a technical interruption. The following rules OV
 ## INTERVIEW STATE AT RECONNECT
 - Questions completed: ${questionCount}
 - Current section: ${currentModule || "Unknown — infer from transcript context"}
+${difficultySection}
 - Module scores so far:
 ${scoresSummary}
+${profileSection}
+${followUpsSection}
+${summarySection}
 
 ## QUESTIONS ALREADY ASKED (DO NOT REPEAT ANY OF THESE)
 ${questionsList}
@@ -489,7 +531,8 @@ ${questionsList}
 - Pick up the conversation mid-flow, not from scratch
 - If the last exchange was incomplete, ask the candidate to briefly recap: "You were telling me about X — what was the key outcome?"
 - Maintain the same difficulty level and tone as before the interruption
-- Do NOT apologize more than once for the interruption`;
+- Do NOT apologize more than once for the interruption
+- After each section transition, call updateCandidateProfile to record your assessment`;
 
   return basePrompt + reconnectDirective;
 }

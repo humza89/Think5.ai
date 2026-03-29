@@ -27,9 +27,15 @@ function openDB(): Promise<IDBDatabase> {
 export interface TranscriptBackup {
   interviewId: string;
   transcript: Array<{ role: string; content: string; timestamp?: string; finalized?: boolean }>;
-  moduleScores: Array<{ module: string; score: number; reason: string }>;
+  moduleScores: Array<{ module: string; score: number; reason: string; sectionNotes?: string }>;
   questionCount: number;
   savedAt: number;
+  // Enterprise memory fields
+  currentDifficultyLevel?: string;
+  flaggedFollowUps?: Array<{ topic: string; reason: string; depth?: string }>;
+  currentModule?: string;
+  candidateProfile?: { strengths: string[]; weaknesses: string[]; communicationStyle?: string; confidenceLevel?: "low" | "moderate" | "high"; notableObservations?: string };
+  sessionSummary?: string;
 }
 
 /**
@@ -40,7 +46,14 @@ export async function backupTranscript(
   interviewId: string,
   transcript: TranscriptBackup["transcript"],
   moduleScores: TranscriptBackup["moduleScores"],
-  questionCount: number
+  questionCount: number,
+  extra?: {
+    currentDifficultyLevel?: string;
+    flaggedFollowUps?: TranscriptBackup["flaggedFollowUps"];
+    currentModule?: string;
+    candidateProfile?: TranscriptBackup["candidateProfile"];
+    sessionSummary?: string;
+  }
 ): Promise<void> {
   try {
     const db = await openDB();
@@ -51,6 +64,7 @@ export async function backupTranscript(
       moduleScores,
       questionCount,
       savedAt: Date.now(),
+      ...(extra || {}),
     });
     await new Promise<void>((resolve, reject) => {
       tx.oncomplete = () => resolve();

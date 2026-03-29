@@ -11,6 +11,7 @@
 
 import { useState, useCallback, useRef, useEffect } from "react";
 import { backupTranscript, clearTranscriptBackup, getBackedUpTranscript } from "@/lib/transcript-backup";
+import { generateConversationSummary } from "@/lib/conversation-summary";
 
 // ── Types ──────────────────────────────────────────────────────────────
 
@@ -102,7 +103,7 @@ export function useVoiceInterview(
   const nextPlayTimeRef = useRef(0); // Tracks when the next audio chunk should start
   const isMicEnabledRef = useRef(true);
   const transcriptRef = useRef<TranscriptEntry[]>([]);
-  const moduleScoresRef = useRef<Array<{ module: string; score: number; reason: string }>>([]);
+  const moduleScoresRef = useRef<Array<{ module: string; score: number; reason: string; sectionNotes?: string }>>([]);
   const checkpointTimerRef = useRef<NodeJS.Timeout | null>(null);
   const questionCountRef = useRef(0);
   const candidateNameRef = useRef("");
@@ -138,6 +139,15 @@ export function useVoiceInterview(
   const micRevokedRef = useRef(false); // F6: Track mic revocation
   const askedQuestionsRef = useRef<string[]>([]); // Question dedup: track AI questions to prevent repeats
   const reconnectTokenRef = useRef<string>(""); // HMAC-signed reconnect token from server
+  // Enterprise memory refs — persisted across reconnects
+  const difficultyLevelRef = useRef<string>("mid");
+  const flaggedFollowUpsRef = useRef<Array<{ topic: string; reason: string; depth?: string }>>([]);
+  const currentModuleRef = useRef<string>("");
+  const candidateProfileRef = useRef<{ strengths: string[]; weaknesses: string[]; communicationStyle?: string; confidenceLevel?: "low" | "moderate" | "high"; notableObservations?: string } | null>(null);
+  const sessionSummaryRef = useRef<string>("");
+  const lastSummaryCountRef = useRef<number>(0); // transcript length when last summary was generated
+  const interviewStartTimeRef = useRef<number>(0); // for adaptive checkpoint intervals
+  const lastCheckpointTimeRef = useRef<number>(0); // debounce event-driven checkpoints
   const reconnectStartTimeRef = useRef<number>(0); // Tracks reconnect latency for SLO
   const poorQualityCountRef = useRef(0); // Debounce: consecutive "poor" checks before triggering
   const lastRecoveryCallRef = useRef<number>(0); // Rate-limit recovery API calls
@@ -431,28 +441,73 @@ export function useVoiceInterview(
       }));
     };
 
+    // Helper: trigger immediate checkpoint after state-changing tool calls (debounced 5s)
+    const triggerEventCheckpoint = () => {
+      const now = Date.now();
+      if (now - lastCheckpointTimeRef.current > 5000) {
+        lastCheckpointTimeRef.current = now;
+        checkpointTranscript();
+      }
+    };
+
     switch (name) {
       case "adjustDifficulty":
-        console.log(`[Voice] Difficulty: ${args.currentLevel} → ${args.newLevel}`);
+        console.log(`[Voice] Difficulty: ${args.currentLevel} → ${args.newLevel} (${args.reason})`);
+        difficultyLevelRef.current = args.newLevel as string;
         sendResponse({ acknowledged: true });
+        triggerEventCheckpoint();
         break;
 
       case "moveToNextSection":
         console.log(`[Voice] Section: ${args.currentSection} → ${args.nextSection}`);
+        currentModuleRef.current = args.nextSection as string;
         if (args.sectionScore !== undefined) {
           moduleScoresRef.current.push({
             module: args.currentSection as string,
             score: args.sectionScore as number,
             reason: args.reason as string,
+            sectionNotes: (args.sectionNotes as string) || undefined,
           });
         }
         sendResponse({ acknowledged: true });
+        triggerEventCheckpoint();
         break;
 
       case "flagForFollowUp":
-        console.log(`[Voice] Follow-up: ${args.topic}`);
+        console.log(`[Voice] Follow-up: ${args.topic} (${args.reason})`);
+        flaggedFollowUpsRef.current.push({
+          topic: args.topic as string,
+          reason: args.reason as string,
+          depth: (args.depth as string) || undefined,
+        });
         sendResponse({ acknowledged: true });
         break;
+
+      case "updateCandidateProfile": {
+        console.log(`[Voice] Candidate profile update: strengths=${(args.strengths as string[])?.length}, weaknesses=${(args.weaknesses as string[])?.length}`);
+        const existing = candidateProfileRef.current;
+        const newStrengths = (args.strengths as string[]) || [];
+        const newWeaknesses = (args.weaknesses as string[]) || [];
+        if (existing) {
+          // Merge: append and deduplicate
+          existing.strengths = [...new Set([...existing.strengths, ...newStrengths])];
+          existing.weaknesses = [...new Set([...existing.weaknesses, ...newWeaknesses])];
+          if (args.communicationStyle) existing.communicationStyle = args.communicationStyle as string;
+          if (args.confidenceLevel) existing.confidenceLevel = args.confidenceLevel as "low" | "moderate" | "high";
+          if (args.notableObservations) existing.notableObservations = args.notableObservations as string;
+        } else {
+          candidateProfileRef.current = {
+            strengths: newStrengths,
+            weaknesses: newWeaknesses,
+            communicationStyle: (args.communicationStyle as string) || undefined,
+            confidenceLevel: (args.confidenceLevel as "low" | "moderate" | "high") || undefined,
+            notableObservations: (args.notableObservations as string) || undefined,
+          };
+        }
+        sendResponse({ acknowledged: true });
+        triggerEventCheckpoint();
+        break;
+      }
 
       case "endInterview":
         console.log(`[Voice] End interview: ${args.reason}`);
@@ -478,6 +533,12 @@ export function useVoiceInterview(
           transcript: transcriptRef.current,
           moduleScores: moduleScoresRef.current,
           questionCount: questionCountRef.current,
+          // Enterprise memory fields
+          currentDifficultyLevel: difficultyLevelRef.current,
+          flaggedFollowUps: flaggedFollowUpsRef.current,
+          currentModule: currentModuleRef.current,
+          candidateProfile: candidateProfileRef.current,
+          sessionSummary: sessionSummaryRef.current || undefined,
         }),
       });
       if (res.ok) {
@@ -502,6 +563,30 @@ export function useVoiceInterview(
             }
           }
         } catch { /* best-effort TTL refresh */ }
+
+        // Generate running conversation summary when transcript grows significantly
+        // The summary compresses early turns so they survive token-budget trimming on reconnect
+        const transcriptLen = transcriptRef.current.length;
+        if (transcriptLen - lastSummaryCountRef.current >= 20 && transcriptLen > 20) {
+          // Summarize early entries that would be trimmed by the 120K char budget
+          const TOKEN_CHAR_BUDGET = 120_000;
+          let recentChars = 0;
+          let cutoffIndex = transcriptLen;
+          for (let i = transcriptLen - 1; i >= 0; i--) {
+            recentChars += transcriptRef.current[i].content.length;
+            if (recentChars > TOKEN_CHAR_BUDGET) { cutoffIndex = i; break; }
+          }
+          if (cutoffIndex > 0) {
+            sessionSummaryRef.current = generateConversationSummary(
+              transcriptRef.current,
+              moduleScoresRef.current,
+              candidateProfileRef.current,
+              cutoffIndex
+            );
+            lastSummaryCountRef.current = transcriptLen;
+            console.log(`[Voice] Generated conversation summary (covers first ${cutoffIndex} of ${transcriptLen} entries)`);
+          }
+        }
       } else {
         throw new Error(`Checkpoint HTTP ${res.status}`);
       }
@@ -512,7 +597,14 @@ export function useVoiceInterview(
         interviewId,
         transcriptRef.current,
         moduleScoresRef.current,
-        questionCountRef.current
+        questionCountRef.current,
+        {
+          currentDifficultyLevel: difficultyLevelRef.current,
+          flaggedFollowUps: flaggedFollowUpsRef.current,
+          currentModule: currentModuleRef.current,
+          candidateProfile: candidateProfileRef.current || undefined,
+          sessionSummary: sessionSummaryRef.current || undefined,
+        }
       ).catch(() => {});
       if (checkpointFailuresRef.current >= 3) {
         console.warn("[Voice] 3+ consecutive checkpoint failures — transcript backed up to IndexedDB");
@@ -677,9 +769,13 @@ export function useVoiceInterview(
           questionCount: questionCountRef.current,
           moduleScores: moduleScoresRef.current,
           askedQuestions: askedQuestionsRef.current,
-          currentModule: moduleScoresRef.current.length > 0
+          currentModule: currentModuleRef.current || (moduleScoresRef.current.length > 0
             ? moduleScoresRef.current[moduleScoresRef.current.length - 1].module
-            : null,
+            : null),
+          // Enterprise memory fields (also persisted server-side — client sends as fallback)
+          currentDifficultyLevel: difficultyLevelRef.current,
+          flaggedFollowUps: flaggedFollowUpsRef.current,
+          candidateProfile: candidateProfileRef.current,
         };
       }
       const initRes = await fetch(`/api/interviews/${interviewId}/voice-init`, {
@@ -1014,7 +1110,11 @@ export function useVoiceInterview(
         const scoresSummary = scores.length > 0
           ? scores.map((s) => `${s.module}: ${s.score}/10`).join(", ")
           : "none yet";
-        const summaryText = `[RECONNECT — SESSION RESUMED. Questions completed: ${qCount}. Modules scored: ${scoresSummary}. Total transcript entries: ${existingTranscript.length}. DO NOT re-introduce yourself. DO NOT repeat any prior questions. Say "We're back, let's continue." and resume the conversation thread.]`;
+        // Include conversation summary of early turns if available (covers entries trimmed from context)
+        const sessionSummaryBlock = sessionSummaryRef.current
+          ? `\n\nEARLIER INTERVIEW CONTEXT (summarized):\n${sessionSummaryRef.current}`
+          : "";
+        const summaryText = `[RECONNECT — SESSION RESUMED. Questions completed: ${qCount}. Modules scored: ${scoresSummary}. Total transcript entries: ${existingTranscript.length}. Difficulty: ${difficultyLevelRef.current}. DO NOT re-introduce yourself. DO NOT repeat any prior questions. Say "We're back, let's continue." and resume the conversation thread.${sessionSummaryBlock}]`;
 
         ws.send(JSON.stringify({
           clientContent: {
@@ -1118,8 +1218,22 @@ export function useVoiceInterview(
       source.connect(processor);
       processor.connect(audioContext.destination);
 
-      // 8. Start checkpoint timer
-      checkpointTimerRef.current = setInterval(checkpointTranscript, CHECKPOINT_INTERVAL_MS);
+      // 8. Start adaptive checkpoint timer
+      // First 5 minutes: 15s intervals (opening context is critical)
+      // After 5 minutes: 30s intervals (default)
+      interviewStartTimeRef.current = interviewStartTimeRef.current || Date.now();
+      const getCheckpointInterval = () => {
+        const elapsed = Date.now() - interviewStartTimeRef.current;
+        return elapsed < 5 * 60 * 1000 ? 15_000 : CHECKPOINT_INTERVAL_MS;
+      };
+      const runAdaptiveCheckpoint = () => {
+        lastCheckpointTimeRef.current = Date.now();
+        checkpointTranscript();
+        // Re-schedule with potentially different interval
+        if (checkpointTimerRef.current) clearInterval(checkpointTimerRef.current);
+        checkpointTimerRef.current = setInterval(runAdaptiveCheckpoint, getCheckpointInterval());
+      };
+      checkpointTimerRef.current = setInterval(runAdaptiveCheckpoint, getCheckpointInterval());
 
       // 9. Start heartbeat — detect dead connections proactively
       lastMessageTimeRef.current = Date.now();
@@ -1350,6 +1464,13 @@ export function useVoiceInterview(
         transcriptRef.current,
         moduleScoresRef.current,
         questionCountRef.current,
+        {
+          currentDifficultyLevel: difficultyLevelRef.current,
+          flaggedFollowUps: flaggedFollowUpsRef.current,
+          currentModule: currentModuleRef.current,
+          candidateProfile: candidateProfileRef.current || undefined,
+          sessionSummary: sessionSummaryRef.current || undefined,
+        }
       ).catch(() => {});
       // Also fire sendBeacon to server
       const payload = JSON.stringify({
@@ -1358,6 +1479,11 @@ export function useVoiceInterview(
         transcript: transcriptRef.current,
         moduleScores: moduleScoresRef.current,
         questionCount: questionCountRef.current,
+        currentDifficultyLevel: difficultyLevelRef.current,
+        flaggedFollowUps: flaggedFollowUpsRef.current,
+        currentModule: currentModuleRef.current,
+        candidateProfile: candidateProfileRef.current,
+        sessionSummary: sessionSummaryRef.current || undefined,
       });
       navigator.sendBeacon(
         `/api/interviews/${interviewId}/voice`,
@@ -1403,6 +1529,12 @@ export function useVoiceInterview(
           .filter((e) => e.role === "interviewer" && e.content.includes("?"))
           .map((e) => e.content)
           .slice(-20);
+        // Restore enterprise memory fields
+        if (backup.currentDifficultyLevel) difficultyLevelRef.current = backup.currentDifficultyLevel;
+        if (backup.flaggedFollowUps) flaggedFollowUpsRef.current = backup.flaggedFollowUps;
+        if (backup.currentModule) currentModuleRef.current = backup.currentModule;
+        if (backup.candidateProfile) candidateProfileRef.current = backup.candidateProfile;
+        if (backup.sessionSummary) sessionSummaryRef.current = backup.sessionSummary;
       } catch {
         // IndexedDB unavailable — proceed with fresh start
       }

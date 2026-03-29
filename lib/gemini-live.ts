@@ -359,6 +359,11 @@ export function getInterviewTools(): GeminiLiveTool[] {
             type: "number",
             description: "Estimated score for the completed section (0-10)",
           },
+          sectionNotes: {
+            type: "string",
+            description:
+              "Brief qualitative assessment of candidate's performance in this section (e.g., 'Strong on distributed systems, weak on CAP theorem trade-offs'). Include specific evidence.",
+          },
         },
         required: ["currentSection", "nextSection", "reason"],
       },
@@ -385,6 +390,40 @@ export function getInterviewTools(): GeminiLiveTool[] {
           },
         },
         required: ["topic", "reason"],
+      },
+    },
+    {
+      name: "updateCandidateProfile",
+      description:
+        "Update the running assessment of the candidate's profile. Call this after each section transition or when you observe a significant strength, weakness, or communication pattern. This data persists across reconnects.",
+      parameters: {
+        type: "object",
+        properties: {
+          strengths: {
+            type: "array",
+            items: { type: "string" },
+            description: "Demonstrated strengths (e.g., 'strong system design fundamentals', 'clear communication')",
+          },
+          weaknesses: {
+            type: "array",
+            items: { type: "string" },
+            description: "Areas of weakness (e.g., 'vague on metrics', 'shallow on concurrency')",
+          },
+          communicationStyle: {
+            type: "string",
+            description: "Observed communication style: concise, verbose, structured, rambling, technical, conversational",
+          },
+          confidenceLevel: {
+            type: "string",
+            enum: ["low", "moderate", "high"],
+            description: "Overall confidence level observed in candidate's responses",
+          },
+          notableObservations: {
+            type: "string",
+            description: "Any other notable observations about the candidate's approach or behavior",
+          },
+        },
+        required: ["strengths", "weaknesses"],
       },
     },
     {

@@ -56,16 +56,31 @@ if (typeof setInterval !== "undefined") {
   }, 60_000).unref?.();
 }
 
+export interface CandidateProfile {
+  strengths: string[];
+  weaknesses: string[];
+  communicationStyle?: string;
+  confidenceLevel?: "low" | "moderate" | "high";
+  notableObservations?: string;
+}
+
 export interface SessionState {
   interviewId: string;
   transcript: Array<{ role: string; text: string; timestamp: string }>;
-  moduleScores: Array<{ module: string; score: number; reason: string }>;
+  moduleScores: Array<{ module: string; score: number; reason: string; sectionNotes?: string }>;
   questionCount: number;
   reconnectToken: string;
   lastActiveAt: string;
   checkpointDigest: string;
   lastTurnIndex: number;
   reconnectCount: number;
+  // Enterprise memory fields — all optional for backward compatibility
+  currentDifficultyLevel?: string;
+  flaggedFollowUps?: Array<{ topic: string; reason: string; depth?: string }>;
+  currentModule?: string;
+  candidateProfile?: CandidateProfile;
+  sessionSummary?: string;
+  summarizedTurnCount?: number;
 }
 
 function sessionKey(interviewId: string): string {
