@@ -310,9 +310,10 @@ export async function POST(
       // Record no hard-stop (normal completion = success)
       await recordSLOEvent("session.hard_stop.rate", true);
 
-      // Clean up durable session state and release lock
+      // Clean up durable session state and release lock (H5: pass owner token)
+      const endSession = await getSessionState(id);
       await deleteSessionState(id);
-      await releaseSessionLock(id);
+      await releaseSessionLock(id, endSession?.lockOwnerToken);
 
       // Generate report via durable Inngest queue (with in-process fallback)
       inngest

@@ -8,8 +8,20 @@
 
 import { randomUUID, createHmac, createHash, timingSafeEqual } from "crypto";
 
-// HMAC secret for signing reconnect tokens — falls back to random key for dev
-const SESSION_HMAC_SECRET = process.env.SESSION_HMAC_SECRET || randomUUID();
+// HMAC secret for signing reconnect tokens — required in production
+// Lazy-initialized to avoid crashing at build time (Next.js collects page data in production mode)
+let _hmacSecret: string | null = null;
+function getHmacSecret(): string {
+  if (_hmacSecret) return _hmacSecret;
+  _hmacSecret = process.env.SESSION_HMAC_SECRET || null;
+  if (!_hmacSecret) {
+    if (process.env.NODE_ENV === "production" && !process.env.NEXT_PHASE) {
+      console.error("[session-store] WARNING: SESSION_HMAC_SECRET not set in production — using random fallback");
+    }
+    _hmacSecret = randomUUID(); // Dev fallback; production should always set the env var
+  }
+  return _hmacSecret;
+}
 
 // Redis client (lazy-initialized)
 let redisClient: any = null;
@@ -178,7 +190,7 @@ export async function deleteSessionState(
 export function generateReconnectToken(interviewId: string): string {
   const timestamp = Date.now().toString();
   const nonce = randomUUID();
-  const hmac = createHmac("sha256", SESSION_HMAC_SECRET)
+  const hmac = createHmac("sha256", getHmacSecret())
     .update(`${interviewId}:${timestamp}:${nonce}`)
     .digest("hex");
   return `${timestamp}.${nonce}.${hmac}`;
@@ -208,7 +220,7 @@ export function verifyReconnectToken(
     return { valid: false, expired: true, reason: "Token expired" };
   }
 
-  const expectedHmac = createHmac("sha256", SESSION_HMAC_SECRET)
+  const expectedHmac = createHmac("sha256", getHmacSecret())
     .update(`${interviewId}:${timestamp}:${nonce}`)
     .digest("hex");
 

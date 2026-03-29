@@ -303,7 +303,7 @@ export async function generateInterviewReport(
       ? `Skills: ${Array.isArray(candidateProfile.skills) ? candidateProfile.skills.join(", ") : candidateProfile.skills}`
       : null,
     candidateProfile.resumeText
-      ? `Resume Summary (first 2000 chars): ${candidateProfile.resumeText.substring(0, 2000)}`
+      ? `Resume Summary (first 3000 chars): ${candidateProfile.resumeText.substring(0, 3000)}`
       : null,
   ]
     .filter(Boolean)

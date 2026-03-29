@@ -36,6 +36,7 @@ import {
 } from "@/hooks/useVoiceInterview";
 import { DeviceSelector } from "@/components/interview/DeviceSelector";
 import { NetworkQualityIndicator } from "@/components/interview/NetworkQualityIndicator";
+import { useMediaRecording } from "@/hooks/useMediaRecording";
 
 // ── Props ──────────────────────────────────────────────────────────────
 
@@ -63,17 +64,12 @@ export function VoiceInterviewRoom({
   const [stream, setStream] = useState<MediaStream | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
 
-  // Recording
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const recordedChunksRef = useRef<number>(0);
+  // Recording — full audio+video stream for useMediaRecording hook
+  const [recordingStream, setRecordingStream] = useState<MediaStream | null>(null);
 
   // Reconnection state
   const [isReconnecting, setIsReconnecting] = useState(false);
   const prevConnectedRef = useRef(true);
-
-  // Recording failure tracking
-  const failedChunksRef = useRef<number>(0);
-  const [recordingWarning, setRecordingWarning] = useState(false);
 
   // UI states
   const [textInput, setTextInput] = useState("");
@@ -121,12 +117,33 @@ export function VoiceInterviewRoom({
     onError: (error) => toast.error(error),
     onInterviewEnd: () => {
       toast.success("Interview completed! Generating your report...");
-      finalizeRecording();
+      // Finalize recording via hook (called from ref to avoid circular dep)
+      finalizeRecordingRef.current?.();
       setTimeout(() => {
         router.push(`/candidate/interviews/${interviewId}/report`);
       }, 3000);
     },
   });
+
+  // Recording hook — handles chunked upload, checksums, jitter, offline queue
+  const {
+    isRecording,
+    recordingWarning,
+    startRecording,
+    stopRecording,
+    finalizeRecording,
+  } = useMediaRecording({
+    interviewId,
+    accessToken,
+    stream: recordingStream,
+  });
+
+  // Ref to break circular dependency: onInterviewEnd needs finalizeRecording
+  const finalizeRecordingRef = useRef<() => void>(() => {});
+  finalizeRecordingRef.current = () => {
+    const elapsed = durationMinutes * 60 - timeLeft;
+    finalizeRecording(elapsed);
+  };
 
   // Auto-show text input when voice falls back to text mode
   useEffect(() => {
@@ -163,14 +180,13 @@ export function VoiceInterviewRoom({
       setStream(newStream);
       if (videoRef.current) videoRef.current.srcObject = newStream;
 
-      // SECURITY/F18: Update recording stream's video track if actively recording
-      if (mediaRecorderRef.current?.state === "recording") {
-        const recorderStream = mediaRecorderRef.current.stream;
-        const oldVideoTrack = recorderStream.getVideoTracks()[0];
+      // Update recording stream's video track — restart recording with new stream
+      if (isRecording && recordingStream) {
+        const oldVideoTrack = recordingStream.getVideoTracks()[0];
         const newVideoTrack = newStream.getVideoTracks()[0];
         if (oldVideoTrack && newVideoTrack) {
-          recorderStream.removeTrack(oldVideoTrack);
-          recorderStream.addTrack(newVideoTrack.clone());
+          recordingStream.removeTrack(oldVideoTrack);
+          recordingStream.addTrack(newVideoTrack.clone());
           oldVideoTrack.stop();
         }
       }
@@ -179,7 +195,7 @@ export function VoiceInterviewRoom({
     } catch {
       toast.error("Failed to switch camera");
     }
-  }, [stream]);
+  }, [stream, isRecording, recordingStream]);
 
   const handleSpeakerChange = useCallback(async (deviceId: string) => {
     // setSinkId is only available on some browsers (Chrome/Edge)
@@ -256,8 +272,12 @@ export function VoiceInterviewRoom({
         poorNotifiedRef.current = true; // Never resets — once per session
         toast.info("Connection quality degraded. Your responses are safely backed up.", { duration: 3000 });
       }
+    } else if (connectionQuality === "good") {
+      // Reset both timer and notification flag — allow re-notification on next degradation
+      poorSinceRef.current = null;
+      poorNotifiedRef.current = false;
     } else {
-      // Reset the "poor since" timer (but NOT the notification flag)
+      // "fair" — reset timer but keep notification flag
       poorSinceRef.current = null;
     }
     if (connectionQuality === "fair" || connectionQuality === "poor") {
@@ -286,49 +306,43 @@ export function VoiceInterviewRoom({
 
   // ── Camera Setup ──────────────────────────────────────────────────
   useEffect(() => {
-    let currentStream: MediaStream | null = null;
+    let videoStream: MediaStream | null = null;
+    let fullStream: MediaStream | null = null;
     const initCamera = async () => {
       try {
-        currentStream = await navigator.mediaDevices.getUserMedia({
+        // Video-only stream for preview
+        videoStream = await navigator.mediaDevices.getUserMedia({
           video: { width: { ideal: 1280 }, height: { ideal: 720 } },
           audio: false,
         });
-        setStream(currentStream);
+        setStream(videoStream);
         setCameraEnabled(true);
 
-        const fullStream = await navigator.mediaDevices.getUserMedia({
+        // Full audio+video stream for recording hook
+        fullStream = await navigator.mediaDevices.getUserMedia({
           video: { width: { ideal: 1280 }, height: { ideal: 720 } },
           audio: true,
         });
-        try {
-          const recorder = new MediaRecorder(fullStream, { mimeType: "video/webm;codecs=vp9" });
-          mediaRecorderRef.current = recorder;
-          recorder.ondataavailable = async (event) => {
-            if (event.data.size > 0) { await uploadChunk(event.data, recordedChunksRef.current); recordedChunksRef.current++; }
-          };
-          recorder.start(2000);
-        } catch {
-          const recorder = new MediaRecorder(fullStream);
-          mediaRecorderRef.current = recorder;
-          recorder.ondataavailable = async (event) => {
-            if (event.data.size > 0) { await uploadChunk(event.data, recordedChunksRef.current); recordedChunksRef.current++; }
-          };
-          recorder.start(2000);
-        }
+        setRecordingStream(fullStream);
       } catch {
         toast.error("Camera access is required. Please enable your camera and refresh.");
       }
     };
     initCamera();
     return () => {
-      if (currentStream) currentStream.getTracks().forEach((t) => t.stop());
-      if (mediaRecorderRef.current?.state === "recording") mediaRecorderRef.current.stop();
+      if (videoStream) videoStream.getTracks().forEach((t) => t.stop());
+      if (fullStream) fullStream.getTracks().forEach((t) => t.stop());
     };
   }, []);
 
   useEffect(() => {
     if (videoRef.current && stream) videoRef.current.srcObject = stream;
   }, [stream, interviewState]);
+
+  // Auto-start recording when stream is ready
+  useEffect(() => {
+    if (recordingStream && !isRecording) startRecording();
+  }, [recordingStream, isRecording, startRecording]);
 
   // ── Timer with 5-minute warning ─────────────────────────────────
   const fiveMinWarningShownRef = useRef(false);
@@ -377,51 +391,9 @@ export function VoiceInterviewRoom({
     };
   }, [interviewState, resetControlsTimer]);
 
-  // ── Upload & Recording ────────────────────────────────────────
-  // F7: Upload with retry (3 attempts, 1s delay between each)
-  const uploadChunk = async (blob: Blob, index: number) => {
-    for (let attempt = 0; attempt < 3; attempt++) {
-      try {
-        const formData = new FormData();
-        formData.append("chunk", blob);
-        formData.append("chunkIndex", String(index));
-        formData.append("accessToken", accessToken);
-        await fetch(`/api/interviews/${interviewId}/recording`, { method: "POST", body: formData });
-        failedChunksRef.current = 0;
-        setRecordingWarning(false);
-        return; // Success
-      } catch {
-        if (attempt < 2) await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
-      }
-    }
-    // All 3 attempts failed
-    failedChunksRef.current++;
-    if (failedChunksRef.current >= 3) setRecordingWarning(true);
-  };
-
-  const finalizeRecording = async () => {
-    if (mediaRecorderRef.current?.state === "recording") mediaRecorderRef.current.stop();
-    const payload = JSON.stringify({
-      action: "finalize",
-      totalChunks: recordedChunksRef.current,
-      format: "webm",
-      durationSeconds: durationMinutes * 60 - timeLeft,
-    });
-    // Retry up to 3 times with exponential backoff [1s, 2s, 4s]
-    for (let attempt = 0; attempt < 3; attempt++) {
-      try {
-        const res = await fetch(`/api/interviews/${interviewId}/recording`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: payload,
-        });
-        if (res.ok || res.status === 202) return; // 202 = queued for Inngest retry
-        if (res.status < 500) return; // Client error, don't retry
-      } catch { /* network error, retry */ }
-      if (attempt < 2) await new Promise((r) => setTimeout(r, 1000 * Math.pow(2, attempt)));
-    }
-    console.warn("[Recording] Finalization failed after 3 attempts — server will retry via Inngest");
-  };
+  // ── Recording ────────────────────────────────────────────────────
+  // Recording is handled by useMediaRecording hook (auth headers, checksums,
+  // jitter, IndexedDB offline queue). See hooks/useMediaRecording.ts.
 
   const toggleCamera = useCallback(() => {
     if (stream) {

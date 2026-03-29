@@ -14,7 +14,7 @@ import { getInterviewTools } from "@/lib/gemini-live";
 import { checkCandidateEligibility } from "@/lib/interview-eligibility";
 import { logInterviewActivity, getClientIp } from "@/lib/interview-audit";
 import { isValidTransition } from "@/lib/interview-state-machine";
-import { acquireSessionLock, swapSessionLock, saveSessionState, getSessionState, generateReconnectToken } from "@/lib/session-store";
+import { acquireSessionLock, swapSessionLock, releaseSessionLock, saveSessionState, getSessionState, generateReconnectToken } from "@/lib/session-store";
 import { recordSLOEvent } from "@/lib/slo-monitor";
 import { classifyError } from "@/lib/error-classification";
 import * as Sentry from "@sentry/nextjs";
@@ -27,6 +27,7 @@ export async function POST(
 
   console.log(`[voice-init] Called for interview=${id}, VOICE_RELAY_URL=${process.env.VOICE_RELAY_URL ? "SET" : "MISSING"}, RELAY_JWT_SECRET=${process.env.RELAY_JWT_SECRET ? "SET" : "MISSING"}`);
 
+  let lockOwnerToken = "";
   try {
     const body = await request.json();
     const { accessToken, reconnect, reconnectContext } = body;
@@ -93,7 +94,6 @@ export async function POST(
 
     // Acquire session lock to prevent duplicate sessions
     // On reconnect: atomic swap (compare-and-swap) to avoid race condition
-    let lockOwnerToken = "";
     if (reconnect) {
       const existingState = await getSessionState(id);
       const oldOwnerToken = existingState?.lockOwnerToken || "";
@@ -262,6 +262,10 @@ export async function POST(
       },
     });
   } catch (error) {
+    // Release lock if acquired before error — prevents 120s deadlock
+    if (lockOwnerToken) {
+      await releaseSessionLock(id, lockOwnerToken).catch(() => {});
+    }
     Sentry.captureException(error, { tags: { component: "voice_init" } });
     console.error(`[voice-init] ERROR for interview=${id}:`, error instanceof Error ? error.message : error);
     await recordSLOEvent("interview.start.success_rate", false);

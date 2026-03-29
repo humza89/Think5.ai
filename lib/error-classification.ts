@@ -40,14 +40,18 @@ export function classifyError(
     };
   }
 
-  // Session expired (410)
+  // Session expired or duration exceeded (410)
   if (statusCode === 410 || errorMessage.includes("expired")) {
+    const isDurationExceeded = errorMessage.includes("duration") || errorMessage.includes("time limit") || context?.type === "duration_exceeded";
     return {
-      title: "Session Expired",
-      message: "Your interview session has expired.",
-      action:
-        "Contact support if you need to reschedule your interview.",
-      severity: "error",
+      title: isDurationExceeded ? "Time Limit Reached" : "Session Expired",
+      message: isDurationExceeded
+        ? "The maximum interview duration has been reached. Your progress has been saved."
+        : "Your interview session has expired.",
+      action: isDurationExceeded
+        ? "Your interview will be submitted automatically."
+        : "Contact support if you need to reschedule your interview.",
+      severity: isDurationExceeded ? "warning" as const : "error" as const,
       recoverable: false,
     };
   }

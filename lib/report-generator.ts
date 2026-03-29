@@ -169,30 +169,16 @@ export async function generateReportInBackground(
       recruiterId: interview.recruiter?.id,
     });
 
-    // P0.4: Compute deterministic integrity score from ProctoringEvent rows
-    const proctoringEvents = await prisma.proctoringEvent.findMany({
-      where: { interviewId },
-      select: { eventType: true, severity: true },
-    });
-
-    let computedIntegrityScore = 100;
-    const severityDeductions: Record<string, number> = {
-      CRITICAL: 20,
-      HIGH: 10,
-      MEDIUM: 5,
-      LOW: 2,
-    };
-    const eventCounts: Record<string, number> = {};
-    for (const event of proctoringEvents) {
-      computedIntegrityScore -= severityDeductions[event.severity] || 2;
-      eventCounts[event.eventType] = (eventCounts[event.eventType] || 0) + 1;
-    }
-    computedIntegrityScore = Math.max(0, computedIntegrityScore);
+    // P0.4: Compute deterministic integrity score using diminishing returns model
+    // Uses the same model as proctoring-normalizer.ts for consistency
+    const { generateIntegrityConformanceReport } = await import("@/lib/proctoring-normalizer");
+    const proctoringReport = await generateIntegrityConformanceReport(interviewId);
+    const computedIntegrityScore = proctoringReport.integrityScore;
 
     // Build human-readable integrity flags
-    const computedFlags = Object.entries(eventCounts).map(
-      ([type, count]) => `${type.replace(/_/g, " ")} (${count}x)`
-    );
+    const computedFlags = Object.entries(proctoringReport.bySeverity)
+      .filter(([, count]) => count > 0)
+      .map(([severity, count]) => `${severity} events (${count}x)`);
 
     // Use the lower of AI-assessed and computed scores for safety
     const finalIntegrityScore = reportData.integrityScore != null
@@ -287,13 +273,8 @@ export async function generateReportInBackground(
           });
         }
       }
-      // After creating sections, validate coverage against planned objectives
-      try {
-        const { validateSectionCoverage } = await import("@/lib/section-coverage");
-        await validateSectionCoverage(interviewId);
-      } catch (coverageError) {
-        console.error("Section coverage validation failed:", coverageError);
-      }
+      // Section coverage validation is handled by the Inngest orchestrator (report-generate.ts)
+      // to avoid running it twice.
     } catch (sectionError) {
       // Non-critical — don't fail report generation for section scoring
       console.error("Section scoring failed:", sectionError);

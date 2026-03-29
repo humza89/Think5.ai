@@ -27,7 +27,7 @@ export async function POST(
 
   try {
     const body = await request.json();
-    const { reconnectToken, clientCheckpointDigest, clientTurnIndex } = body;
+    const { reconnectToken, clientCheckpointDigest, clientTurnIndex, lockOwnerToken: clientOwnerToken } = body;
 
     if (!reconnectToken) {
       return Response.json({ error: "Missing reconnect token" }, { status: 400 });
@@ -52,7 +52,15 @@ export async function POST(
       );
     }
 
-    // 3. Verify token matches stored token (prevents replay of old rotated tokens)
+    // 3. Verify lock ownership (H4: prevents session hijacking with stolen reconnect token)
+    if (clientOwnerToken && session.lockOwnerToken && clientOwnerToken !== session.lockOwnerToken) {
+      return Response.json(
+        { error: "Lock ownership mismatch — session belongs to another client" },
+        { status: 403 }
+      );
+    }
+
+    // 4. Verify token matches stored token (prevents replay of old rotated tokens)
     if (session.reconnectToken !== reconnectToken) {
       return Response.json(
         { error: "Token has been rotated — use the latest token" },
@@ -105,7 +113,7 @@ export async function POST(
     await Promise.all([
       recordSLOEvent("session.reconnect.success_rate", true),
       recordSLOEvent("session.reconnect.latency_p95", recoveryMs <= 15000, recoveryMs),
-      recordSLOEvent("session.reconnect.context_loss.rate", digestMatch !== false),
+      recordSLOEvent("session.reconnect.context_loss.rate", digestMatch === true),
     ]);
 
     // 8. Return recovery instructions

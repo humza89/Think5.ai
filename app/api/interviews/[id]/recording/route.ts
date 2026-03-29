@@ -18,7 +18,9 @@ import {
 } from "@/lib/media-storage";
 import * as Sentry from "@sentry/nextjs";
 
-// ── Rate Limiting (in-memory per-interview) ─────────────────────────
+// ── Rate Limiting (in-memory per-instance) ──────────────────────────
+// NOTE: This is per-process. In multi-instance deployments, each instance
+// enforces independently. For distributed rate limiting, migrate to Redis.
 const uploadCounters = new Map<string, { count: number; windowStart: number }>();
 const MAX_UPLOADS_PER_MINUTE = 60; // 2s chunks = 30/min typical; 60 allows burst
 const MAX_CHUNK_SIZE = 10 * 1024 * 1024; // 10 MB per chunk
@@ -197,7 +199,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         );
         await recordSLOEvent("recording.upload.success_rate", false);
         return Response.json(
-          { error: "Checksum mismatch — chunk corrupted in transit", expected: clientChecksum, actual: serverChecksum },
+          { error: "Checksum mismatch — chunk corrupted in transit. Retry automatically." },
           { status: 422 }
         );
       }

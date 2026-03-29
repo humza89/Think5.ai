@@ -130,7 +130,7 @@ export function useVoiceInterview(
   const qualityCheckIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const droppedFramesRef = useRef(0); // Consecutive frames dropped due to backpressure
   const silentFramesRef = useRef(0); // Consecutive silent audio frames
-  const checkpointFailuresRef = useRef(0); // Consecutive checkpoint failures
+  const checkpointResultsRef = useRef<boolean[]>([]); // Rolling window of last 5 checkpoint results
   const consecutiveSetupFailuresRef = useRef(0); // Circuit breaker counter
   const tabHiddenRef = useRef(false); // F5: Tab visibility — suppress heartbeat when hidden
   const circuitBreakerStateRef = useRef<"CLOSED" | "OPEN" | "HALF_OPEN">("CLOSED"); // F3: Circuit breaker state
@@ -141,6 +141,7 @@ export function useVoiceInterview(
   const micRevokedRef = useRef(false); // F6: Track mic revocation
   const askedQuestionsRef = useRef<string[]>([]); // Question dedup: track AI questions to prevent repeats
   const reconnectTokenRef = useRef<string>(""); // HMAC-signed reconnect token from server
+  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null); // H1: Cancel on unmount to prevent stale closures
   // Enterprise memory refs — persisted across reconnects
   const difficultyLevelRef = useRef<string>("mid");
   const flaggedFollowUpsRef = useRef<Array<{ topic: string; reason: string; depth?: string }>>([]);
@@ -195,7 +196,13 @@ export function useVoiceInterview(
       checkpointTimerRef.current = null;
     }
 
-    // 6. Reset monitoring counters
+    // 6. Cancel pending reconnect timeout (H1: prevents stale closure)
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current);
+      reconnectTimeoutRef.current = null;
+    }
+
+    // 7. Reset monitoring counters
     droppedFramesRef.current = 0;
     silentFramesRef.current = 0;
     setMicIsSilent(false);
@@ -548,7 +555,7 @@ export function useVoiceInterview(
         }),
       });
       if (res.ok) {
-        checkpointFailuresRef.current = 0;
+        checkpointResultsRef.current = [...checkpointResultsRef.current.slice(-4), true];
         // Clear IndexedDB backup on successful server save
         clearTranscriptBackup(interviewId).catch(() => {});
         // F8: Refresh session TTL on successful checkpoint
@@ -597,7 +604,7 @@ export function useVoiceInterview(
         throw new Error(`Checkpoint HTTP ${res.status}`);
       }
     } catch {
-      checkpointFailuresRef.current += 1;
+      checkpointResultsRef.current = [...checkpointResultsRef.current.slice(-4), false];
       // Fallback: save transcript to IndexedDB when server is unreachable
       backupTranscript(
         interviewId,
@@ -612,8 +619,10 @@ export function useVoiceInterview(
           sessionSummary: sessionSummaryRef.current || undefined,
         }
       ).catch(() => {});
-      if (checkpointFailuresRef.current >= 3) {
-        console.warn("[Voice] 3+ consecutive checkpoint failures — transcript backed up to IndexedDB");
+      // Warn if 3+ failures in last 5 attempts (rolling window, not consecutive)
+      const recentFailures = checkpointResultsRef.current.filter((r) => !r).length;
+      if (recentFailures >= 3) {
+        console.warn(`[Voice] ${recentFailures}/5 recent checkpoints failed — transcript backed up to IndexedDB`);
         onError?.("Progress may not be saving — check your connection. Local backup active.");
       }
     }
@@ -817,7 +826,8 @@ export function useVoiceInterview(
         if (enterpriseMemory.currentModule) currentModuleRef.current = enterpriseMemory.currentModule;
         if (enterpriseMemory.candidateProfile) candidateProfileRef.current = enterpriseMemory.candidateProfile;
         if (enterpriseMemory.sessionSummary) sessionSummaryRef.current = enterpriseMemory.sessionSummary;
-        console.log(`[Voice] Restored enterprise memory from server: difficulty=${enterpriseMemory.currentDifficultyLevel}, module=${enterpriseMemory.currentModule}, followUps=${enterpriseMemory.flaggedFollowUps?.length || 0}`);
+        if (enterpriseMemory.moduleScores) moduleScoresRef.current = enterpriseMemory.moduleScores;
+        console.log(`[Voice] Restored enterprise memory from server: difficulty=${enterpriseMemory.currentDifficultyLevel}, module=${enterpriseMemory.currentModule}, followUps=${enterpriseMemory.flaggedFollowUps?.length || 0}, moduleScores=${enterpriseMemory.moduleScores?.length || 0}`);
       }
 
       // 2. Set up audio context for playback
@@ -1021,7 +1031,7 @@ export function useVoiceInterview(
           setConnectionQuality("fair");
           reconnectStartTimeRef.current = Date.now();
 
-          setTimeout(async () => {
+          reconnectTimeoutRef.current = setTimeout(async () => {
             try {
               // Step 1: Call recovery API (rate-limited: skip if called within 5s)
               const timeSinceLastRecovery = Date.now() - lastRecoveryCallRef.current;
@@ -1040,17 +1050,23 @@ export function useVoiceInterview(
                   const recovery = await recoveryRes.json();
                   reconnectTokenRef.current = recovery.newReconnectToken;
 
-                  // If diverged, reconcile transcript from server
+                  // If diverged, reconcile transcript from server (M5: only accept if server has more data)
                   if (recovery.status === "diverged" && recovery.canonicalTranscript) {
-                    const serverTranscript = recovery.canonicalTranscript.map(
-                      (t: { role: string; text: string; timestamp: string }) => ({
-                        role: t.role === "interviewer" ? "interviewer" as const : "candidate" as const,
-                        content: t.text,
-                        timestamp: t.timestamp,
-                        finalized: true,
-                      })
-                    );
-                    setTranscript(serverTranscript);
+                    const serverLen = recovery.canonicalTranscript.length;
+                    const clientLen = transcriptRef.current.length;
+                    if (serverLen >= clientLen) {
+                      const serverTranscript = recovery.canonicalTranscript.map(
+                        (t: { role: string; text: string; timestamp: string }) => ({
+                          role: t.role === "interviewer" ? "interviewer" as const : "candidate" as const,
+                          content: t.text,
+                          timestamp: t.timestamp,
+                          finalized: true,
+                        })
+                      );
+                      setTranscript(serverTranscript);
+                    } else {
+                      console.warn(`[Voice] Server transcript shorter (${serverLen}) than client (${clientLen}) — keeping client transcript`);
+                    }
                   }
                   setReconnectPhase("re-synced");
                 } else {
