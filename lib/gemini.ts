@@ -1,5 +1,61 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { computeContentHash } from "./versioning";
+import { z } from "zod";
+
+const ReportDataSchema = z.object({
+  technicalSkills: z.array(z.object({
+    skill: z.string().default("Unknown"),
+    rating: z.number().min(0).max(10).default(5),
+    description: z.string().default(""),
+    evidence: z.string().default("")
+  })).default([]),
+  softSkills: z.array(z.object({
+    skill: z.string().default("Unknown"),
+    rating: z.number().min(0).max(10).default(5),
+    description: z.string().default("")
+  })).default([]),
+  domainExpertise: z.number().nullable().default(null),
+  clarityStructure: z.number().nullable().default(null),
+  problemSolving: z.number().nullable().default(null),
+  communicationScore: z.number().nullable().default(null),
+  measurableImpact: z.number().nullable().default(null),
+  professionalExperience: z.number().nullable().default(null),
+  roleFit: z.number().nullable().default(null),
+  culturalFit: z.number().nullable().default(null),
+  thinkingJudgment: z.number().nullable().default(null),
+  headline: z.string().nullable().default(null),
+  confidenceLevel: z.string().nullable().default("MEDIUM"),
+  summary: z.string().default(""),
+  strengths: z.array(z.string()).default([]),
+  areasToImprove: z.array(z.string()).default([]),
+  recommendation: z.string().default("MAYBE"),
+  hiringAdvice: z.string().default(""),
+  overallScore: z.number().nullable().default(null),
+  riskSignals: z.array(z.object({
+    type: z.string(),
+    severity: z.enum(["LOW", "MEDIUM", "HIGH"]).catch("MEDIUM"),
+    evidence: z.string(),
+    confidence: z.string()
+  })).default([]),
+  hypothesisOutcomes: z.array(z.object({
+    hypothesis: z.string(),
+    outcome: z.enum(["confirmed", "refuted", "inconclusive"]).catch("inconclusive"),
+    evidence: z.string()
+  })).default([]),
+  evidenceHighlights: z.array(z.object({
+    type: z.enum(["strength", "concern", "contradiction", "impressive"]).catch("strength"),
+    summary: z.string(),
+    transcriptRange: z.object({
+      startIdx: z.number(),
+      endIdx: z.number()
+    }).optional()
+  })).default([]),
+  jobMatchScore: z.number().nullable().default(null),
+  requirementMatches: z.array(z.any()).nullable().default(null),
+  environmentFitNotes: z.string().nullable().default(null),
+  integrityScore: z.number().nullable().default(100),
+  integrityFlags: z.array(z.any()).nullable().default([]),
+});
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 
@@ -321,7 +377,15 @@ Minimum score is 0. If 3+ paste or devtools events, add a meta-flag: {type: "hig
   }
   jsonStr = jsonStr.trim();
 
-  const reportData: InterviewReportData = JSON.parse(jsonStr);
+  let parsedJson;
+  try {
+     parsedJson = JSON.parse(jsonStr);
+  } catch (e) {
+     throw new Error("Failed to parse LLM output as JSON");
+  }
+
+  // Enterprise Zod strict validation
+  const reportData = ReportDataSchema.parse(parsedJson) as InterviewReportData;
 
   // Validate and clamp all scores
   reportData.overallScore = clampScore(reportData.overallScore, 0, 100);

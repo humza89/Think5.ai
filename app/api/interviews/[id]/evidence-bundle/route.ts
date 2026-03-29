@@ -79,11 +79,55 @@ export async function GET(
       });
     }
 
-    // PDF export placeholder
-    return NextResponse.json(
-      { error: "PDF export not yet implemented" },
-      { status: 501 }
-    );
+    if (format === "pdf" || format === "html") {
+      await prisma.evidenceBundle.update({
+        where: { id: bundle.id },
+        data: { exportedAt: new Date(), exportFormat: "pdf" },
+      });
+
+      const htmlContent = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>Evidence Bundle - ${id}</title>
+          <style>
+            body { font-family: system-ui, sans-serif; line-height: 1.6; color: #333; max-width: 800px; margin: 0 auto; padding: 2rem; }
+            h1 { border-bottom: 2px solid #eee; padding-bottom: 0.5rem; }
+            .section { margin-bottom: 2rem; }
+            .meta { background: #f9f9f9; padding: 1rem; border-radius: 4px; border-left: 4px solid #4f46e5; }
+            pre { background: #111; color: #eee; padding: 1rem; border-radius: 4px; overflow-x: auto; font-size: 0.85rem; }
+          </style>
+        </head>
+        <body onload="window.print()">
+          <h1>Interview Evidence Bundle</h1>
+          <div class="meta">
+            <p><strong>Interview ID:</strong> ${id}</p>
+            <p><strong>Compiled At:</strong> ${bundle.compiledAt.toISOString()}</p>
+            <p><strong>Integrity Hash:</strong> ${bundle.integrityHash}</p>
+          </div>
+          
+          <div class="section">
+            <h2>Evaluation Scores</h2>
+            <pre>${JSON.stringify(bundle.scores, null, 2)}</pre>
+          </div>
+
+          <div class="section">
+            <h2>Evidence Items</h2>
+            <pre>${JSON.stringify(bundle.evidenceItems, null, 2)}</pre>
+          </div>
+        </body>
+        </html>
+      `;
+
+      return new NextResponse(htmlContent, {
+        headers: {
+          "Content-Type": "text/html",
+          "Content-Disposition": `inline; filename="evidence-${id}.html"`
+        }
+      });
+    }
+
+    return NextResponse.json({ error: "Unsupported format" }, { status: 400 });
   } catch (error) {
     const { error: message, status } = handleAuthError(error);
     return NextResponse.json({ error: message }, { status });

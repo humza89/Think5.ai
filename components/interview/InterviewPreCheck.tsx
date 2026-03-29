@@ -27,13 +27,34 @@ export function InterviewPreCheck({ onComplete, interviewId, accessToken }: PreC
     setMic("pending");
     setNetwork("pending");
 
-    // 1. Network Check (Mocked speed test)
-    await new Promise((r) => setTimeout(r, 1000));
+    // 1. Network Check (Real API Payload Speedtest)
     const isOnline = navigator.onLine;
-    setNetwork(isOnline ? "pass" : "fail");
-
+    
     if (!isOnline) {
-      toast.error("Network connection failed.");
+      setNetwork("fail");
+      toast.error("Network connection failed. You are offline.");
+      setIsChecking(false);
+      return;
+    }
+
+    try {
+      const startTime = performance.now();
+      // Fetch a small chunk of data from Next Server to assess real latency
+      const res = await fetch("/api/v1/health?speedtest=true", { cache: 'no-store' });
+      const endTime = performance.now();
+      const latency = endTime - startTime;
+      
+      if (res.ok && latency < 600) { // 600ms latency threshold for acceptable audio websocket performance
+         setNetwork("pass");
+      } else {
+         setNetwork("fail");
+         toast.error(latency >= 600 ? "Connection latency too high for Voice AI." : "Bandwidth checks failed.");
+         setIsChecking(false);
+         return;
+      }
+    } catch (e) {
+      setNetwork("fail");
+      toast.error("Network connection unstable or blocked by firewall.");
       setIsChecking(false);
       return;
     }

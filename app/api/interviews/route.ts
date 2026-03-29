@@ -287,7 +287,9 @@ export async function POST(request: NextRequest) {
           acceptedAt: new Date(),
           sentAt: new Date(),
           expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
-          token: crypto.randomUUID(),
+          token: (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') 
+            ? crypto.randomUUID() 
+            : Math.random().toString(36).substring(2) + Date.now().toString(36),
         },
       });
       // Link invitation back to interview

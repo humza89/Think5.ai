@@ -26,12 +26,16 @@ export default async function CandidateInterviewPage({
     return notFound();
   }
 
+  const durationSeconds = (interview.template?.estimatedDuration || 45) * 60;
+
   return (
     <CandidateInterviewClient 
       interviewId={id} 
       candidateName={interview.candidate.fullName} 
       jobTitle={interview.job?.title || "Candidate"} 
       accessToken={token} 
+      durationSeconds={durationSeconds}
+      integrityMode={(interview.template as any)?.integrityMode || "none"}
     />
   );
 }

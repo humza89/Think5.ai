@@ -14,9 +14,11 @@ interface InterviewRoomProps {
   candidateName: string;
   jobTitle: string;
   accessToken: string;
+  durationSeconds: number;
+  integrityMode: string;
 }
 
-export function InterviewRoom({ interviewId, candidateName, jobTitle, accessToken }: InterviewRoomProps) {
+export function InterviewRoom({ interviewId, candidateName, jobTitle, accessToken, durationSeconds, integrityMode }: InterviewRoomProps) {
   const router = useRouter();
   
   // Media States
@@ -31,7 +33,7 @@ export function InterviewRoom({ interviewId, candidateName, jobTitle, accessToke
   const [warnings, setWarnings] = useState(0);
 
   // Time tracking
-  const [timeLeft, setTimeLeft] = useState(45 * 60);
+  const [timeLeft, setTimeLeft] = useState(durationSeconds);
 
   // Code Editor State
   const [code, setCode] = useState("// Write your solution here\nfunction solve() {\n  \n}");
@@ -101,11 +103,24 @@ export function InterviewRoom({ interviewId, candidateName, jobTitle, accessToke
 
     const handleVisibilityChange = () => {
       if (document.hidden) {
-        toast.error("Warning: Please stay on this tab during the interview.", {
-          duration: 5000,
-          icon: <AlertTriangle className="text-red-500" />
+        setWarnings(w => {
+            const nw = w + 1;
+            if (nw >= 3 && integrityMode === "strict") {
+                 toast.error("Interview terminated due to repeated strict mode violations.");
+                 fetch(`/api/interviews/${interviewId}/proctoring`, {
+                    method: "POST", headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ accessToken, eventType: "STRICT_VIOLATION_TERMINATED", severity: "CRITICAL" })
+                 });
+                 endInterview(); // forceful kick
+            } else {
+                 toast.error("Warning: Please stay on this tab during the interview.", {
+                   duration: 5000,
+                   icon: <AlertTriangle className="text-red-500" />
+                 });
+            }
+            return nw;
         });
-        setWarnings(w => w + 1);
+
         fetch(`/api/interviews/${interviewId}/proctoring`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -116,8 +131,16 @@ export function InterviewRoom({ interviewId, candidateName, jobTitle, accessToke
 
     const handleFullscreenChange = () => {
         if (!document.fullscreenElement) {
-            toast.error("Warning: You have exited full-screen mode.", { duration: 5000 });
-            setWarnings(w => w + 1);
+            setWarnings(w => {
+                const nw = w + 1;
+                if (nw >= 3 && integrityMode === "strict") {
+                    toast.error("Interview terminated due to repeated strict mode violations.");
+                    endInterview();
+                } else {
+                    toast.error("Warning: You have exited full-screen mode.", { duration: 5000 });
+                }
+                return nw;
+            });
             fetch(`/api/interviews/${interviewId}/proctoring`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },

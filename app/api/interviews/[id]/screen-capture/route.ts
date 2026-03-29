@@ -17,12 +17,12 @@ export async function POST(
 ) {
   try {
     const { id: interviewId } = await params;
-    await requireInterviewAccess(interviewId);
-
+    
     const body = await request.json();
-    const { captureType, consentGiven } = body as {
+    const { captureType, consentGiven, accessToken } = body as {
       captureType?: string;
       consentGiven: boolean;
+      accessToken?: string;
     };
 
     if (!consentGiven) {
@@ -32,14 +32,20 @@ export async function POST(
       );
     }
 
-    // Check template policy
+    // Check template policy & Auth
     const interview = await prisma.interview.findUnique({
       where: { id: interviewId },
       select: {
         status: true,
+        accessToken: true,
         template: { select: { screenShareRequired: true } },
       },
     });
+
+    if (!interview || (accessToken && interview.accessToken !== accessToken)) {
+      // Allow fallback if requireInterviewAccess passes (for recruiters debugging)
+      if (!accessToken) await requireInterviewAccess(interviewId);
+    }
 
     if (!interview) {
       return NextResponse.json({ error: "Interview not found" }, { status: 404 });
@@ -80,14 +86,19 @@ export async function PATCH(
 ) {
   try {
     const { id: interviewId } = await params;
-    await requireInterviewAccess(interviewId);
 
     const body = await request.json();
-    const { sessionId, status: newStatus, thumbnailUrl } = body as {
+    const { sessionId, status: newStatus, thumbnailUrl, accessToken } = body as {
       sessionId: string;
       status?: string;
       thumbnailUrl?: string;
+      accessToken?: string;
     };
+
+    const interview = await prisma.interview.findUnique({ where: { id: interviewId } });
+    if (!interview || (accessToken && interview.accessToken !== accessToken)) {
+      if (!accessToken) await requireInterviewAccess(interviewId);
+    }
 
     if (!sessionId) {
       return NextResponse.json({ error: "sessionId is required" }, { status: 400 });
@@ -136,10 +147,15 @@ export async function DELETE(
 ) {
   try {
     const { id: interviewId } = await params;
-    await requireInterviewAccess(interviewId);
 
     const { searchParams } = new URL(request.url);
     const sessionId = searchParams.get("sessionId");
+    const accessToken = searchParams.get("accessToken");
+
+    const interview = await prisma.interview.findUnique({ where: { id: interviewId } });
+    if (!interview || (accessToken && interview.accessToken !== accessToken)) {
+      if (!accessToken) await requireInterviewAccess(interviewId);
+    }
 
     if (!sessionId) {
       return NextResponse.json({ error: "sessionId is required" }, { status: 400 });

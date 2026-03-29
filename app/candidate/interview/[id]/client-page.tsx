@@ -8,12 +8,16 @@ export default function CandidateInterviewClient({
   interviewId, 
   candidateName, 
   jobTitle, 
-  accessToken 
+  accessToken,
+  durationSeconds,
+  integrityMode
 }: { 
   interviewId: string, 
   candidateName: string, 
   jobTitle: string, 
-  accessToken: string 
+  accessToken: string,
+  durationSeconds: number,
+  integrityMode: string
 }) {
   const [preCheckPassed, setPreCheckPassed] = useState(false);
 
@@ -27,6 +31,8 @@ export default function CandidateInterviewClient({
           candidateName={candidateName}
           jobTitle={jobTitle}
           accessToken={accessToken}
+          durationSeconds={durationSeconds}
+          integrityMode={integrityMode}
         />
       )}
     </div>
