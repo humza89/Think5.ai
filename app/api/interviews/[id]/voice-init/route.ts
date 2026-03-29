@@ -25,6 +25,8 @@ export async function POST(
 ) {
   const { id } = await params;
 
+  console.log(`[voice-init] Called for interview=${id}, VOICE_RELAY_URL=${process.env.VOICE_RELAY_URL ? "SET" : "MISSING"}, RELAY_JWT_SECRET=${process.env.RELAY_JWT_SECRET ? "SET" : "MISSING"}`);
+
   try {
     const body = await request.json();
     const { accessToken } = body;
@@ -56,6 +58,8 @@ export async function POST(
     if (!interview || interview.accessToken !== accessToken) {
       return Response.json({ error: "Unauthorized" }, { status: 401 });
     }
+
+    console.log(`[voice-init] Auth check: interview found=${!!interview}, token match=${interview?.accessToken === accessToken}`);
 
     if (interview.accessTokenExpiresAt && new Date() > new Date(interview.accessTokenExpiresAt)) {
       return Response.json({ error: "Access token expired" }, { status: 401 });
@@ -172,6 +176,8 @@ export async function POST(
     const { signRelayToken } = await import("@/lib/relay-jwt");
     const sessionToken = signRelayToken(id, interview.candidate.id);
 
+    console.log(`[voice-init] SUCCESS: relayUrl=${relayUrl}, tokenLen=${sessionToken.length}, candidate=${interview.candidate.fullName}`);
+
     return Response.json({
       relayUrl,
       sessionToken,
@@ -189,7 +195,7 @@ export async function POST(
     });
   } catch (error) {
     Sentry.captureException(error, { tags: { component: "voice_init" } });
-    console.error("Voice init error:", error);
+    console.error(`[voice-init] ERROR for interview=${id}:`, error instanceof Error ? error.message : error);
     await recordSLOEvent("interview.start.success_rate", false);
     const classified = classifyError(error, { statusCode: 500 });
     return Response.json(
