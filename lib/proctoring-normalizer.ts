@@ -77,3 +77,87 @@ export async function getProctoringEvents(interviewId: string) {
     orderBy: { timestamp: "asc" },
   });
 }
+
+/**
+ * Generate an integrity conformance report for an interview.
+ * Compares configured policy (what should be enforced) vs actual events.
+ */
+export async function generateIntegrityConformanceReport(interviewId: string): Promise<{
+  interviewId: string;
+  generatedAt: string;
+  eventsDetected: number;
+  bySeverity: Record<ProctoringEventSeverity, number>;
+  criticalEvents: Array<{ type: string; timestamp: string; description?: string }>;
+  conformanceGaps: string[];
+  integrityScore: number;
+}> {
+  const events = await getProctoringEvents(interviewId);
+
+  const bySeverity: Record<ProctoringEventSeverity, number> = {
+    LOW: 0, MEDIUM: 0, HIGH: 0, CRITICAL: 0,
+  };
+
+  const criticalEvents: Array<{ type: string; timestamp: string; description?: string }> = [];
+
+  for (const event of events) {
+    const severity = (event.severity as ProctoringEventSeverity) || "LOW";
+    bySeverity[severity]++;
+    if (severity === "CRITICAL") {
+      criticalEvents.push({
+        type: event.eventType,
+        timestamp: event.timestamp.toISOString(),
+        description: (event.details as Record<string, string>)?.description,
+      });
+    }
+  }
+
+  // Identify conformance gaps
+  const conformanceGaps: string[] = [];
+  if (bySeverity.CRITICAL > 0) {
+    conformanceGaps.push(`${bySeverity.CRITICAL} CRITICAL event(s) detected — manual review required`);
+  }
+  if (bySeverity.HIGH >= 3) {
+    conformanceGaps.push(`${bySeverity.HIGH} HIGH severity events — potential exam irregularity`);
+  }
+
+  // Compute integrity score: start at 100, deduct per event severity
+  let integrityScore = 100;
+  integrityScore -= bySeverity.LOW * 1;
+  integrityScore -= bySeverity.MEDIUM * 3;
+  integrityScore -= bySeverity.HIGH * 8;
+  integrityScore -= bySeverity.CRITICAL * 20;
+  integrityScore = Math.max(0, Math.min(100, integrityScore));
+
+  return {
+    interviewId,
+    generatedAt: new Date().toISOString(),
+    eventsDetected: events.length,
+    bySeverity,
+    criticalEvents,
+    conformanceGaps,
+    integrityScore,
+  };
+}
+
+/**
+ * Check if an interview has crossed alert thresholds and should trigger notifications.
+ */
+export async function checkProctoringAlertThresholds(interviewId: string): Promise<{
+  shouldAlert: boolean;
+  reason: string | null;
+}> {
+  const events = await getProctoringEvents(interviewId);
+  type ProcEvent = (typeof events)[number];
+  const criticalCount = events.filter((e: ProcEvent) => e.severity === "CRITICAL").length;
+
+  if (criticalCount >= 3) {
+    return { shouldAlert: true, reason: `${criticalCount} CRITICAL proctoring events in single interview` };
+  }
+
+  const report = await generateIntegrityConformanceReport(interviewId);
+  if (report.integrityScore < 50) {
+    return { shouldAlert: true, reason: `Low integrity score: ${report.integrityScore}/100` };
+  }
+
+  return { shouldAlert: false, reason: null };
+}

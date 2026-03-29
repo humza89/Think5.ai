@@ -35,6 +35,7 @@ import {
   type TranscriptEntry,
 } from "@/hooks/useVoiceInterview";
 import { DeviceSelector } from "@/components/interview/DeviceSelector";
+import { NetworkQualityIndicator } from "@/components/interview/NetworkQualityIndicator";
 
 // ── Props ──────────────────────────────────────────────────────────────
 
@@ -100,6 +101,9 @@ export function VoiceInterviewRoom({
     connectionQuality,
     isReconnecting: voiceReconnecting,
     isPaused,
+    reconnectPhase,
+    reconnectAttempt,
+    reconnectMax,
     startInterview,
     endInterview,
     sendTextMessage,
@@ -239,7 +243,14 @@ export function VoiceInterviewRoom({
   }, [interviewState, isPaused, toggleMic, endInterview, pauseInterview, resumeInterview]);
 
   // ── Progressive Degradation ─────────────────────────────────────
+  const poorNotifiedRef = useRef(false);
   useEffect(() => {
+    if (connectionQuality === "poor" && !poorNotifiedRef.current) {
+      poorNotifiedRef.current = true;
+      toast.warning("Switching to low-bandwidth mode — connection quality degraded.", { duration: 5000 });
+    } else if (connectionQuality === "good") {
+      poorNotifiedRef.current = false;
+    }
     if (connectionQuality === "fair" || connectionQuality === "poor") {
       if (!degradationTimerRef.current) {
         degradationTimerRef.current = setTimeout(() => setDegradationBannerShown(true), 10000);
@@ -310,11 +321,20 @@ export function VoiceInterviewRoom({
     if (videoRef.current && stream) videoRef.current.srcObject = stream;
   }, [stream, interviewState]);
 
-  // ── Timer ───────────────────────────────────────────────────────
+  // ── Timer with 5-minute warning ─────────────────────────────────
+  const fiveMinWarningShownRef = useRef(false);
   useEffect(() => {
     if (interviewState !== "IN_PROGRESS") return;
     const timer = setInterval(() => {
-      setTimeLeft((prev) => { if (prev <= 0) { endInterview(); return 0; } return prev - 1; });
+      setTimeLeft((prev) => {
+        if (prev <= 0) { endInterview(); return 0; }
+        // 5-minute warning toast (show once)
+        if (prev === 300 && !fiveMinWarningShownRef.current) {
+          fiveMinWarningShownRef.current = true;
+          toast.warning("5 minutes remaining — start wrapping up your answers.", { duration: 8000 });
+        }
+        return prev - 1;
+      });
     }, 1000);
     return () => clearInterval(timer);
   }, [interviewState, endInterview]);
@@ -500,7 +520,19 @@ export function VoiceInterviewRoom({
         <div className="absolute top-0 left-0 right-0 z-30 flex flex-col">
           {voiceReconnecting && (
             <div className="flex items-center justify-between gap-2 bg-orange-500/90 px-4 py-2 text-sm text-white">
-              <span>Reconnecting... Your responses are saved.</span>
+              <div className="flex items-center gap-2">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                <span>
+                  {reconnectPhase === "checking" && "Checking connection..."}
+                  {reconnectPhase === "restoring" && "Restoring session..."}
+                  {reconnectPhase === "verifying" && "Verifying transcript..."}
+                  {reconnectPhase === "recovering" && `Reconnecting (${reconnectAttempt}/${reconnectMax})...`}
+                  {reconnectPhase === "re-synced" && "Re-synced! Resuming..."}
+                  {reconnectPhase === "resume-failed" && "Reconnect failed."}
+                  {!reconnectPhase && "Reconnecting..."}
+                </span>
+                <span className="text-xs text-white/70">Your responses are safely backed up.</span>
+              </div>
               <div className="flex gap-2">
                 <button onClick={reconnect} className="underline text-xs">Retry</button>
                 <button onClick={() => setShowTextInput(true)} className="underline text-xs">Text Mode</button>
@@ -521,8 +553,7 @@ export function VoiceInterviewRoom({
           )}
           {fallbackToText && (
             <div className="flex items-center justify-between gap-2 bg-blue-500/90 px-4 py-2 text-sm text-white">
-              <span>Voice lost. Continue by typing below.</span>
-              {/* F3: Retry Voice button — allows recovery from circuit breaker */}
+              <span>Voice unavailable after {reconnectMax} reconnect attempts. Continue via text below.</span>
               <button onClick={() => retryVoice()} className="underline text-xs font-medium hover:text-white/80">
                 Retry Voice
               </button>
@@ -663,14 +694,8 @@ export function VoiceInterviewRoom({
                   </button>
                 </div>
 
-                {/* Right: Connection quality dot */}
-                <div className="flex items-center gap-2">
-                  <span className={`h-2 w-2 rounded-full ${
-                    connectionQuality === "good" ? "bg-green-500" :
-                    connectionQuality === "fair" ? "bg-yellow-500" : "bg-red-500"
-                  }`} />
-                  <span className="text-xs text-white/50">{connectionQuality}</span>
-                </div>
+                {/* Right: Network quality indicator */}
+                <NetworkQualityIndicator quality={connectionQuality} />
               </div>
             </div>
           </div>
@@ -696,21 +721,9 @@ export function VoiceInterviewRoom({
           )}
         </div>
 
-        {/* Pause Overlay */}
+        {/* Pause Overlay with countdown */}
         {isPaused && (
-          <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
-            <Card className="max-w-sm p-8 text-center bg-gray-900 border-gray-800">
-              <Pause className="mx-auto h-12 w-12 text-gray-400 mb-4" />
-              <h2 className="text-xl font-semibold text-white mb-2">Interview Paused</h2>
-              <p className="text-sm text-gray-400 mb-6">
-                Auto-cancels after 10 minutes of pause.
-              </p>
-              <Button onClick={resumeInterview} className="w-full" size="lg" autoFocus>
-                <Play className="h-4 w-4 mr-2" />
-                Resume
-              </Button>
-            </Card>
-          </div>
+          <PauseOverlay resumeInterview={resumeInterview} />
         )}
       </div>
 
@@ -799,6 +812,42 @@ function AriaIndicator({ state, reducedMotion = false }: { state: AISpeakingStat
           className="w-[80%] h-auto object-contain"
         />
       </div>
+    </div>
+  );
+}
+
+// ── Pause Overlay with countdown ──────────────────────────────────────
+
+function PauseOverlay({ resumeInterview }: { resumeInterview: () => Promise<void> }) {
+  const PAUSE_TIMEOUT_S = 10 * 60; // 10 minutes
+  const [pauseElapsed, setPauseElapsed] = useState(0);
+
+  useEffect(() => {
+    const timer = setInterval(() => setPauseElapsed((p) => p + 1), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const remaining = Math.max(0, PAUSE_TIMEOUT_S - pauseElapsed);
+  const minutes = Math.floor(remaining / 60);
+  const seconds = remaining % 60;
+  const urgency = remaining < 120; // Last 2 minutes
+
+  return (
+    <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
+      <Card className="max-w-sm p-8 text-center bg-gray-900 border-gray-800">
+        <Pause className="mx-auto h-12 w-12 text-gray-400 mb-4" />
+        <h2 className="text-xl font-semibold text-white mb-2">Interview Paused</h2>
+        <div className={`text-2xl font-mono tabular-nums mb-2 ${urgency ? "text-red-400" : "text-gray-300"}`}>
+          {minutes}:{seconds.toString().padStart(2, "0")}
+        </div>
+        <p className={`text-sm mb-6 ${urgency ? "text-red-400" : "text-gray-400"}`}>
+          {urgency ? "Hurry — interview auto-cancels soon!" : "Auto-cancels when timer reaches 0:00."}
+        </p>
+        <Button onClick={resumeInterview} className="w-full" size="lg" autoFocus>
+          <Play className="h-4 w-4 mr-2" />
+          Resume
+        </Button>
+      </Card>
     </div>
   );
 }

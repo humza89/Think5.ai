@@ -35,15 +35,64 @@ export async function GET() {
     checks.redis = "unhealthy";
   }
 
+  // Gemini API connectivity check (lightweight — models list)
+  try {
+    const geminiKey = process.env.GEMINI_API_KEY;
+    if (geminiKey) {
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models?key=${geminiKey}`,
+        { signal: AbortSignal.timeout(5000) }
+      );
+      checks.gemini = res.ok ? "healthy" : "unhealthy";
+    } else {
+      checks.gemini = "not_configured";
+    }
+  } catch {
+    checks.gemini = "unhealthy";
+  }
+
+  // Inngest connectivity check
+  try {
+    const inngestUrl = process.env.INNGEST_EVENT_KEY;
+    checks.inngest = inngestUrl ? "configured" : "not_configured";
+  } catch {
+    checks.inngest = "unhealthy";
+  }
+
+  // Voice relay health check
+  try {
+    const relayUrl = process.env.VOICE_RELAY_URL;
+    if (relayUrl) {
+      const relayHealthUrl = relayUrl.replace(/\/ws$/, "").replace("wss://", "https://") + "/health";
+      const res = await fetch(relayHealthUrl, { signal: AbortSignal.timeout(5000) });
+      if (res.ok) {
+        const data = await res.json();
+        checks.relay = data.status === "healthy" ? "healthy" : "degraded";
+      } else {
+        checks.relay = "unhealthy";
+      }
+    } else {
+      checks.relay = "not_configured";
+    }
+  } catch {
+    checks.relay = "unhealthy";
+  }
+
   const dbHealthy = checks.database === "healthy";
+  const allHealthy = Object.values(checks).every(
+    (v) => v === "healthy" || v === "configured" || v === "not_configured"
+  );
 
   return NextResponse.json(
     {
-      status: dbHealthy ? "healthy" : "degraded",
+      status: allHealthy ? "healthy" : dbHealthy ? "degraded" : "unhealthy",
       timestamp: new Date().toISOString(),
       checks: {
         database: checks.database,
         redis: checks.redis,
+        gemini: checks.gemini,
+        inngest: checks.inngest,
+        relay: checks.relay,
       },
     },
     { status: dbHealthy ? 200 : 503 }

@@ -233,6 +233,94 @@ export async function getUsageStats(options?: {
   };
 }
 
+/**
+ * Get per-interview cost summary.
+ * Returns total tokens, cost, and model breakdown for a specific interview.
+ */
+export async function getInterviewCostSummary(interviewId: string): Promise<{
+  interviewId: string;
+  totalInputTokens: number;
+  totalOutputTokens: number;
+  totalCost: number;
+  modelBreakdown: Array<{
+    model: string;
+    operation: string;
+    inputTokens: number;
+    outputTokens: number;
+    cost: number;
+    modelSelectionReason?: string;
+  }>;
+}> {
+  try {
+    const logs = await prisma.aIUsageLog.findMany({
+      where: { interviewId },
+      orderBy: { createdAt: "asc" },
+    });
+
+    let totalInputTokens = 0;
+    let totalOutputTokens = 0;
+    let totalCost = 0;
+
+    type UsageLog = (typeof logs)[number];
+    const modelBreakdown = logs.map((log: UsageLog) => {
+      totalInputTokens += log.inputTokens;
+      totalOutputTokens += log.outputTokens;
+      totalCost += log.estimatedCost;
+
+      return {
+        model: log.model,
+        operation: log.operation,
+        inputTokens: log.inputTokens,
+        outputTokens: log.outputTokens,
+        cost: log.estimatedCost,
+        modelSelectionReason: (log.metadata as Record<string, string>)?.modelSelectionReason,
+      };
+    });
+
+    return { interviewId, totalInputTokens, totalOutputTokens, totalCost, modelBreakdown };
+  } catch {
+    return { interviewId, totalInputTokens: 0, totalOutputTokens: 0, totalCost: 0, modelBreakdown: [] };
+  }
+}
+
+/**
+ * Get cost breakdown by interview type for admin analytics.
+ */
+export async function getCostByInterviewType(options?: {
+  companyId?: string;
+  since?: Date;
+}): Promise<Array<{
+  operation: string;
+  interviewCount: number;
+  totalCost: number;
+  avgCostPerInterview: number;
+}>> {
+  try {
+    const where: Record<string, unknown> = {};
+    if (options?.companyId) where.companyId = options.companyId;
+    if (options?.since) where.createdAt = { gte: options.since };
+
+    const result = await prisma.aIUsageLog.groupBy({
+      by: ["operation"],
+      where,
+      _sum: { estimatedCost: true },
+      _count: { interviewId: true },
+    });
+
+    type GroupRow = (typeof result)[number];
+    return result.map((row: GroupRow) => ({
+      operation: row.operation,
+      interviewCount: row._count.interviewId,
+      totalCost: row._sum.estimatedCost || 0,
+      avgCostPerInterview: row._count.interviewId > 0
+        ? (row._sum.estimatedCost || 0) / row._count.interviewId
+        : 0,
+    }));
+  } catch {
+    return [];
+  }
+}
+
 // ── Anomaly Detection ──────────────────────────────────────────────────
 
 let logCounter = 0;

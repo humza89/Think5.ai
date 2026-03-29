@@ -10,9 +10,9 @@
  * never leaves the server.
  *
  * Enterprise reliability features:
- * - Automatic Gemini reconnect on upstream failure (3 attempts, exponential backoff)
+ * - Automatic Gemini reconnect on upstream failure (6 attempts, exponential backoff)
  * - Bidirectional ping/pong heartbeat (detects zombie connections in 30-60s)
- * - Message buffering during reconnect (up to 50 messages)
+ * - Message buffering during reconnect (up to 100 messages)
  * - Expanded health metrics for monitoring
  *
  * Deployment: Fly.io (or any long-lived Node.js host)
@@ -32,9 +32,9 @@ const RELAY_JWT_SECRET = process.env.RELAY_JWT_SECRET;
 const GEMINI_WS_BASE =
   "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent";
 
-const MAX_GEMINI_RECONNECTS = 3;
-const RECONNECT_BACKOFF = [1000, 2000, 4000]; // ms
-const MESSAGE_BUFFER_LIMIT = 50;
+const MAX_GEMINI_RECONNECTS = 6;
+const RECONNECT_BACKOFF = [1000, 2000, 4000, 8000, 12000, 16000]; // ms
+const MESSAGE_BUFFER_LIMIT = 100;
 const PING_INTERVAL_MS = 30_000;
 const IDLE_TIMEOUT_MS = 5 * 60 * 1000;
 
@@ -63,6 +63,7 @@ interface RelayMetrics {
   totalBytes: number;
   geminiReconnects: number;
   geminiReconnectFailures: number;
+  bufferOverflows: number;
 }
 
 const metrics: RelayMetrics = {
@@ -72,6 +73,7 @@ const metrics: RelayMetrics = {
   totalBytes: 0,
   geminiReconnects: 0,
   geminiReconnectFailures: 0,
+  bufferOverflows: 0,
 };
 
 // ── HTTP Server (health check) ────────────────────────────────────────
@@ -90,6 +92,7 @@ const httpServer = createServer(
           totalBytes: metrics.totalBytes,
           geminiReconnects: metrics.geminiReconnects,
           geminiReconnectFailures: metrics.geminiReconnectFailures,
+          bufferOverflows: metrics.bufferOverflows,
           uptimeSeconds: Math.round(process.uptime()),
           memoryMB: Math.round(process.memoryUsage().heapUsed / 1024 / 1024),
         })
@@ -275,6 +278,9 @@ wss.on("connection", (clientWs: WebSocket, req: IncomingMessage) => {
       // Buffer during initial connect OR reconnect (cap at limit)
       if (messageBuffer.length < MESSAGE_BUFFER_LIMIT) {
         messageBuffer.push(data);
+      } else {
+        console.warn(`[Relay] Buffer overflow (${MESSAGE_BUFFER_LIMIT} msgs) for interview=${interviewId}, dropping message`);
+        metrics.bufferOverflows++;
       }
     }
   });
@@ -322,9 +328,43 @@ httpServer.listen(PORT, () => {
   console.log(`[Relay] WebSocket endpoint: ws://localhost:${PORT}/ws`);
 });
 
-// Graceful shutdown
+// Graceful shutdown — drain active sessions before exit
+const GRACEFUL_DRAIN_MS = 10_000; // 10s max wait for sessions to checkpoint
+
 process.on("SIGTERM", () => {
-  console.log("[Relay] SIGTERM received, shutting down...");
-  wss.clients.forEach((ws) => ws.close(1001, "Server shutting down"));
-  httpServer.close(() => process.exit(0));
+  const activeCount = wss.clients.size;
+  console.log(`[Relay] SIGTERM received, draining ${activeCount} active session(s)...`);
+
+  // Stop accepting new connections
+  httpServer.close(() => {
+    console.log("[Relay] HTTP server closed, no new connections accepted");
+  });
+
+  // Notify all clients to checkpoint and close gracefully
+  wss.clients.forEach((ws) => {
+    if (ws.readyState === WebSocket.OPEN) {
+      // Send a close frame so clients can checkpoint their state
+      ws.close(1001, "Server shutting down");
+    }
+  });
+
+  // Force exit after drain timeout
+  const drainTimeout = setTimeout(() => {
+    const remaining = wss.clients.size;
+    if (remaining > 0) {
+      console.warn(`[Relay] Drain timeout — ${remaining} session(s) forcefully terminated`);
+    }
+    console.log("[Relay] Shutdown complete");
+    process.exit(0);
+  }, GRACEFUL_DRAIN_MS);
+
+  // If all clients disconnect early, exit immediately
+  const checkDrained = setInterval(() => {
+    if (wss.clients.size === 0) {
+      clearInterval(checkDrained);
+      clearTimeout(drainTimeout);
+      console.log("[Relay] All sessions drained, shutdown complete");
+      process.exit(0);
+    }
+  }, 500);
 });

@@ -81,10 +81,28 @@ export async function saveSessionState(
 ): Promise<void> {
   const key = sessionKey(interviewId);
   const serialized = JSON.stringify(state);
+  const sizeBytes = Buffer.byteLength(serialized, "utf8");
+
+  if (sizeBytes > 256_000) {
+    console.warn(`[${interviewId}] Session state large: ${Math.round(sizeBytes / 1024)}KB`);
+  }
 
   const redis = await getRedis();
   if (redis) {
-    await redis.set(key, serialized, { ex: SESSION_TTL_SECONDS });
+    try {
+      await redis.set(key, serialized, { ex: SESSION_TTL_SECONDS });
+    } catch (err) {
+      // Retry once after 500ms on Redis failure
+      console.warn(`[${interviewId}] Session save failed, retrying in 500ms:`, err);
+      await new Promise((r) => setTimeout(r, 500));
+      try {
+        await redis.set(key, serialized, { ex: SESSION_TTL_SECONDS });
+      } catch (retryErr) {
+        console.error(`[${interviewId}] Session save retry failed, falling back to memory:`, retryErr);
+        memoryStore.set(key, serialized);
+        memoryExpiry.set(key, Date.now() + SESSION_TTL_SECONDS * 1000);
+      }
+    }
   } else {
     memoryStore.set(key, serialized);
     memoryExpiry.set(key, Date.now() + SESSION_TTL_SECONDS * 1000);
@@ -108,11 +126,12 @@ export async function getSessionState(
 
   const data = memoryStore.get(key);
   if (!data) return null;
-  // Check TTL for in-memory entries
+  // Enforce TTL on every read (not just periodic sweep)
   const expiresAt = memoryExpiry.get(key);
   if (expiresAt && Date.now() > expiresAt) {
     memoryStore.delete(key);
     memoryExpiry.delete(key);
+    console.log(`[${interviewId}] In-memory session expired (TTL enforced on read)`);
     return null;
   }
   return JSON.parse(data);

@@ -110,7 +110,48 @@ export const reportGenerate = inngest.createFunction(
       await computeQualityMetrics(interviewId);
     });
 
-    // Step 4b: Apply governance policy (auto-review thresholds)
+    // Step 4b: Compute session confidence and stability metadata
+    await step.run("compute-session-confidence", async () => {
+      const { prisma } = await import("@/lib/prisma");
+      const { getSessionState } = await import("@/lib/session-store");
+
+      const session = await getSessionState(interviewId);
+      const interview = await prisma.interview.findUnique({
+        where: { id: interviewId },
+        select: { transcript: true, report: { select: { id: true } } },
+      });
+
+      if (!interview?.report) return;
+
+      // Determine confidence based on session quality signals
+      const reconnectCount = session?.reconnectCount ?? 0;
+      const transcriptLength = Array.isArray(interview.transcript) ? interview.transcript.length : 0;
+
+      let sessionConfidence: "high" | "medium" | "low" = "high";
+      if (reconnectCount >= 3 || transcriptLength < 6) {
+        sessionConfidence = "low";
+      } else if (reconnectCount >= 1 || transcriptLength < 12) {
+        sessionConfidence = "medium";
+      }
+
+      const stabilityMetadata = {
+        reconnects: reconnectCount,
+        transcriptTurns: transcriptLength,
+        sessionConfidence,
+      };
+
+      await prisma.interviewReport.update({
+        where: { id: interview.report.id },
+        data: {
+          sessionConfidence,
+          sessionStabilityMetadata: stabilityMetadata,
+        },
+      });
+
+      console.log(`[Report] Session confidence for ${interviewId}: ${sessionConfidence} (reconnects=${reconnectCount}, turns=${transcriptLength})`);
+    });
+
+    // Step 4c: Apply governance policy (auto-review thresholds)
     await step.run("apply-governance-policy", async () => {
       const { prisma } = await import("@/lib/prisma");
       const { getGovernancePolicy, shouldRequireReview } = await import("@/lib/governance");

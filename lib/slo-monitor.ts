@@ -105,6 +105,13 @@ export const SLO_DEFINITIONS: SLODefinition[] = [
     description: "Transcript anomaly rate (≤0.5% anomalies)",
     unit: "rate",
   },
+  {
+    name: "session.heartbeat.failure_rate",
+    target: 0.999,
+    windowHours: 24,
+    description: "Session heartbeat success rate (≥99.9%)",
+    unit: "rate",
+  },
 ];
 
 /**

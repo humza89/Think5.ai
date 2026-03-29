@@ -52,6 +52,8 @@ export interface UseVoiceInterviewReturn {
   isPaused: boolean;
   fallbackToText: boolean;
   reconnectPhase: "checking" | "restoring" | "verifying" | "recovering" | "re-synced" | "resume-failed" | null;
+  reconnectAttempt: number;
+  reconnectMax: number;
   micIsSilent: boolean;
   startInterview: () => Promise<void>;
   endInterview: () => void;
@@ -108,12 +110,12 @@ export function useVoiceInterview(
   const reconnectAttemptsRef = useRef(0);
   // Adaptive reconnect limits based on WebSocket close code
   const getMaxReconnectAttempts = (code: number): number => {
-    if (code === 1006 || code === 1001 || code === 4000) return 8;  // transient/network — generous
-    if (code === 4502) return 5;  // upstream Gemini error — moderate
+    if (code === 1006 || code === 1001 || code === 4000) return 10; // transient/network — generous
+    if (code === 4502) return 6;  // upstream Gemini error — moderate
     if (code === 4001) return 1;  // auth/token failure — minimal
     return 5;                     // default
   };
-  const maxReconnectAttempts = 5; // default for non-close-code paths
+  const lastCloseCodeRef = useRef<number>(1000); // Track last WS close code for adaptive limits
   const intentionalCloseRef = useRef(false); // True when we close the WS ourselves
   const currentTurnTextRef = useRef(""); // Accumulates interviewer transcript fragments within a turn
   const currentCandidateTextRef = useRef(""); // Accumulates candidate speech transcription
@@ -863,6 +865,7 @@ export function useVoiceInterview(
         }
 
         // Auto-reconnect: call recovery API first, then re-establish WebSocket
+        lastCloseCodeRef.current = event.code;
         const adaptiveMax = getMaxReconnectAttempts(event.code);
         if (reconnectAttemptsRef.current < adaptiveMax) {
           const attempt = reconnectAttemptsRef.current;
@@ -924,7 +927,7 @@ export function useVoiceInterview(
             } catch {
               setIsReconnecting(false);
               setReconnectPhase(null);
-              if (reconnectAttemptsRef.current >= maxReconnectAttempts) {
+              if (reconnectAttemptsRef.current >= getMaxReconnectAttempts(lastCloseCodeRef.current)) {
                 setConnectionQuality("poor");
                 setFallbackToText(true);
                 setReconnectPhase("resume-failed");
@@ -1072,9 +1075,10 @@ export function useVoiceInterview(
         const ws2 = wsRef.current;
         if (!ws2 || ws2.readyState !== WebSocket.OPEN) return;
 
-        // F10: Keep-alive with valid PCM16 silence frame (not empty string)
+        // F10: Keep-alive with valid PCM16 silence frame — send during idle AND candidate speech
         const sendGap = Date.now() - lastSendTimeRef.current;
-        if (sendGap > 25_000) {
+        const candidateSpeaking = aiStateRef.current === "listening";
+        if (sendGap > 25_000 || (candidateSpeaking && sendGap > 15_000)) {
           // 480 bytes of zeros = 240 PCM16 samples = 10ms of silence at 24kHz
           const silenceFrame = new Int16Array(240);
           const silenceBase64 = arrayBufferToBase64(silenceFrame.buffer as ArrayBuffer);
@@ -1090,8 +1094,8 @@ export function useVoiceInterview(
         // Only trigger heartbeat timeout when AI is idle/listening — NOT during thinking/speaking
         // (Gemini goes quiet during long candidate responses and during its own processing)
         const aiIdle = aiStateRef.current === "listening" || aiStateRef.current === "idle";
-        if (silenceMs > 60_000 && aiIdle && !tabHiddenRef.current) {
-          console.warn("[Voice] Heartbeat timeout — no server message for 60s, triggering reconnect");
+        if (silenceMs > 45_000 && aiIdle && !tabHiddenRef.current) {
+          console.warn("[Voice] Heartbeat timeout — no server message for 45s, triggering reconnect");
           intentionalCloseRef.current = false;
           ws2.close(4000, "Heartbeat timeout");
         }
@@ -1332,6 +1336,8 @@ export function useVoiceInterview(
     isPaused,
     fallbackToText,
     reconnectPhase,
+    reconnectAttempt: reconnectAttemptsRef.current,
+    reconnectMax: getMaxReconnectAttempts(lastCloseCodeRef.current),
     micIsSilent,
     startInterview,
     endInterview,

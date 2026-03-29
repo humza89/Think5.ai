@@ -20,8 +20,8 @@ const DEFAULT_POLICY: GovernancePolicyData = {
   canOverrideScore: ["admin"],
   canRedactTranscript: ["admin"],
   canSuppressReport: ["admin"],
-  requireReviewBelow: null,
-  autoPublishAbove: null,
+  requireReviewBelow: 60, // All low-scoring reports require human review
+  autoPublishAbove: 80,   // High-scoring reports auto-publish
   enforced: true,
 };
 
@@ -96,4 +96,70 @@ export function canAutoPublish(
   }
 
   return false;
+}
+
+/**
+ * Generate a conformance report comparing expected policy enforcement
+ * against actual actions taken for an interview.
+ */
+export async function generateConformanceReport(interviewId: string): Promise<{
+  interviewId: string;
+  generatedAt: string;
+  policy: GovernancePolicyData;
+  enforcement: {
+    reviewRequired: boolean;
+    reviewApplied: boolean;
+    autoPublishEligible: boolean;
+    autoPublishApplied: boolean;
+  };
+  gaps: string[];
+  conformant: boolean;
+}> {
+  const interview = await prisma.interview.findUnique({
+    where: { id: interviewId },
+    select: {
+      companyId: true,
+      report: {
+        select: {
+          overallScore: true,
+          reviewStatus: true,
+          publishedAt: true,
+        },
+      },
+    },
+  });
+
+  const policy = interview?.companyId
+    ? await getGovernancePolicy(interview.companyId)
+    : DEFAULT_POLICY;
+
+  const score = interview?.report?.overallScore ?? null;
+  const reviewStatus = interview?.report?.reviewStatus;
+
+  const reviewRequired = shouldRequireReview(policy, score);
+  const reviewApplied = reviewStatus === "PENDING_REVIEW" || reviewStatus === "REVIEWED";
+  const autoPublishEligible = canAutoPublish(policy, score);
+  const autoPublishApplied = !!interview?.report?.publishedAt;
+
+  const gaps: string[] = [];
+  if (reviewRequired && !reviewApplied) {
+    gaps.push(`Report score ${score} requires review (threshold: ${policy.requireReviewBelow}) but review was not applied`);
+  }
+  if (autoPublishEligible && !autoPublishApplied) {
+    gaps.push(`Report score ${score} eligible for auto-publish (threshold: ${policy.autoPublishAbove}) but was not auto-published`);
+  }
+
+  return {
+    interviewId,
+    generatedAt: new Date().toISOString(),
+    policy,
+    enforcement: {
+      reviewRequired,
+      reviewApplied,
+      autoPublishEligible,
+      autoPublishApplied,
+    },
+    gaps,
+    conformant: gaps.length === 0,
+  };
 }
