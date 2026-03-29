@@ -27,6 +27,8 @@ function getHmacSecret(): string {
 let redisClient: any = null;
 let redisAvailable = false;
 
+const isProduction = process.env.NODE_ENV === "production" && !process.env.NEXT_PHASE;
+
 async function getRedis() {
   if (redisClient) return redisClient;
 
@@ -34,7 +36,10 @@ async function getRedis() {
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
 
   if (!url || !token) {
-    console.warn("Upstash Redis not configured. Using in-memory session fallback.");
+    if (isProduction) {
+      throw new Error("Redis unavailable in production — UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN must be set");
+    }
+    console.warn("Upstash Redis not configured. Using in-memory session fallback (dev/test only).");
     return null;
   }
 
@@ -43,9 +48,24 @@ async function getRedis() {
     redisClient = new Redis({ url, token });
     redisAvailable = true;
     return redisClient;
-  } catch {
-    console.warn("Failed to initialize Redis client. Using in-memory fallback.");
+  } catch (err) {
+    if (isProduction) {
+      throw new Error(`Redis initialization failed in production: ${err}`);
+    }
+    console.warn("Failed to initialize Redis client. Using in-memory fallback (dev/test only).");
     return null;
+  }
+}
+
+/**
+ * Assert that the durable store (Redis) is available.
+ * Throws in production if Redis is not connected. No-op in dev/test.
+ */
+export async function assertDurableStore(): Promise<void> {
+  if (!isProduction) return;
+  const redis = await getRedis();
+  if (!redis) {
+    throw new Error("Redis unavailable in production — cannot proceed without durable session store");
   }
 }
 
@@ -78,13 +98,14 @@ export interface CandidateProfile {
 
 export interface SessionState {
   interviewId: string;
-  transcript: Array<{ role: string; content: string; timestamp: string }>;
   moduleScores: Array<{ module: string; score: number; reason: string; sectionNotes?: string }>;
   questionCount: number;
   reconnectToken: string;
   lastActiveAt: string;
   checkpointDigest: string;
   lastTurnIndex: number;
+  ledgerVersion: number;  // Alias for lastTurnIndex — latest turnIndex from canonical ledger
+  stateHash: string;      // SHA-256 of interviewer state for reconciliation
   reconnectCount: number;
   // Enterprise memory fields — all optional for backward compatibility
   currentDifficultyLevel?: string;
@@ -109,21 +130,13 @@ export async function saveSessionState(
   state: SessionState
 ): Promise<void> {
   const key = sessionKey(interviewId);
-  let serialized = JSON.stringify(state);
-  let sizeBytes = Buffer.byteLength(serialized, "utf8");
+  const serialized = JSON.stringify(state);
+  const sizeBytes = Buffer.byteLength(serialized, "utf8");
 
-  // H7/R5: Enforce session state size limit — truncate transcript to keep under 512KB
-  if (sizeBytes > 512_000) {
-    console.warn(`[${interviewId}] Session state too large (${Math.round(sizeBytes / 1024)}KB), truncating transcript tail to 20 turns (Caller must rehydrate from Postgres)`);
-    // Keep only the last 20 transcript entries to reduce size.
-    // Full durable storage is maintained in PostgreSQL by the checkpoint route.
-    if (state.transcript.length > 20) {
-      state.transcript = state.transcript.slice(-20);
-      serialized = JSON.stringify(state);
-      sizeBytes = Buffer.byteLength(serialized, "utf8");
-    }
-  } else if (sizeBytes > 256_000) {
-    console.warn(`[${interviewId}] Session state large: ${Math.round(sizeBytes / 1024)}KB`);
+  // Session no longer stores transcript — canonical ledger in Postgres is authoritative.
+  // Redis payload should stay well under 50KB (only pointers, scores, and enterprise memory).
+  if (sizeBytes > 100_000) {
+    console.warn(`[${interviewId}] Session state unexpectedly large (${Math.round(sizeBytes / 1024)}KB) — investigate payload contents`);
   }
 
   const redis = await getRedis();
@@ -196,13 +209,18 @@ export async function deleteSessionState(
 /**
  * Generate an HMAC-signed reconnect token for a voice session.
  * Format: `${timestamp}.${nonce}.${hmac}`
- * HMAC covers: `${interviewId}:${timestamp}:${nonce}`
+ * HMAC covers: `${interviewId}:${timestamp}:${nonce}:${ledgerVersion}:${stateHash}`
+ * Including ledger version and state hash ensures token invalidation on state change.
  */
-export function generateReconnectToken(interviewId: string): string {
+export function generateReconnectToken(
+  interviewId: string,
+  ledgerVersion: number = -1,
+  stateHash: string = ""
+): string {
   const timestamp = Date.now().toString();
   const nonce = randomUUID();
   const hmac = createHmac("sha256", getHmacSecret())
-    .update(`${interviewId}:${timestamp}:${nonce}`)
+    .update(`${interviewId}:${timestamp}:${nonce}:${ledgerVersion}:${stateHash}`)
     .digest("hex");
   return `${timestamp}.${nonce}.${hmac}`;
 }
@@ -210,10 +228,13 @@ export function generateReconnectToken(interviewId: string): string {
 /**
  * Verify an HMAC-signed reconnect token without loading session state.
  * Checks: HMAC integrity, timestamp expiry (within SESSION_TTL_SECONDS).
+ * ledgerVersion and stateHash must match what was used to generate the token.
  */
 export function verifyReconnectToken(
   interviewId: string,
-  token: string
+  token: string,
+  ledgerVersion: number = -1,
+  stateHash: string = ""
 ): { valid: boolean; expired: boolean; reason: string } {
   const parts = token.split(".");
   if (parts.length !== 3) {
@@ -232,7 +253,7 @@ export function verifyReconnectToken(
   }
 
   const expectedHmac = createHmac("sha256", getHmacSecret())
-    .update(`${interviewId}:${timestamp}:${nonce}`)
+    .update(`${interviewId}:${timestamp}:${nonce}:${ledgerVersion}:${stateHash}`)
     .digest("hex");
 
   try {

@@ -701,10 +701,15 @@ model Interview {
 
   // Hypothesis & section tracking
   hypotheses      InterviewHypothesis[]
+  facts           InterviewFact[]       // Tier 1: Extracted facts
   sections        InterviewSection[]
 
   // First-class evidence bundle
   evidenceBundleRecord EvidenceBundle?
+  // Interviewer state snapshots
+  stateSnapshots  InterviewerStateSnapshot[]
+  // Replay-grade event timeline
+  events          InterviewEvent[]
   // Screen capture sessions
   screenCaptures  ScreenCaptureSession[]
 
@@ -723,20 +728,63 @@ model Interview {
 // Scalable Transcript Storage
 // ============================================
 
+// Tier 0: Lossless turn log — canonical conversation ledger
+// Every utterance stored with immutable turn IDs. Never truncated, never summarized.
 model InterviewTranscript {
-  id              String    @id @default(uuid())
-  interviewId     String
-  interview       Interview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
-  role            String    // 'interviewer' | 'candidate'
-  content         String    @db.Text
-  turnIndex       Int       // To maintain chronological order safely
-  timestamp       DateTime  @default(now())
-  finalized       Boolean   @default(true)
+  id                  String    @id @default(uuid())
+  interviewId         String
+  interview           Interview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+  role                String    // 'interviewer' | 'candidate'
+  content             String    @db.Text
+  turnIndex           Int       // Monotonic ordering within interview
+  turnId              String    @default(uuid()) // Immutable UUID per turn for causal linking
+  causalParentTurnId  String?   // Links follow-ups to the turn they respond to
+  generationMetadata  Json?     // AI turns: { model, promptHash, latencyMs }
+  checkpointVersion   Int       @default(0) // Monotonic, incremented per checkpoint batch
+  timestamp           DateTime  @default(now())
+  serverReceivedAt    DateTime  @default(now()) // When server persisted this turn
+  clientTimestamp      DateTime? // Original client-side timestamp
+  finalized           Boolean   @default(true)
 
-  createdAt       DateTime  @default(now())
+  createdAt           DateTime  @default(now())
+
+  @@unique([interviewId, turnIndex])
+  @@unique([interviewId, turnId])
+  @@index([interviewId])
+}
+
+// ============================================
+// Interviewer State Snapshots — Deterministic state machine checkpoints
+// ============================================
+
+model InterviewerStateSnapshot {
+  id            String   @id @default(uuid())
+  interviewId   String
+  interview     Interview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+  turnIndex     Int      // Ledger turnIndex at which this snapshot was taken
+  stateJson     String   @db.Text // Serialized InterviewerState
+  stateHash     String   // SHA-256 hash for reconciliation
+  createdAt     DateTime @default(now())
 
   @@unique([interviewId, turnIndex])
   @@index([interviewId])
+}
+
+// ============================================
+// Interview Event Timeline — Replay-grade observability
+// ============================================
+
+model InterviewEvent {
+  id            String   @id @default(uuid())
+  interviewId   String
+  interview     Interview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+  eventType     String   // connect, disconnect, reconnect, checkpoint, grounding_failure, etc.
+  payload       Json?    // Event-specific data
+  turnIndex     Int?     // Nullable — not all events correlate to a specific turn
+  timestamp     DateTime @default(now())
+
+  @@index([interviewId, timestamp])
+  @@index([interviewId, eventType])
 }
 
 // ============================================
@@ -1078,17 +1126,38 @@ model ProctoringEvent {
 // Hypothesis-Driven Interview (Phase 1)
 // ============================================
 
+// Tier 2: Versioned hypotheses — behavioral signals that evolve during interview
 model InterviewHypothesis {
-  id              String    @id @default(uuid())
-  interviewId     String
-  interview       Interview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
-  hypothesis      String    @db.Text     // e.g. "React experience may be limited to recent roles"
-  source          String                 // "resume_analysis", "skill_gap", "career_pattern", "recruiter_objective"
-  outcome         String?                // "confirmed", "refuted", "inconclusive"
-  evidence        String?   @db.Text     // Evidence supporting the outcome
-  confidenceLevel String?                // HIGH/MEDIUM/LOW
-  createdAt       DateTime  @default(now())
+  id               String    @id @default(uuid())
+  interviewId      String
+  interview        Interview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+  hypothesis       String    @db.Text     // e.g. "React experience may be limited to recent roles"
+  source           String                 // "resume_analysis", "skill_gap", "career_pattern", "recruiter_objective"
+  outcome          String?                // "confirmed", "refuted", "inconclusive"
+  evidence         String?   @db.Text     // Evidence supporting the outcome
+  confidenceLevel  String?                // HIGH/MEDIUM/LOW
+  version          Int       @default(1)  // Monotonic version — incremented on revision
+  supersededById   String?                // Points to the newer version if revised
+  supportingFactIds String[]              // References to InterviewFact IDs that support this
+  createdAt        DateTime  @default(now())
 
+  @@index([interviewId])
+}
+
+// Tier 1: Extracted facts — structured claims from candidate responses
+// Populated during checkpoint (immediate extraction) and by Inngest (LLM extraction)
+model InterviewFact {
+  id            String   @id @default(uuid())
+  interviewId   String
+  interview     Interview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+  turnId        String   // FK to InterviewTranscript.turnId (which turn produced this fact)
+  factType      String   // CLAIM, METRIC, DATE, COMPANY, RESPONSIBILITY, TECHNICAL_SKILL
+  content       String   @db.Text // The extracted fact text
+  confidence    Float    @default(1.0) // 0-1 confidence score
+  extractedAt   DateTime @default(now())
+  extractedBy   String   // "immediate" | "llm:gemini-2.5-flash" | model identifier
+
+  @@index([interviewId, factType])
   @@index([interviewId])
 }
 

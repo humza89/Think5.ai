@@ -17,6 +17,7 @@ import { isValidTransition } from "@/lib/interview-state-machine";
 import { acquireSessionLock, swapSessionLock, releaseSessionLock, saveSessionState, getSessionState, generateReconnectToken } from "@/lib/session-store";
 import { recordSLOEvent } from "@/lib/slo-monitor";
 import { classifyError } from "@/lib/error-classification";
+import { isMaintenanceMode, getMaintenanceMessage, maintenanceResponse } from "@/lib/maintenance-mode";
 import * as Sentry from "@sentry/nextjs";
 
 export async function POST(
@@ -24,6 +25,12 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
+
+  // Fail-fast: maintenance mode check before any work
+  if (await isMaintenanceMode()) {
+    const msg = await getMaintenanceMessage();
+    return maintenanceResponse(msg);
+  }
 
   console.log(`[voice-init] Called for interview=${id}, VOICE_RELAY_URL=${process.env.VOICE_RELAY_URL ? "SET" : "MISSING"}, RELAY_JWT_SECRET=${process.env.RELAY_JWT_SECRET ? "SET" : "MISSING"}`);
 
@@ -201,23 +208,23 @@ export async function POST(
         existingReconnectState.reconnectCount = (existingReconnectState.reconnectCount || 0) + 1;
         existingReconnectState.lockOwnerToken = lockOwnerToken;
         await saveSessionState(id, existingReconnectState);
-        console.log(`[voice-init] RECONNECT #${existingReconnectState.reconnectCount}: preserved ${existingReconnectState.transcript.length} transcript entries, ${existingReconnectState.questionCount} questions`);
+        console.log(`[voice-init] RECONNECT #${existingReconnectState.reconnectCount}: lastTurnIndex=${existingReconnectState.lastTurnIndex}, ${existingReconnectState.questionCount} questions`);
       } else {
         // No existing state found (edge case) — initialize fresh
         await saveSessionState(id, {
-          interviewId: id, transcript: [], moduleScores: [], questionCount: 0,
+          interviewId: id, moduleScores: [], questionCount: 0,
           reconnectToken, lastActiveAt: new Date().toISOString(),
-          checkpointDigest: "", lastTurnIndex: -1, reconnectCount: 1,
-          lockOwnerToken,
+          checkpointDigest: "", lastTurnIndex: -1, ledgerVersion: -1,
+          stateHash: "", reconnectCount: 1, lockOwnerToken,
         });
       }
     } else {
       // FIRST CONNECT: Initialize fresh state
       await saveSessionState(id, {
-        interviewId: id, transcript: [], moduleScores: [], questionCount: 0,
+        interviewId: id, moduleScores: [], questionCount: 0,
         reconnectToken, lastActiveAt: new Date().toISOString(),
-        checkpointDigest: "", lastTurnIndex: -1, reconnectCount: 0,
-        lockOwnerToken,
+        checkpointDigest: "", lastTurnIndex: -1, ledgerVersion: -1,
+        stateHash: "", reconnectCount: 0, lockOwnerToken,
       });
     }
 

@@ -1,9 +1,13 @@
 /**
- * Session Recovery API — Authoritative reconnect handshake
+ * Session Recovery API — Deterministic reconnect with version-reconciled state
  *
- * Replaces optimistic status-patching with cryptographic session reconciliation.
- * Client sends HMAC-signed reconnect token + checkpoint digest.
- * Server verifies, reconciles state, rotates token, and returns recovery instructions.
+ * Protocol:
+ * 1. Client sends: reconnectToken, clientLedgerVersion, clientStateHash, lockOwnerToken
+ * 2. Server verifies token + lock ownership
+ * 3. Compare clientLedgerVersion against canonical ledger
+ * 4. Return: "synced" (versions match), "delta" (missing turns), or "full" (state hash mismatch)
+ *
+ * Never returns partial/approximate result — exact reconciliation or full state replacement.
  */
 
 import { NextRequest } from "next/server";
@@ -13,21 +17,37 @@ import {
   getSessionState,
   saveSessionState,
   generateReconnectToken,
-  computeTranscriptChecksum,
 } from "@/lib/session-store";
 import { recordSLOEvent } from "@/lib/slo-monitor";
 import { classifyError } from "@/lib/error-classification";
+import { getFullTranscript, getLedgerSnapshot, getTurnsSince } from "@/lib/conversation-ledger";
+import { isMaintenanceMode, getMaintenanceMessage, maintenanceResponse } from "@/lib/maintenance-mode";
 
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
+
+  // Fail-fast: maintenance mode check before any work
+  if (await isMaintenanceMode()) {
+    const msg = await getMaintenanceMessage();
+    return maintenanceResponse(msg);
+  }
+
   const recoveryStart = Date.now();
 
   try {
     const body = await request.json();
-    const { reconnectToken, clientCheckpointDigest, clientTurnIndex, lockOwnerToken: clientOwnerToken } = body;
+    const {
+      reconnectToken,
+      clientLedgerVersion,
+      clientStateHash,
+      lockOwnerToken: clientOwnerToken,
+      // Legacy fields — still accepted for backward compatibility
+      clientCheckpointDigest,
+      clientTurnIndex,
+    } = body;
 
     if (!reconnectToken) {
       return Response.json({ error: "Missing reconnect token" }, { status: 400 });
@@ -52,8 +72,7 @@ export async function POST(
       );
     }
 
-    // 3. Verify lock ownership (H4: prevents session hijacking with stolen reconnect token)
-    // C1: Require owner token when session has one — omitting token no longer bypasses check
+    // 3. Verify lock ownership (prevents session hijacking with stolen reconnect token)
     if (session.lockOwnerToken && (!clientOwnerToken || clientOwnerToken !== session.lockOwnerToken)) {
       return Response.json(
         { error: "Lock ownership mismatch — session belongs to another client" },
@@ -69,7 +88,7 @@ export async function POST(
       );
     }
 
-    // 4. Verify interview is still in a reconnectable state
+    // 5. Verify interview is still in a reconnectable state
     const interview = await prisma.interview.findUnique({
       where: { id },
       select: { status: true, startedAt: true, knowledgeGraph: true },
@@ -94,61 +113,106 @@ export async function POST(
       );
     }
 
-    // 5. Reconcile client vs server state
-    const serverDigest = session.checkpointDigest || computeTranscriptChecksum(session.transcript);
-    const digestMatch = clientCheckpointDigest && clientCheckpointDigest === serverDigest;
+    // 6. Deterministic reconciliation against canonical ledger
+    const ledgerSnapshot = await getLedgerSnapshot(id);
+    const serverLedgerVersion = ledgerSnapshot.latestTurnIndex;
+    const serverStateHash = session.stateHash || "";
 
-    // 6. Rotate reconnect token (one-time use: old token is now invalid)
-    const newReconnectToken = generateReconnectToken(id);
+    // Resolve client ledger version (support both new and legacy fields)
+    const clientVersion = typeof clientLedgerVersion === "number"
+      ? clientLedgerVersion
+      : typeof clientTurnIndex === "number"
+        ? clientTurnIndex
+        : -1;
+
+    // Determine reconciliation strategy
+    const versionsMatch = clientVersion === serverLedgerVersion;
+    const stateHashMatch = clientStateHash && clientStateHash === serverStateHash;
+
+    // 7. Rotate reconnect token (one-time use: old token is now invalid)
+    const newReconnectToken = generateReconnectToken(id, serverLedgerVersion, serverStateHash);
     const updatedSession = {
       ...session,
       reconnectToken: newReconnectToken,
       reconnectCount: (session.reconnectCount || 0) + 1,
       lastActiveAt: new Date().toISOString(),
-      checkpointDigest: serverDigest,
+      ledgerVersion: serverLedgerVersion,
     };
     await saveSessionState(id, updatedSession);
 
-    // 7. Record SLO events
+    // 8. Record SLO events
     const recoveryMs = Date.now() - recoveryStart;
     await Promise.all([
       recordSLOEvent("session.reconnect.success_rate", true),
       recordSLOEvent("session.reconnect.latency_p95", recoveryMs <= 15000, recoveryMs),
-      recordSLOEvent("session.reconnect.context_loss.rate", digestMatch === true),
+      recordSLOEvent("session.reconnect.context_loss.rate", versionsMatch),
     ]);
 
-    // 8. Return recovery instructions
-    // Include knowledge graph if available (for client-side context restoration)
+    // Shared response fields
     const knowledgeGraph = interview.knowledgeGraph || null;
+    const baseResponse = {
+      reconnectCount: updatedSession.reconnectCount,
+      newReconnectToken,
+      recoveryMs,
+      remainingSeconds,
+      ledgerVersion: serverLedgerVersion,
+      stateHash: serverStateHash,
+      askedQuestions: session.askedQuestions || [],
+      knowledgeGraph,
+      // Enterprise memory for client ref sync
+      enterpriseMemory: {
+        currentDifficultyLevel: session.currentDifficultyLevel,
+        flaggedFollowUps: session.flaggedFollowUps,
+        currentModule: session.currentModule,
+        candidateProfile: session.candidateProfile,
+        sessionSummary: session.sessionSummary,
+      },
+    };
 
-    if (digestMatch) {
+    // Case 1: Versions match AND state hashes match → fully synced
+    if (versionsMatch && (stateHashMatch || !clientStateHash)) {
       return Response.json({
+        ...baseResponse,
         status: "synced",
-        resumeFromTurnIndex: session.lastTurnIndex >= 0 ? session.lastTurnIndex : session.transcript.length - 1,
-        reconnectCount: updatedSession.reconnectCount,
-        newReconnectToken,
-        recoveryMs,
-        remainingSeconds,
-        checkpointDigest: serverDigest,
-        askedQuestions: session.askedQuestions || [],
-        knowledgeGraph,
-      });
-    } else {
-      return Response.json({
-        status: "diverged",
-        canonicalTranscript: session.transcript,
-        resumeFromTurnIndex: session.lastTurnIndex >= 0 ? session.lastTurnIndex : session.transcript.length - 1,
-        moduleScores: session.moduleScores,
-        questionCount: session.questionCount,
-        reconnectCount: updatedSession.reconnectCount,
-        newReconnectToken,
-        recoveryMs,
-        remainingSeconds,
-        checkpointDigest: serverDigest,
-        askedQuestions: session.askedQuestions || [],
-        knowledgeGraph,
+        resumeFromTurnIndex: serverLedgerVersion,
       });
     }
+
+    // Case 2: Versions diverge → compute and return delta
+    if (!versionsMatch && clientVersion >= 0 && clientVersion < serverLedgerVersion) {
+      const missingTurns = await getTurnsSince(id, clientVersion);
+      return Response.json({
+        ...baseResponse,
+        status: "delta",
+        resumeFromTurnIndex: serverLedgerVersion,
+        missingTurns: missingTurns.map((t) => ({
+          role: t.role,
+          content: t.content,
+          timestamp: t.timestamp.toISOString(),
+          turnIndex: t.turnIndex,
+          turnId: t.turnId,
+        })),
+        moduleScores: session.moduleScores,
+        questionCount: session.questionCount,
+      });
+    }
+
+    // Case 3: State hash mismatch or client ahead/unknown → full state replacement
+    const fullTranscript = await getFullTranscript(id);
+    return Response.json({
+      ...baseResponse,
+      status: "full",
+      resumeFromTurnIndex: serverLedgerVersion,
+      canonicalTranscript: fullTranscript.map((t) => ({
+        role: t.role,
+        content: t.content,
+        timestamp: t.timestamp.toISOString(),
+        turnIndex: t.turnIndex,
+        turnId: t.turnId,
+      })),
+      moduleScores: session.moduleScores,
+      questionCount: session.questionCount,
+    });
   } catch (error) {
     const classified = classifyError(error);
     console.error(`[${id}] Recovery API error:`, error);

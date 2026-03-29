@@ -28,8 +28,10 @@ import {
   computeTranscriptChecksum,
 } from "@/lib/session-store";
 import { recordSLOEvent } from "@/lib/slo-monitor";
+import { appendTurns, getLedgerSnapshot, diffTurns, finalizeLedger, getFullTranscript } from "@/lib/conversation-ledger";
 import { classifyError } from "@/lib/error-classification";
 import { validateTranscript, repairTranscript } from "@/lib/transcript-validator";
+import { isMaintenanceMode, getMaintenanceMessage, maintenanceResponse } from "@/lib/maintenance-mode";
 import * as Sentry from "@sentry/nextjs";
 
 // C7: Per-interview checkpoint rate limiter (max 1 per 2 seconds)
@@ -93,6 +95,12 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
+
+  // Fail-fast: maintenance mode check before any work
+  if (await isMaintenanceMode()) {
+    const msg = await getMaintenanceMessage();
+    return maintenanceResponse(msg);
+  }
 
   try {
     const body = await request.json();
@@ -222,6 +230,19 @@ export async function POST(
       }
 
       const validatedScores = validateModuleScores(moduleScores);
+
+      // Write to canonical conversation ledger (Tier 0: lossless, never truncated)
+      const ledgerSnapshot = await getLedgerSnapshot(id);
+      const newTurns = diffTurns(currentTranscript, ledgerSnapshot.latestTurnIndex);
+      let ledgerVersion = ledgerSnapshot.latestTurnIndex;
+      if (newTurns.length > 0) {
+        const appended = await appendTurns(id, newTurns, ledgerSnapshot.turnCount);
+        if (appended.length > 0) {
+          ledgerVersion = appended[appended.length - 1].turnIndex;
+        }
+      }
+
+      // Denormalized cache on Interview record (backward compat — ledger is authoritative)
       await prisma.interview.update({
         where: { id },
         data: {
@@ -273,12 +294,13 @@ export async function POST(
 
         await saveSessionState(id, {
           ...existingSession,
-          transcript: currentTranscript,
           moduleScores: validatedScores,
           questionCount: questionCount || existingSession.questionCount,
           lastActiveAt: new Date().toISOString(),
           checkpointDigest: incomingDigest,
-          lastTurnIndex: currentTranscript.length - 1,
+          lastTurnIndex: ledgerVersion,
+          ledgerVersion,
+          stateHash: existingSession.stateHash || "",
           ...validatedMemory,
         });
       }
@@ -297,7 +319,7 @@ export async function POST(
           });
       }
 
-      return Response.json({ ok: true, checkpointDigest: incomingDigest });
+      return Response.json({ ok: true, checkpointDigest: incomingDigest, ledgerVersion });
     }
 
     // ── End Interview: final save + report generation ──
@@ -341,13 +363,32 @@ export async function POST(
         }
       }
 
-      // Save repaired transcript, validated scores, and mark complete
+      // Reconcile any remaining client turns into the canonical ledger
+      const endLedgerSnapshot = await getLedgerSnapshot(id);
+      const remainingTurns = diffTurns(finalTranscript, endLedgerSnapshot.latestTurnIndex);
+      if (remainingTurns.length > 0) {
+        await appendTurns(id, remainingTurns, endLedgerSnapshot.turnCount);
+      }
+
+      // Finalize all ledger turns (marks as immutable — no further appends allowed)
+      const finalizedCount = await finalizeLedger(id);
+      console.log(`[${id}] Ledger finalized: ${finalizedCount} turns marked immutable`);
+
+      // Build denormalized transcript from canonical ledger for backward compatibility
+      const canonicalTurns = await getFullTranscript(id);
+      const denormalizedTranscript = canonicalTurns.map((t) => ({
+        role: t.role,
+        content: t.content,
+        timestamp: t.timestamp.toISOString(),
+      }));
+
+      // Save denormalized transcript (ledger is authoritative), validated scores, and mark complete
       await prisma.interview.update({
         where: { id },
         data: {
           status: "COMPLETED",
           completedAt: new Date(),
-          transcript: finalTranscript,
+          transcript: denormalizedTranscript,
           skillModuleScores: validateModuleScores(moduleScores),
         },
       });
