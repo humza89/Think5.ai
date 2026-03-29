@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 export async function POST(request: NextRequest) {
   // Enforce cron secret
   const authHeader = request.headers.get("authorization");
-  if (authHeader !== \`Bearer \${process.env.CRON_SECRET}\`) {
+  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
     return new NextResponse("Unauthorized", { status: 401 });
   }
 
@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
       select: { candidateId: true }
     });
 
-    const candidateIds = expiredInterviews.map(i => i.candidateId);
+    const candidateIds = expiredInterviews.map((i: { candidateId: string }) => i.candidateId);
 
     if (candidateIds.length === 0) {
        return NextResponse.json({ message: "No candidates to purge" });
