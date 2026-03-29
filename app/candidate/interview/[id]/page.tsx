@@ -1,27 +1,37 @@
-"use client";
+import { notFound } from "next/navigation";
+import { prisma } from "@/lib/prisma";
+import CandidateInterviewClient from "./client-page";
 
-import { useState } from "react";
-import { InterviewPreCheck } from "@/components/interview/InterviewPreCheck";
-import { InterviewRoom } from "@/components/interview/InterviewRoom";
+export default async function CandidateInterviewPage({ 
+  params,
+  searchParams
+}: { 
+  params: Promise<{ id: string }>,
+  searchParams: Promise<{ token?: string }>
+}) {
+  const { id } = await params;
+  const token = (await searchParams).token;
 
-export default function CandidateInterviewPage({ params }: { params: { id: string } }) {
-  const [preCheckPassed, setPreCheckPassed] = useState(false);
+  if (!token) return notFound();
 
-  // In a real implementation: Parse 'id' from URL to fetch candidateName and jobTitle from DB
-  const mockCandidateName = "Jane Doe";
-  const mockJobTitle = "Senior Project Manager";
+  const interview = await prisma.interview.findUnique({
+    where: { id },
+    include: {
+      candidate: true,
+      job: true,
+    }
+  });
+
+  if (!interview || interview.accessToken !== token) {
+    return notFound();
+  }
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-foreground">
-      {!preCheckPassed ? (
-        <InterviewPreCheck onComplete={() => setPreCheckPassed(true)} />
-      ) : (
-        <InterviewRoom 
-          interviewId={params.id} 
-          candidateName={mockCandidateName}
-          jobTitle={mockJobTitle}
-        />
-      )}
-    </div>
+    <CandidateInterviewClient 
+      interviewId={id} 
+      candidateName={interview.candidate.fullName} 
+      jobTitle={interview.job?.title || "Candidate"} 
+      accessToken={token} 
+    />
   );
 }

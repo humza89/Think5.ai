@@ -2,38 +2,36 @@
 
 import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
-import { Mic, MicOff, Video, VideoOff, PhoneOff, AlertTriangle, Monitor, MessageSquare, Code2, FileText, WifiHigh, WifiLow } from "lucide-react";
+import { Mic, MicOff, Video, VideoOff, PhoneOff, AlertTriangle, Monitor, MessageSquare, Code2, FileText, WifiHigh, WifiLow, Play } from "lucide-react";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import Editor from "@monaco-editor/react";
-import { Card } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useVoiceInterview } from "@/hooks/useVoiceInterview";
 
 interface InterviewRoomProps {
   interviewId: string;
   candidateName: string;
   jobTitle: string;
+  accessToken: string;
 }
 
-export function InterviewRoom({ interviewId, candidateName, jobTitle }: InterviewRoomProps) {
+export function InterviewRoom({ interviewId, candidateName, jobTitle, accessToken }: InterviewRoomProps) {
   const router = useRouter();
   
   // Media States
   const [stream, setStream] = useState<MediaStream | null>(null);
-  const [micEnabled, setMicEnabled] = useState(true);
+  const [screenStream, setScreenStream] = useState<MediaStream | null>(null);
   const [cameraEnabled, setCameraEnabled] = useState(true);
   const [networkQuality, setNetworkQuality] = useState<"high" | "low">("high");
   
-  // AI States
-  const [aiSpeaking, setAiSpeaking] = useState(false);
-  const [transcript, setTranscript] = useState<{role: "ai" | "candidate", text: string, time: string}[]>([]);
   const videoRef = useRef<HTMLVideoElement>(null);
   
   // Proctoring States
   const [warnings, setWarnings] = useState(0);
 
   // Time tracking
-  const [timeLeft, setTimeLeft] = useState(45 * 60); // 45 minutes
+  const [timeLeft, setTimeLeft] = useState(45 * 60);
 
   // Code Editor State
   const [code, setCode] = useState("// Write your solution here\nfunction solve() {\n  \n}");
@@ -42,6 +40,22 @@ export function InterviewRoom({ interviewId, candidateName, jobTitle }: Intervie
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recordedChunksRef = useRef<Blob[]>([]);
   const [isUploading, setIsUploading] = useState(false);
+
+  const {
+    interviewState,
+    aiState,
+    transcript,
+    startInterview,
+    endInterview: aiEndInterview,
+    isMicEnabled,
+    toggleMic
+  } = useVoiceInterview({
+    interviewId,
+    accessToken,
+    onError: (err) => toast.error(err)
+  });
+
+  const aiSpeaking = aiState === "speaking";
 
   useEffect(() => {
     let currentStream: MediaStream | null = null;
@@ -57,7 +71,6 @@ export function InterviewRoom({ interviewId, candidateName, jobTitle }: Intervie
           videoRef.current.srcObject = currentStream;
         }
 
-        // Initialize MediaRecorder for Enterprise-grade session capture
         const mediaRecorder = new MediaRecorder(currentStream, { mimeType: 'video/webm; codecs=vp9' });
         mediaRecorderRef.current = mediaRecorder;
         
@@ -67,7 +80,7 @@ export function InterviewRoom({ interviewId, candidateName, jobTitle }: Intervie
           }
         };
 
-        mediaRecorder.start(2000); // collect 2s chunks for resilience
+        mediaRecorder.start(2000);
       } catch (err) {
         toast.error("Lost access to camera or microphone");
       }
@@ -75,7 +88,6 @@ export function InterviewRoom({ interviewId, candidateName, jobTitle }: Intervie
 
     initLocalMedia();
 
-    // Enforce Fullscreen for Strict Proctoring
     const enforceFullscreen = async () => {
         try {
             if (document.documentElement.requestFullscreen) {
@@ -87,7 +99,6 @@ export function InterviewRoom({ interviewId, candidateName, jobTitle }: Intervie
     };
     enforceFullscreen();
 
-    // Anti-Cheat Monitoring
     const handleVisibilityChange = () => {
       if (document.hidden) {
         toast.error("Warning: Please stay on this tab during the interview.", {
@@ -95,9 +106,10 @@ export function InterviewRoom({ interviewId, candidateName, jobTitle }: Intervie
           icon: <AlertTriangle className="text-red-500" />
         });
         setWarnings(w => w + 1);
-        fetch("/api/v1/interviews/proctoring", {
+        fetch(`/api/interviews/${interviewId}/proctoring`, {
           method: "POST",
-          body: JSON.stringify({ interviewId, type: "tab_switch" })
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ accessToken, eventType: "TAB_SWITCHED", severity: "MEDIUM" })
         }).catch(() => {});
       }
     };
@@ -106,9 +118,10 @@ export function InterviewRoom({ interviewId, candidateName, jobTitle }: Intervie
         if (!document.fullscreenElement) {
             toast.error("Warning: You have exited full-screen mode.", { duration: 5000 });
             setWarnings(w => w + 1);
-            fetch("/api/v1/interviews/proctoring", {
+            fetch(`/api/interviews/${interviewId}/proctoring`, {
               method: "POST",
-              body: JSON.stringify({ interviewId, type: "exited_fullscreen" })
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ accessToken, eventType: "FULLSCREEN_EXITED", severity: "LOW" })
             }).catch(() => {});
         }
     };
@@ -116,18 +129,9 @@ export function InterviewRoom({ interviewId, candidateName, jobTitle }: Intervie
     document.addEventListener("visibilitychange", handleVisibilityChange);
     document.addEventListener("fullscreenchange", handleFullscreenChange);
 
-    // Simulate Network Quality fluctuations
     const netInterval = setInterval(() => {
         setNetworkQuality(Math.random() > 0.8 ? "low" : "high");
     }, 15000);
-
-    // Simulate AI greeting & conversation
-    const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    setTimeout(() => {
-      setAiSpeaking(true);
-      setTranscript(prev => [...prev, { role: "ai", text: `Hi ${candidateName}, welcome. I'm your AI interviewer for the ${jobTitle} role. Let's start with a quick introduction.`, time: now }]);
-      setTimeout(() => setAiSpeaking(false), 5000);
-    }, 2000);
 
     return () => {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
@@ -142,21 +146,32 @@ export function InterviewRoom({ interviewId, candidateName, jobTitle }: Intervie
         currentStream.getTracks().forEach(track => track.stop());
       }
       
-      // Attempt to exit fullscreen on unmount securely
       if (document.fullscreenElement && document.exitFullscreen) {
           document.exitFullscreen().catch(()=>{});
       }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [interviewId]);
+  }, [interviewId, accessToken]);
 
-  // Transcript Auto-scroll
+  const toggleScreenShare = async () => {
+    if (screenStream) {
+      screenStream.getTracks().forEach(t => t.stop());
+      setScreenStream(null);
+      return;
+    }
+    try {
+      const displayMedia = await navigator.mediaDevices.getDisplayMedia({ video: true });
+      setScreenStream(displayMedia);
+      displayMedia.getVideoTracks()[0].onended = () => setScreenStream(null);
+    } catch (err) {
+      toast.error("Failed to share screen");
+    }
+  };
+
   const chatEndRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [transcript]);
 
-  // Timer Tick
   useEffect(() => {
     if (timeLeft <= 0) {
       endInterview();
@@ -165,13 +180,6 @@ export function InterviewRoom({ interviewId, candidateName, jobTitle }: Intervie
     const timer = setInterval(() => setTimeLeft(t => t - 1), 1000);
     return () => clearInterval(timer);
   }, [timeLeft]);
-
-  const toggleMic = () => {
-    if (stream) {
-      stream.getAudioTracks().forEach(track => track.enabled = !micEnabled);
-      setMicEnabled(!micEnabled);
-    }
-  };
 
   const toggleCamera = () => {
     if (stream) {
@@ -182,26 +190,22 @@ export function InterviewRoom({ interviewId, candidateName, jobTitle }: Intervie
 
   const endInterview = async () => {
     setIsUploading(true);
+    aiEndInterview();
     
-    // 1. Stop Recording
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
         mediaRecorderRef.current.stop();
     }
     
-    // We need to wait a tiny bit to ensure the final ondataavailable fires
     await new Promise(r => setTimeout(r, 500));
-    
-    // 2. Compile Blob
     const blob = new Blob(recordedChunksRef.current, { type: 'video/webm' });
     
-    // 3. Upload Blob to Server
     const formData = new FormData();
     formData.append("video", blob, "session.webm");
-    formData.append("interviewId", interviewId);
+    formData.append("accessToken", accessToken);
     
     try {
       toast.info("Securely uploading interview recording...");
-      const res = await fetch("/api/v1/interviews/upload-recording", {
+      const res = await fetch(`/api/interviews/${interviewId}/recording`, {
         method: "POST",
         body: formData
       });
@@ -211,15 +215,11 @@ export function InterviewRoom({ interviewId, candidateName, jobTitle }: Intervie
         toast.error("Warning: Recording save failed. Transcript saved.");
     }
     
-    // 4. Graceful teardown
-    if (stream) {
-      stream.getTracks().forEach(track => track.stop());
-    }
+    if (stream) stream.getTracks().forEach(track => track.stop());
+    if (screenStream) screenStream.getTracks().forEach(t => t.stop());
     
     setIsUploading(false);
     toast.success("Interview completed! Generating grading report...");
-    
-    // Push candidate to results page
     router.push(`/candidate/interview/results/${interviewId}`);
   };
 
@@ -231,8 +231,6 @@ export function InterviewRoom({ interviewId, candidateName, jobTitle }: Intervie
 
   return (
     <div className="flex flex-col h-screen bg-[#0a0a0a] text-zinc-100 overflow-hidden font-sans">
-      
-      {/* Top Header */}
       <header className="h-16 border-b border-zinc-800 bg-[#111] px-6 flex items-center justify-between z-20 shrink-0">
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2">
@@ -259,10 +257,7 @@ export function InterviewRoom({ interviewId, candidateName, jobTitle }: Intervie
         </div>
       </header>
 
-      {/* Main Workspace */}
       <div className="flex-1 flex overflow-hidden">
-        
-        {/* LEFT PANE: Workspace (Code/Whiteboard/Notes) */}
         <div className="flex-1 flex flex-col border-r border-zinc-800 bg-[#0d0d0d] min-w-[50%]">
           <Tabs defaultValue="code" className="flex-1 flex flex-col">
             <div className="h-12 border-b border-zinc-800 bg-zinc-900/50 flex items-center px-4 shrink-0">
@@ -277,21 +272,13 @@ export function InterviewRoom({ interviewId, candidateName, jobTitle }: Intervie
             </div>
             
             <TabsContent value="code" className="flex-1 m-0 p-0 overflow-hidden relative border-none">
-                <div className="absolute top-2 right-4 z-10">
-                    <span className="text-xs text-zinc-500 bg-zinc-900 px-2 py-1 rounded border border-zinc-800">TypeScript</span>
-                </div>
                 <Editor 
                   height="100%" 
                   defaultLanguage="typescript" 
                   theme="vs-dark" 
                   value={code} 
                   onChange={(val) => setCode(val || "")}
-                  options={{
-                      minimap: { enabled: false },
-                      fontSize: 14,
-                      fontFamily: "JetBrains Mono, monospace",
-                      padding: { top: 20 }
-                  }}
+                  options={{ minimap: { enabled: false }, fontSize: 14, fontFamily: "JetBrains Mono, monospace" }}
                 />
             </TabsContent>
             
@@ -304,13 +291,8 @@ export function InterviewRoom({ interviewId, candidateName, jobTitle }: Intervie
           </Tabs>
         </div>
 
-        {/* RIGHT PANE: Interviews Feeds & Chat */}
         <div className="w-[400px] xl:w-[450px] flex flex-col bg-[#111] shrink-0">
-            
-            {/* AI Avatar Orb Room */}
             <div className="h-[260px] border-b border-zinc-800 relative flex flex-col items-center justify-center overflow-hidden bg-gradient-to-b from-zinc-900/50 to-[#111]">
-                
-                {/* Advanced AI Visualizer instead of basic monitor */}
                 <div className="relative flex items-center justify-center">
                     {aiSpeaking && (
                         <>
@@ -331,10 +313,14 @@ export function InterviewRoom({ interviewId, candidateName, jobTitle }: Intervie
                 <div className="absolute bottom-4 left-4 right-4 flex justify-between items-end">
                     <span className="text-xs font-semibold uppercase tracking-wider text-zinc-500">AI Interviewer</span>
                     {aiSpeaking && <span className="text-[10px] text-blue-400 animate-pulse flex items-center gap-1"><Mic className="w-3 h-3"/> Speaking...</span>}
+                    {interviewState === "IDLE" && (
+                      <Button size="sm" onClick={startInterview} className="bg-indigo-600 hover:bg-indigo-700 text-xs">
+                        <Play className="w-3 h-3 mr-1"/> Start
+                      </Button>
+                    )}
                 </div>
             </div>
 
-            {/* Candidate Feed */}
             <div className="h-[200px] border-b border-zinc-800 relative bg-black">
                 {!cameraEnabled ? (
                     <div className="absolute inset-0 flex items-center justify-center bg-zinc-950">
@@ -352,13 +338,12 @@ export function InterviewRoom({ interviewId, candidateName, jobTitle }: Intervie
                         />
                         <div className="absolute bottom-3 left-3 bg-black/70 backdrop-blur px-2.5 py-1 rounded border border-white/10 flex items-center gap-2">
                             <span className="text-xs font-medium text-white">{candidateName} (You)</span>
-                            {!micEnabled && <MicOff className="h-3.5 w-3.5 text-red-500" />}
+                            {!isMicEnabled && <MicOff className="h-3.5 w-3.5 text-red-500" />}
                         </div>
                     </>
                 )}
             </div>
 
-            {/* Live Transcript Log */}
             <div className="flex-1 flex flex-col bg-[#0a0a0a] relative">
                 <div className="px-4 py-3 border-b border-zinc-800/50 flex items-center gap-2 bg-[#111]">
                     <MessageSquare className="w-4 h-4 text-zinc-400" />
@@ -372,18 +357,17 @@ export function InterviewRoom({ interviewId, candidateName, jobTitle }: Intervie
                                 <span className={`text-[10px] font-medium ${msg.role === 'candidate' ? 'text-zinc-400' : 'text-indigo-400'}`}>
                                     {msg.role === 'candidate' ? 'You' : 'AI'}
                                 </span>
-                                <span className="text-[10px] text-zinc-600">{msg.time}</span>
                             </div>
                             <div className={`max-w-[85%] rounded-lg px-3 py-2 text-sm leading-relaxed ${
                                 msg.role === 'candidate' 
                                 ? 'bg-zinc-800 text-zinc-100 rounded-br-sm' 
                                 : 'bg-indigo-500/10 text-indigo-100 border border-indigo-500/20 rounded-bl-sm'
                             }`}>
-                                {msg.text}
+                                {msg.content}
                             </div>
                         </div>
                     ))}
-                    {aiSpeaking && transcript[transcript.length -1]?.role !== 'ai' && (
+                    {aiSpeaking && transcript[transcript.length -1]?.role !== 'interviewer' && (
                         <div className="flex items-start">
                             <div className="bg-indigo-500/10 border border-indigo-500/20 rounded-lg rounded-bl-sm px-4 py-3 flex gap-1 items-center">
                                 <div className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-bounce" />
@@ -394,27 +378,22 @@ export function InterviewRoom({ interviewId, candidateName, jobTitle }: Intervie
                     )}
                     <div ref={chatEndRef} />
                 </div>
-                
             </div>
-
         </div>
       </div>
 
-      {/* Bottom Control Bar */}
       <footer className="h-20 bg-[#111] border-t border-zinc-800 flex items-center justify-center gap-4 px-6 shrink-0 relative z-20">
-        
         <div className="absolute left-6 text-xs text-zinc-500 flex items-center gap-2">
             <ShieldIcon /> End-to-end encrypted
         </div>
-
         <div className="flex items-center gap-3">
             <Button 
                 variant="outline" 
                 size="icon" 
-                className={`rounded-full h-12 w-12 border-zinc-700 bg-zinc-900 hover:bg-zinc-800 ${!micEnabled && 'border-red-500/50 text-red-500 hover:bg-red-500/10 hover:text-red-500'}`}
+                className={`rounded-full h-12 w-12 border-zinc-700 bg-zinc-900 hover:bg-zinc-800 ${!isMicEnabled && 'border-red-500/50 text-red-500 hover:bg-red-500/10 hover:text-red-500'}`}
                 onClick={toggleMic}
             >
-                {micEnabled ? <Mic className="h-5 w-5" /> : <MicOff className="h-5 w-5" />}
+                {isMicEnabled ? <Mic className="h-5 w-5" /> : <MicOff className="h-5 w-5" />}
             </Button>
             
             <Button 
@@ -426,6 +405,15 @@ export function InterviewRoom({ interviewId, candidateName, jobTitle }: Intervie
                 {cameraEnabled ? <Video className="h-5 w-5" /> : <VideoOff className="h-5 w-5" />}
             </Button>
 
+            <Button 
+                variant="outline" 
+                size="icon" 
+                className={`rounded-full h-12 w-12 border-zinc-700 bg-zinc-900 hover:bg-zinc-800 ${screenStream && 'border-indigo-500/50 text-indigo-400 bg-indigo-500/10 hover:bg-indigo-500/20'}`}
+                onClick={toggleScreenShare}
+                title="Share Screen"
+            >
+                <Monitor className="h-5 w-5" />
+            </Button>
         </div>
 
         <Button 
@@ -449,7 +437,6 @@ export function InterviewRoom({ interviewId, candidateName, jobTitle }: Intervie
             </div>
         </div>
       )}
-
     </div>
   );
 }

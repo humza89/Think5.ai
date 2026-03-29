@@ -255,6 +255,23 @@ export function useVoiceInterview(
     };
   }, []);
 
+  // ── Helpers ────────────────────────────────────────────────────────
+  
+  const base64ToFloat32 = useCallback((base64: string): Float32Array => {
+    const binaryString = window.atob(base64);
+    const len = binaryString.length;
+    const bytes = new Uint8Array(len);
+    for (let i = 0; i < len; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+    const int16 = new Int16Array(bytes.buffer);
+    const float32 = new Float32Array(int16.length);
+    for (let i = 0; i < int16.length; i++) {
+      float32[i] = int16[i] / 32768.0;
+    }
+    return float32;
+  }, []);
+
   // ── Gemini WebSocket Message Handler ───────────────────────────────
 
   const handleGeminiMessage = useCallback(async (event: MessageEvent) => {
