@@ -135,8 +135,9 @@ export function useVoiceInterview(
   const tabHiddenRef = useRef(false); // F5: Tab visibility — suppress heartbeat when hidden
   const circuitBreakerStateRef = useRef<"CLOSED" | "OPEN" | "HALF_OPEN">("CLOSED"); // F3: Circuit breaker state
   const circuitBreakerTimerRef = useRef<NodeJS.Timeout | null>(null); // F3: OPEN → HALF_OPEN timer
-  const endInterviewInternalRef = useRef<() => void>(() => {}); // Forward ref for checkpoint→endInterview
-  const checkpointTranscriptRef = useRef<() => void>(() => {}); // Forward ref for handleToolCall→checkpoint
+  const endInterviewInternalRef = useRef<(() => void) | null>(null); // Forward ref for checkpoint→endInterview
+  const checkpointTranscriptRef = useRef<(() => void) | null>(null); // Forward ref for handleToolCall→checkpoint
+  const onErrorRef = useRef(onError); // C5/R5: Stable ref for onError to prevent stale closures in setTimeout
   const audioProcessorErrorCountRef = useRef(0); // F2: Error counter for audio processor
   const micRevokedRef = useRef(false); // F6: Track mic revocation
   const askedQuestionsRef = useRef<string[]>([]); // Question dedup: track AI questions to prevent repeats
@@ -214,6 +215,7 @@ export function useVoiceInterview(
   useEffect(() => { isMicEnabledRef.current = isMicEnabled; }, [isMicEnabled]);
   useEffect(() => { transcriptRef.current = transcript; }, [transcript]);
   useEffect(() => { questionCountRef.current = questionCount; }, [questionCount]);
+  useEffect(() => { onErrorRef.current = onError; }, [onError]); // C5/R5: Keep onError ref current
 
   // Notify parent on state changes
   useEffect(() => { onStateChange?.(interviewState); }, [interviewState, onStateChange]);
@@ -478,9 +480,10 @@ export function useVoiceInterview(
     };
 
     // Helper: trigger immediate checkpoint after state-changing tool calls (debounced 5s)
+    // C3/R5: Guard against null ref — tool calls may arrive before refs are assigned
     const triggerEventCheckpoint = () => {
       const now = Date.now();
-      if (now - lastCheckpointTimeRef.current > 5000) {
+      if (now - lastCheckpointTimeRef.current > 5000 && checkpointTranscriptRef.current) {
         lastCheckpointTimeRef.current = now;
         checkpointTranscriptRef.current();
       }
@@ -602,7 +605,7 @@ export function useVoiceInterview(
             if (ttlBody.forceEnd) {
               console.warn("[Voice] Max interview duration exceeded — auto-ending");
               onError?.("Maximum interview duration reached. Ending interview.");
-              endInterviewInternalRef.current();
+              endInterviewInternalRef.current?.();
               return;
             }
           }
@@ -611,7 +614,8 @@ export function useVoiceInterview(
         // Generate running conversation summary when transcript grows significantly
         // The summary compresses early turns so they survive token-budget trimming on reconnect
         const transcriptLen = transcriptRef.current.length;
-        if (transcriptLen - lastSummaryCountRef.current >= 20 && transcriptLen > 20) {
+        // H3/R5: Generate summary every 10 entries (was 20) for fresher reconnect context
+        if (transcriptLen - lastSummaryCountRef.current >= 10 && transcriptLen > 10) {
           // Summarize early entries that would be trimmed by the 120K char budget
           const TOKEN_CHAR_BUDGET = 120_000;
           let recentChars = 0;
@@ -702,6 +706,10 @@ export function useVoiceInterview(
 
     // Clean up all audio resources
     cleanupAudioResources();
+
+    // M7/R5: Clear reconnect state so new interview doesn't send stale tokens
+    reconnectTokenRef.current = "";
+    lastCheckpointDigestRef.current = null;
 
     // Close WebSocket (intentional)
     intentionalCloseRef.current = true;
@@ -799,6 +807,8 @@ export function useVoiceInterview(
           console.error("[Voice] Circuit breaker OPEN — 3 consecutive setup failures");
           setFallbackToText(true);
           onError?.("Voice connection failed repeatedly. Switching to text mode.");
+          // M2/R5: Clear any existing timer before setting a new one
+          if (circuitBreakerTimerRef.current) { clearTimeout(circuitBreakerTimerRef.current); }
           // After 30s, transition to HALF_OPEN to allow one retry
           circuitBreakerTimerRef.current = setTimeout(() => {
             circuitBreakerStateRef.current = "HALF_OPEN";
@@ -1111,6 +1121,16 @@ export function useVoiceInterview(
                     if (recovery.moduleScores && Array.isArray(recovery.moduleScores)) {
                       moduleScoresRef.current = recovery.moduleScores;
                     }
+                    // H9/R5: Restore all enterprise fields on diverged reconnect
+                    if (recovery.flaggedFollowUps && Array.isArray(recovery.flaggedFollowUps)) {
+                      flaggedFollowUpsRef.current = recovery.flaggedFollowUps;
+                    }
+                    if (recovery.candidateProfile) {
+                      candidateProfileRef.current = recovery.candidateProfile;
+                    }
+                    if (recovery.askedQuestions && Array.isArray(recovery.askedQuestions)) {
+                      askedQuestionsRef.current = recovery.askedQuestions;
+                    }
                   }
                   setReconnectPhase("re-synced");
                 } else {
@@ -1141,7 +1161,7 @@ export function useVoiceInterview(
                 setConnectionQuality("poor");
                 setFallbackToText(true);
                 setReconnectPhase("resume-failed");
-                onError?.("Connection lost. You can switch to text mode.");
+                onErrorRef.current?.("Connection lost. You can switch to text mode.");
                 reportSLOEvent("session.reconnect.success_rate", false);
                 reportSLOEvent("session.hard_stop.rate", false);
               }
@@ -1151,7 +1171,7 @@ export function useVoiceInterview(
           setConnectionQuality("poor");
           setFallbackToText(true);
           setReconnectPhase("resume-failed");
-          onError?.("Connection lost after multiple attempts. Switch to text mode.");
+          onErrorRef.current?.("Connection lost after multiple attempts. Switch to text mode.");
           reportSLOEvent("session.reconnect.success_rate", false);
           reportSLOEvent("session.hard_stop.rate", false);
         }

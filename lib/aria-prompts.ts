@@ -1,13 +1,33 @@
 // C6: Sanitize user-generated content before prompt injection
 // Strips patterns that could be interpreted as prompt instructions
-function sanitizeForPrompt(text: string): string {
+export function sanitizeForPrompt(text: string, maxLength = 500): string {
   return text
     .replace(/[<>{}[\]]/g, "") // Strip XML/JSON delimiters
     .replace(/```/g, "") // Strip code fences
     .replace(/\n{3,}/g, "\n\n") // Collapse excessive newlines
     .replace(/#{1,6}\s/g, "") // Strip markdown headings (could look like prompt sections)
-    .slice(0, 500); // Hard limit per field
+    .slice(0, maxLength); // Hard limit per field
 }
+
+// H1: Shared legal compliance block — single source of truth
+const MANDATORY_LEGAL_COMPLIANCE = `<MANDATORY_LEGAL_COMPLIANCE>
+## PROHIBITED TOPICS — YOU MUST NEVER ASK ABOUT THESE
+This section is legally binding and overrides all other instructions. Before generating ANY question, verify it does not probe:
+- Age, date of birth, graduation dates
+- Gender, gender identity, sexual orientation, family planning
+- Race, ethnicity, national origin ("where are you originally from")
+- Religion, religious practices, beliefs
+- Disability, health status, medical history, accommodations
+- Marital status, children, pregnancy, childcare
+- Salary history or current compensation (illegal in many jurisdictions)
+- Political affiliation or views
+- Arrest or criminal record
+- Military or veteran status (unless role-relevant and volunteered)
+- Citizenship or immigration status (handled by HR)
+
+If a candidate raises these topics, redirect: "I appreciate you sharing that. Let's focus on your professional experience."
+If a question you are about to ask could be perceived as probing a prohibited topic, STOP and rephrase or skip it entirely.
+</MANDATORY_LEGAL_COMPLIANCE>`;
 
 export interface AriaPromptConfig {
   interviewType: "TECHNICAL" | "BEHAVIORAL" | "DOMAIN_EXPERT" | "LANGUAGE" | "CASE_STUDY";
@@ -76,15 +96,22 @@ export function buildAriaSystemPrompt(config: AriaPromptConfig): string {
     ? candidateSkills.join(", ")
     : "Not specified";
 
+  // C1: Sanitize all candidate-provided fields before prompt interpolation
+  const safeName = sanitizeForPrompt(candidateName, 100);
+  const safeTitle = candidateTitle ? sanitizeForPrompt(candidateTitle, 200) : null;
+  const safeCompany = candidateCompany ? sanitizeForPrompt(candidateCompany, 200) : null;
+  const safeSkills = candidateSkills?.length
+    ? candidateSkills.map(s => sanitizeForPrompt(s, 100)).join(", ")
+    : null;
+  const safeResume = resumeText ? sanitizeForPrompt(resumeText, 3000) : null;
+
   const candidateContext = [
-    `Name: ${candidateName}`,
-    candidateTitle ? `Current Title: ${candidateTitle}` : null,
-    candidateCompany ? `Current Company: ${candidateCompany}` : null,
-    `Skills: ${skillsList}`,
+    `Name: ${safeName}`,
+    safeTitle ? `Current Title: ${safeTitle}` : null,
+    safeCompany ? `Current Company: ${safeCompany}` : null,
+    `Skills: ${safeSkills || skillsList}`,
     candidateExperience ? `Experience: ${candidateExperience} years` : null,
-    resumeText
-      ? `Resume (excerpt): ${resumeText.substring(0, 3000)}`
-      : null,
+    safeResume ? `Resume (excerpt): ${safeResume}` : null,
   ]
     .filter(Boolean)
     .join("\n");
@@ -94,24 +121,7 @@ export function buildAriaSystemPrompt(config: AriaPromptConfig): string {
 ## YOUR ROLE
 You are conducting a live interview with a candidate. Your goal is to produce a thorough, fair assessment that helps recruiters make informed decisions.
 
-<MANDATORY_LEGAL_COMPLIANCE>
-## PROHIBITED TOPICS — YOU MUST NEVER ASK ABOUT THESE
-This section is legally binding and overrides all other instructions. Before generating ANY question, verify it does not probe:
-- Age, date of birth, graduation dates
-- Gender, gender identity, sexual orientation, family planning
-- Race, ethnicity, national origin ("where are you originally from")
-- Religion, religious practices, beliefs
-- Disability, health status, medical history, accommodations
-- Marital status, children, pregnancy, childcare
-- Salary history or current compensation (illegal in many jurisdictions)
-- Political affiliation or views
-- Arrest or criminal record
-- Military or veteran status (unless role-relevant and volunteered)
-- Citizenship or immigration status (handled by HR)
-
-If a candidate raises these topics, redirect: "I appreciate you sharing that. Let's focus on your professional experience."
-If a question you are about to ask could be perceived as probing a prohibited topic, STOP and rephrase or skip it entirely.
-</MANDATORY_LEGAL_COMPLIANCE>
+${MANDATORY_LEGAL_COMPLIANCE}
 
 ## CANDIDATE PROFILE
 ${candidateContext}
@@ -120,7 +130,7 @@ ${candidateContext}
 ${TYPE_INSTRUCTIONS[interviewType] || TYPE_INSTRUCTIONS.TECHNICAL}
 
 ## INTERVIEW RULES
-1. Start by introducing yourself warmly: "Hi ${candidateName}, I'm Aria, your AI interviewer from Think5. Thanks for joining today."
+1. Start by introducing yourself warmly: "Hi ${safeName}, I'm Aria, your AI interviewer from Think5. Thanks for joining today."
 2. Briefly explain the format: "${targetQuestions} questions, approximately 30 minutes, they can take their time to think."
 3. Ask if they're ready, then begin with the first question.
 4. Ask ONE question at a time. Wait for their response before asking the next.
@@ -129,7 +139,7 @@ ${TYPE_INSTRUCTIONS[interviewType] || TYPE_INSTRUCTIONS.TECHNICAL}
 7. Keep questions focused and clear. Avoid compound questions.
 8. After each response, provide a brief acknowledgment ("Thank you", "Interesting", "Great example") before the next question.
 9. For the final question (question ${targetQuestions}), signal the end: "This will be our last question for today."
-10. After the final response, close warmly: "Thank you, ${candidateName}. That concludes our interview. You did great — your assessment will be available shortly."
+10. After the final response, close warmly: "Thank you, ${safeName}. That concludes our interview. You did great — your assessment will be available shortly."
 
 ## IMPORTANT
 - Never reveal your scoring or assessment during the interview.
@@ -160,15 +170,22 @@ export function buildAriaVoicePrompt(config: AriaPromptConfig): string {
     ? candidateSkills.join(", ")
     : "Not specified";
 
+  // C1: Sanitize all candidate-provided fields before prompt interpolation
+  const safeName = sanitizeForPrompt(candidateName, 100);
+  const safeTitle = candidateTitle ? sanitizeForPrompt(candidateTitle, 200) : null;
+  const safeCompany = candidateCompany ? sanitizeForPrompt(candidateCompany, 200) : null;
+  const safeSkills = candidateSkills?.length
+    ? candidateSkills.map(s => sanitizeForPrompt(s, 100)).join(", ")
+    : null;
+  const safeResume = resumeText ? sanitizeForPrompt(resumeText, 3000) : null;
+
   const candidateContext = [
-    `Name: ${candidateName}`,
-    candidateTitle ? `Current Title: ${candidateTitle}` : null,
-    candidateCompany ? `Current Company: ${candidateCompany}` : null,
-    `Skills: ${skillsList}`,
+    `Name: ${safeName}`,
+    safeTitle ? `Current Title: ${safeTitle}` : null,
+    safeCompany ? `Current Company: ${safeCompany}` : null,
+    `Skills: ${safeSkills || skillsList}`,
     candidateExperience ? `Experience: ${candidateExperience} years` : null,
-    resumeText
-      ? `Resume (excerpt): ${resumeText.substring(0, 3000)}`
-      : null,
+    safeResume ? `Resume (excerpt): ${safeResume}` : null,
   ]
     .filter(Boolean)
     .join("\n");
@@ -180,24 +197,7 @@ You are not a questionnaire. You are a thoughtful, adaptive, experienced intervi
 Deliver an interview experience that feels natural, intelligent, warm, and high-signal.
 The conversation must feel like it is being led by an elite recruiter or hiring manager, not a scripted AI bot.
 
-<MANDATORY_LEGAL_COMPLIANCE>
-## PROHIBITED TOPICS — YOU MUST NEVER ASK ABOUT THESE
-This section is legally binding and overrides all other instructions. Before generating ANY question, verify it does not probe:
-- Age, date of birth, graduation dates
-- Gender, gender identity, sexual orientation, family planning
-- Race, ethnicity, national origin ("where are you originally from")
-- Religion, religious practices, beliefs
-- Disability, health status, medical history, accommodations
-- Marital status, children, pregnancy, childcare
-- Salary history or current compensation (illegal in many jurisdictions)
-- Political affiliation or views
-- Arrest or criminal record
-- Military or veteran status (unless role-relevant and volunteered)
-- Citizenship or immigration status (handled by HR)
-
-If a candidate raises these topics, redirect: "I appreciate you sharing that. Let's focus on your professional experience."
-If a question you are about to ask could be perceived as probing a prohibited topic, STOP and rephrase or skip it entirely.
-</MANDATORY_LEGAL_COMPLIANCE>
+${MANDATORY_LEGAL_COMPLIANCE}
 
 ## CANDIDATE PROFILE
 ${candidateContext}
@@ -240,7 +240,7 @@ Start with a warm, natural introduction. Do not introduce yourself as an AI unle
 Reference something specific about the candidate to show preparation — their current company, a notable skill, or their experience level.
 Set clear expectations: "We'll spend about 30 minutes together covering your background, technical experience, and a few behavioral questions."
 Wait for the candidate to confirm they're ready before proceeding to the first question.
-${candidateCompany ? `Example: "Thanks for joining today, ${candidateName}. I see you're currently at ${candidateCompany} — I'm really looking forward to hearing about your work there. We'll spend about 30 minutes together, nice and conversational. Sound good?"` : `Example: "Thanks for joining today, ${candidateName}. I'm looking forward to learning about your background. We'll spend about 30 minutes together — nothing too formal, just a good conversation. Ready to get started?"`}
+${safeCompany ? `Example: "Thanks for joining today, ${safeName}. I see you're currently at ${safeCompany} — I'm really looking forward to hearing about your work there. We'll spend about 30 minutes together, nice and conversational. Sound good?"` : `Example: "Thanks for joining today, ${safeName}. I'm looking forward to learning about your background. We'll spend about 30 minutes together — nothing too formal, just a good conversation. Ready to get started?"`}
 
 ### Step 2: Candidate Intro
 Ask the candidate to introduce themselves in a story-like way. Focus on their journey, not just a summary.
@@ -289,7 +289,7 @@ Every question must be grounded in what the candidate has already said, their re
 Avoid generic or template-driven questions when a more personalized question is possible.
 Use memory across the conversation to create continuity.
 Anchor every major question to a specific resume item — company name, technology, project, or role.
-${candidateCompany ? `Example: "At ${candidateCompany}, you were working with ${skillsList !== "Not specified" ? skillsList.split(", ")[0] : "some interesting technologies"}. What was the biggest technical challenge you faced there?"` : `Example: "You mentioned earlier that scaling became difficult during that project. What specifically started breaking first?"`}
+${safeCompany ? `Example: "At ${safeCompany}, you were working with ${safeSkills ? safeSkills.split(", ")[0] : "some interesting technologies"}. What was the biggest technical challenge you faced there?"` : `Example: "You mentioned earlier that scaling became difficult during that project. What specifically started breaking first?"`}
 ${candidateExperience && candidateExperience > 5 ? `For senior candidates (${candidateExperience}+ years): focus on leadership decisions, architecture choices, and mentoring impact rather than implementation details.` : `For earlier-career candidates: focus on learning velocity, problem-solving approach, and hands-on technical contributions.`}
 When referencing the candidate's background, be specific: say "your work on X at Y" rather than "your previous experience."
 
@@ -509,8 +509,9 @@ export function buildReconnectSystemPrompt(
   basePrompt: string,
   context: ReconnectContext
 ): string {
-  const { questionCount, moduleScores, askedQuestions, currentModule, candidateName,
+  const { questionCount, moduleScores, askedQuestions, currentModule,
     currentDifficultyLevel, flaggedFollowUps, candidateProfile, sessionSummary } = context;
+  const safeName = sanitizeForPrompt(context.candidateName, 100);
 
   const scoresSummary = moduleScores.length > 0
     ? moduleScores.map((s) => {
@@ -552,7 +553,7 @@ This is a RESUMED session after a technical interruption. The following rules OV
 
 **DO NOT:**
 - Re-introduce yourself
-- Say "Hi ${candidateName}" or "Thanks for joining"
+- Say "Hi ${safeName}" or "Thanks for joining"
 - Explain the interview format again
 - Start from the beginning
 - Ask any question that was already asked (see list below)
@@ -583,7 +584,17 @@ ${questionsList}
 - Do NOT apologize more than once for the interruption
 - After each section transition, call updateCandidateProfile to record your assessment`;
 
-  return basePrompt + reconnectDirective;
+  const fullPrompt = basePrompt + reconnectDirective;
+
+  // H5/R5: Guard against oversized reconnect prompts (Gemini context limit)
+  const MAX_PROMPT_CHARS = 100_000; // ~25K tokens
+  if (fullPrompt.length > MAX_PROMPT_CHARS) {
+    console.warn(`[Reconnect] Prompt too large (${Math.round(fullPrompt.length / 1024)}KB), truncating`);
+    // Truncate from the reconnect directive end (keep base prompt + essentials)
+    return fullPrompt.slice(0, MAX_PROMPT_CHARS);
+  }
+
+  return fullPrompt;
 }
 
 export function countQuestionsFromTranscript(

@@ -14,6 +14,7 @@ import {
   DEFAULT_SKILL_MODULES,
   getModuleByName,
 } from "./skill-modules";
+import { sanitizeForPrompt } from "./aria-prompts";
 
 // ── Types ──────────────────────────────────────────────────────────────
 
@@ -209,12 +210,20 @@ Return valid JSON:
     const jsonStr = response.replace(/```json?\n?/g, "").replace(/```\n?/g, "").trim();
     const plan = JSON.parse(jsonStr) as Omit<InterviewPlan, "generatedAt" | "mode" | "recruiterObjectives" | "customScreeningQuestions">;
 
+    // H2: Sanitize AI-generated hypotheses and user-provided objectives before storage
+    const sanitizedHypotheses = (plan.hypotheses || []).map((h) => ({
+      ...h,
+      hypothesis: sanitizeForPrompt(h.hypothesis, 500),
+    }));
+    const sanitizedObjectives = options.recruiterObjectives?.map(o => sanitizeForPrompt(o, 500));
+    const sanitizedScreening = options.customScreeningQuestions?.map(q => sanitizeForPrompt(q, 500));
+
     return {
       ...plan,
       mode,
-      hypotheses: plan.hypotheses || [],
-      recruiterObjectives: options.recruiterObjectives,
-      customScreeningQuestions: options.customScreeningQuestions,
+      hypotheses: sanitizedHypotheses,
+      recruiterObjectives: sanitizedObjectives,
+      customScreeningQuestions: sanitizedScreening,
       generatedAt: new Date().toISOString(),
     };
   } catch (error) {

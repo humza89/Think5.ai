@@ -111,6 +111,7 @@ export const reportGenerate = inngest.createFunction(
     });
 
     // Step 4b: Compute session confidence and stability metadata
+    // C4/R5: Cross-validate with proctoring events when session state has expired
     await step.run("compute-session-confidence", async () => {
       const { prisma } = await import("@/lib/prisma");
       const { getSessionState } = await import("@/lib/session-store");
@@ -118,19 +119,31 @@ export const reportGenerate = inngest.createFunction(
       const session = await getSessionState(interviewId);
       const interview = await prisma.interview.findUnique({
         where: { id: interviewId },
-        select: { transcript: true, report: { select: { id: true } } },
+        select: { transcript: true, integrityEvents: true, report: { select: { id: true } } },
       });
 
       if (!interview?.report) return;
 
-      // Determine confidence based on session quality signals
-      const reconnectCount = session?.reconnectCount ?? 0;
       const transcriptLength = Array.isArray(interview.transcript) ? interview.transcript.length : 0;
+      let reconnectCount = session?.reconnectCount ?? 0;
+      let sessionStateExpired = false;
+
+      // C4/R5: If session state expired (null), infer instability from proctoring events
+      if (!session) {
+        sessionStateExpired = true;
+        const events = Array.isArray(interview.integrityEvents) ? interview.integrityEvents as Array<{ eventType?: string }> : [];
+        const focusLostCount = events.filter(e => e.eventType === "focus_lost" || e.eventType === "tab_hidden").length;
+        if (focusLostCount > 0) {
+          // Infer at least 1 reconnect from focus loss events
+          reconnectCount = Math.max(reconnectCount, Math.ceil(focusLostCount / 2));
+        }
+      }
 
       let sessionConfidence: "high" | "medium" | "low" = "high";
       if (reconnectCount >= 3 || transcriptLength < 6) {
         sessionConfidence = "low";
-      } else if (reconnectCount >= 1 || transcriptLength < 12) {
+      } else if (reconnectCount >= 1 || transcriptLength < 12 || sessionStateExpired) {
+        // C4/R5: Expired session state → medium at best (can't verify stability)
         sessionConfidence = "medium";
       }
 
@@ -138,6 +151,7 @@ export const reportGenerate = inngest.createFunction(
         reconnects: reconnectCount,
         transcriptTurns: transcriptLength,
         sessionConfidence,
+        sessionStateExpired, // C4/R5: Flag when confidence was inferred from proctoring events
       };
 
       await prisma.interviewReport.update({

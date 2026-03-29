@@ -283,13 +283,24 @@ export async function generateInterviewReport(
     throw new Error("GEMINI_API_KEY is not configured");
   }
 
+  // H8/R5: Validate and normalize transcript entries before Gemini API call
+  if (!Array.isArray(transcript) || transcript.length === 0) {
+    throw new Error("Transcript must be a non-empty array");
+  }
+  const validTranscript = transcript.filter(
+    (entry) => entry && typeof entry.role === "string" && typeof entry.content === "string" && entry.content.trim().length > 0
+  );
+  if (validTranscript.length === 0) {
+    throw new Error("Transcript has no valid entries after filtering");
+  }
+
   const model = genAI.getGenerativeModel({ model: SCORER_MODEL_VERSION });
 
   // Format transcript for the prompt
-  const formattedTranscript = transcript
+  const formattedTranscript = validTranscript
     .map(
       (entry, idx) =>
-        `[#${idx} ${entry.role.toUpperCase()}${entry.timestamp ? ` @ ${entry.timestamp}` : ""}]: ${entry.content}`
+        `[#${idx} ${entry.role.toUpperCase()}${entry.timestamp ? ` @ ${entry.timestamp}` : ""}]: ${entry.content.slice(0, 5000)}`
     )
     .join("\n\n");
 

@@ -67,7 +67,10 @@ export async function logAIUsage(input: UsageLogInput): Promise<void> {
             `[AI Anomaly] Company ${input.companyId}: $${result.currentDailySpend.toFixed(2)} today vs $${result.avgDailySpend.toFixed(2)} avg (${result.ratio.toFixed(1)}x)`
           );
         }
-      }).catch(() => {});
+      }).catch((err) => {
+        // M6/R5: Report anomaly detection failures instead of swallowing
+        console.warn("[AI Anomaly] Detection failed:", err);
+      });
     }
   } catch (error) {
     // Non-blocking — don't fail operations for usage logging

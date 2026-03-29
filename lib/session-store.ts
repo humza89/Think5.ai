@@ -109,10 +109,19 @@ export async function saveSessionState(
   state: SessionState
 ): Promise<void> {
   const key = sessionKey(interviewId);
-  const serialized = JSON.stringify(state);
-  const sizeBytes = Buffer.byteLength(serialized, "utf8");
+  let serialized = JSON.stringify(state);
+  let sizeBytes = Buffer.byteLength(serialized, "utf8");
 
-  if (sizeBytes > 256_000) {
+  // H7/R5: Enforce session state size limit — truncate transcript to keep under 512KB
+  if (sizeBytes > 512_000) {
+    console.warn(`[${interviewId}] Session state too large (${Math.round(sizeBytes / 1024)}KB), truncating transcript tail`);
+    // Keep only the last 100 transcript entries to reduce size while preserving recent context
+    if (state.transcript.length > 100) {
+      state.transcript = state.transcript.slice(-100);
+      serialized = JSON.stringify(state);
+      sizeBytes = Buffer.byteLength(serialized, "utf8");
+    }
+  } else if (sizeBytes > 256_000) {
     console.warn(`[${interviewId}] Session state large: ${Math.round(sizeBytes / 1024)}KB`);
   }
 
@@ -365,7 +374,12 @@ export async function tryRestoreSession(
 export async function recordHeartbeat(interviewId: string): Promise<void> {
   const redis = await getRedis();
   if (redis) {
-    await redis.set(`voice-heartbeat:${interviewId}`, Date.now().toString(), { ex: 30 });
+    try {
+      await redis.set(`voice-heartbeat:${interviewId}`, Date.now().toString(), { ex: 30 });
+    } catch (err) {
+      // H6/R5: Don't let heartbeat failures crash the request — log and continue
+      console.warn(`[${interviewId}] Heartbeat record failed:`, err);
+    }
   }
 }
 

@@ -199,6 +199,13 @@ export async function POST(
       }
       checkpointTimestamps.set(id, now);
 
+      // C2/R5: Evict stale checkpoint timestamps to prevent memory leak
+      if (checkpointTimestamps.size > 1000) {
+        for (const [key, ts] of checkpointTimestamps) {
+          if (now - ts > 3600_000) checkpointTimestamps.delete(key);
+        }
+      }
+
       // H10: Reject oversized transcripts (>1MB serialized)
       const currentTranscript = transcript || [];
       if (JSON.stringify(currentTranscript).length > 1_000_000) {
