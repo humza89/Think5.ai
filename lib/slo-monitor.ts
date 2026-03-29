@@ -34,16 +34,16 @@ export interface SLODefinition {
 export const SLO_DEFINITIONS: SLODefinition[] = [
   {
     name: "interview.start.success_rate",
-    target: 0.995,
+    target: 0.999,
     windowHours: 24,
-    description: "Interview session start success rate",
+    description: "Interview session start success rate (≥99.9%)",
     unit: "rate",
   },
   {
     name: "transcript.checkpoint.latency_p99",
-    target: 0.99,
+    target: 0.995,
     windowHours: 24,
-    description: "Transcript checkpoint latency under 500ms",
+    description: "Transcript checkpoint latency under 500ms (≥99.5%)",
     unit: "latency_ms",
     latencyThresholdMs: 500,
   },
@@ -57,16 +57,16 @@ export const SLO_DEFINITIONS: SLODefinition[] = [
   },
   {
     name: "recording.upload.success_rate",
-    target: 0.99,
+    target: 0.995,
     windowHours: 24,
-    description: "Recording chunk upload success rate",
+    description: "Recording chunk upload success rate (≥99.5%)",
     unit: "rate",
   },
   {
     name: "session.reconnect.success_rate",
-    target: 0.99,
+    target: 0.999,
     windowHours: 24,
-    description: "WebSocket reconnect success rate (≥99.0%)",
+    description: "WebSocket reconnect success rate (≥99.9%)",
     unit: "rate",
   },
   {
@@ -78,9 +78,9 @@ export const SLO_DEFINITIONS: SLODefinition[] = [
   },
   {
     name: "session.30min_completion.rate",
-    target: 0.985,
+    target: 0.995,
     windowHours: 24,
-    description: "30-minute session completion rate (≥98.5%)",
+    description: "30-minute session completion rate (≥99.5%)",
     unit: "rate",
   },
   {

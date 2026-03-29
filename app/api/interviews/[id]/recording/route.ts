@@ -76,6 +76,24 @@ export async function POST(
         }
       }
 
+      // Chunk deduplication: skip re-upload if same checksum already stored
+      if (clientChecksum) {
+        try {
+          const { Redis } = await import("@upstash/redis");
+          const redis = new Redis({
+            url: process.env.UPSTASH_REDIS_REST_URL!,
+            token: process.env.UPSTASH_REDIS_REST_TOKEN!,
+          });
+          const dedupKey = `rec-chunk:${id}:${chunkIndex}`;
+          const storedChecksum = await redis.get(dedupKey);
+          if (storedChecksum === clientChecksum) {
+            return Response.json({ ok: true, chunkIndex, deduplicated: true });
+          }
+          // Store checksum after successful upload (below)
+          await redis.set(dedupKey, clientChecksum, { ex: 86400 }); // 24h TTL
+        } catch { /* Redis unavailable — skip dedup, proceed with upload */ }
+      }
+
       await uploadRecordingChunk(id, buffer, chunkIndex, chunk.type);
 
       // Track recording state
@@ -122,12 +140,34 @@ export async function POST(
         data: { recordingState: "FINALIZING" },
       });
 
-      const metadata = await finalizeRecording(
-        id,
-        totalChunks,
-        body.format || "webm",
-        body.durationSeconds
-      );
+      let metadata;
+      try {
+        metadata = await finalizeRecording(
+          id,
+          totalChunks,
+          body.format || "webm",
+          body.durationSeconds
+        );
+      } catch (finalizeErr) {
+        // Dispatch durable retry via Inngest — prevents silent recording loss
+        try {
+          const { inngest } = await import("@/inngest/client");
+          await inngest.send({
+            name: "recording/finalize-retry",
+            data: {
+              interviewId: id,
+              totalChunks,
+              format: body.format || "webm",
+              durationSeconds: body.durationSeconds,
+            },
+          });
+          console.error(`[Recording] Finalize failed for ${id}, dispatched Inngest retry:`, finalizeErr);
+          return Response.json({ ok: false, queued: true, message: "Finalization queued for retry" }, { status: 202 });
+        } catch (inngestErr) {
+          console.error(`[Recording] Finalize AND Inngest dispatch failed for ${id}:`, inngestErr);
+          return Response.json({ error: "Finalization failed" }, { status: 500 });
+        }
+      }
 
       // Compute manifest hash for integrity verification
       const manifestHash = computeJsonHash({

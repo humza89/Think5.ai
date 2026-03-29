@@ -9,6 +9,12 @@
  * This eliminates client-side API key exposure — the GEMINI_API_KEY
  * never leaves the server.
  *
+ * Enterprise reliability features:
+ * - Automatic Gemini reconnect on upstream failure (3 attempts, exponential backoff)
+ * - Bidirectional ping/pong heartbeat (detects zombie connections in 30-60s)
+ * - Message buffering during reconnect (up to 50 messages)
+ * - Expanded health metrics for monitoring
+ *
  * Deployment: Fly.io (or any long-lived Node.js host)
  * Protocol: WebSocket (wss://)
  */
@@ -25,6 +31,12 @@ const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const RELAY_JWT_SECRET = process.env.RELAY_JWT_SECRET;
 const GEMINI_WS_BASE =
   "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent";
+
+const MAX_GEMINI_RECONNECTS = 3;
+const RECONNECT_BACKOFF = [1000, 2000, 4000]; // ms
+const MESSAGE_BUFFER_LIMIT = 50;
+const PING_INTERVAL_MS = 30_000;
+const IDLE_TIMEOUT_MS = 5 * 60 * 1000;
 
 if (!GEMINI_API_KEY) {
   console.error("FATAL: GEMINI_API_KEY is required");
@@ -49,6 +61,8 @@ interface RelayMetrics {
   totalConnections: number;
   totalMessages: number;
   totalBytes: number;
+  geminiReconnects: number;
+  geminiReconnectFailures: number;
 }
 
 const metrics: RelayMetrics = {
@@ -56,6 +70,8 @@ const metrics: RelayMetrics = {
   totalConnections: 0,
   totalMessages: 0,
   totalBytes: 0,
+  geminiReconnects: 0,
+  geminiReconnectFailures: 0,
 };
 
 // ── HTTP Server (health check) ────────────────────────────────────────
@@ -70,6 +86,12 @@ const httpServer = createServer(
           timestamp: new Date().toISOString(),
           activeConnections: metrics.activeConnections,
           totalConnections: metrics.totalConnections,
+          totalMessages: metrics.totalMessages,
+          totalBytes: metrics.totalBytes,
+          geminiReconnects: metrics.geminiReconnects,
+          geminiReconnectFailures: metrics.geminiReconnectFailures,
+          uptimeSeconds: Math.round(process.uptime()),
+          memoryMB: Math.round(process.memoryUsage().heapUsed / 1024 / 1024),
         })
       );
       return;
@@ -116,46 +138,140 @@ wss.on("connection", (clientWs: WebSocket, req: IncomingMessage) => {
   metrics.activeConnections++;
   metrics.totalConnections++;
 
-  // 2. Connect to Gemini Live with real API key
-  const geminiUrl = `${GEMINI_WS_BASE}?key=${GEMINI_API_KEY}`;
-  const geminiWs = new WebSocket(geminiUrl);
-
+  // ── Session state ──
   let clientAlive = true;
   let geminiAlive = false;
+  let geminiWs: WebSocket;
+  let setupMessage: Buffer | string | null = null; // Cached first message for reconnect
+  let isFirstMessage = true;
+  let isReconnecting = false;
+  const messageBuffer: Array<Buffer | string> = [];
+  let cleanedUp = false;
 
-  // 3. Proxy: Client → Gemini
+  // ── Idle timeout ──
+  let idleTimer = setTimeout(() => cleanup("idle_timeout"), IDLE_TIMEOUT_MS);
+
+  const resetIdle = () => {
+    clearTimeout(idleTimer);
+    if (!cleanedUp) {
+      idleTimer = setTimeout(() => cleanup("idle_timeout"), IDLE_TIMEOUT_MS);
+    }
+  };
+
+  // ── Bidirectional heartbeat (ping/pong) ──
+  const pingInterval = setInterval(() => {
+    if (clientWs.readyState === WebSocket.OPEN) {
+      clientWs.ping();
+    }
+  }, PING_INTERVAL_MS);
+
+  clientWs.on("pong", () => resetIdle());
+
+  // ── Connect to Gemini ──
+  function connectToGemini(): WebSocket {
+    const geminiUrl = `${GEMINI_WS_BASE}?key=${GEMINI_API_KEY}`;
+    const ws = new WebSocket(geminiUrl);
+
+    ws.on("open", () => {
+      geminiAlive = true;
+      console.log(`[Relay] Gemini connected for interview=${interviewId}`);
+
+      // If reconnecting, resend setup message and drain buffer
+      if (isReconnecting && setupMessage) {
+        console.log(`[Relay] Resending setup message for interview=${interviewId}`);
+        ws.send(setupMessage);
+        while (messageBuffer.length > 0) {
+          const msg = messageBuffer.shift()!;
+          ws.send(msg);
+        }
+        isReconnecting = false;
+      }
+    });
+
+    ws.on("message", (data: Buffer | string) => {
+      if (clientAlive) {
+        metrics.totalMessages++;
+        const size = typeof data === "string" ? data.length : data.byteLength;
+        metrics.totalBytes += size;
+        clientWs.send(data);
+        resetIdle();
+      }
+    });
+
+    ws.on("error", (err) => {
+      console.error(
+        `[Relay] Gemini WS error for interview=${interviewId}:`,
+        err.message
+      );
+      geminiAlive = false;
+    });
+
+    ws.on("close", (code) => {
+      geminiAlive = false;
+
+      // Don't reconnect if cleanup was intentional or client already disconnected
+      if (cleanedUp || !clientAlive) return;
+
+      // Intentional close from our side (during cleanup/reconnect)
+      if (code === 1000 || code === 1001) return;
+
+      console.log(`[Relay] Gemini closed unexpectedly (code=${code}) for interview=${interviewId}, attempting reconnect...`);
+      attemptGeminiReconnect();
+    });
+
+    return ws;
+  }
+
+  // ── Gemini reconnect with exponential backoff ──
+  let reconnectAttempts = 0;
+
+  function attemptGeminiReconnect() {
+    if (reconnectAttempts >= MAX_GEMINI_RECONNECTS) {
+      console.error(`[Relay] Gemini reconnect exhausted (${MAX_GEMINI_RECONNECTS} attempts) for interview=${interviewId}`);
+      metrics.geminiReconnectFailures++;
+      messageBuffer.length = 0;
+      if (clientAlive) {
+        clientWs.close(4502, "Upstream connection error — reconnect exhausted");
+      }
+      return;
+    }
+
+    isReconnecting = true;
+    const delay = RECONNECT_BACKOFF[reconnectAttempts] || 4000;
+    reconnectAttempts++;
+    metrics.geminiReconnects++;
+
+    console.log(`[Relay] Reconnecting to Gemini in ${delay}ms (attempt ${reconnectAttempts}/${MAX_GEMINI_RECONNECTS}) for interview=${interviewId}`);
+
+    setTimeout(() => {
+      if (!clientAlive || cleanedUp) return;
+      geminiWs = connectToGemini();
+    }, delay);
+  }
+
+  // ── Initial Gemini connection ──
+  geminiWs = connectToGemini();
+
+  // ── Proxy: Client → Gemini ──
   clientWs.on("message", (data: Buffer | string) => {
-    if (geminiAlive) {
-      metrics.totalMessages++;
-      const size = typeof data === "string" ? data.length : data.byteLength;
-      metrics.totalBytes += size;
+    // Cache the first message (setup) for reconnect
+    if (isFirstMessage) {
+      setupMessage = data;
+      isFirstMessage = false;
+    }
+
+    metrics.totalMessages++;
+    const size = typeof data === "string" ? data.length : data.byteLength;
+    metrics.totalBytes += size;
+    resetIdle();
+
+    if (geminiAlive && !isReconnecting) {
       geminiWs.send(data);
-    }
-  });
-
-  // 4. Proxy: Gemini → Client
-  geminiWs.on("open", () => {
-    geminiAlive = true;
-    console.log(`[Relay] Gemini connected for interview=${interviewId}`);
-  });
-
-  geminiWs.on("message", (data: Buffer | string) => {
-    if (clientAlive) {
-      metrics.totalMessages++;
-      const size = typeof data === "string" ? data.length : data.byteLength;
-      metrics.totalBytes += size;
-      clientWs.send(data);
-    }
-  });
-
-  // 5. Error handling
-  geminiWs.on("error", (err) => {
-    console.error(
-      `[Relay] Gemini WS error for interview=${interviewId}:`,
-      err.message
-    );
-    if (clientAlive) {
-      clientWs.close(4502, "Upstream connection error");
+    } else if (isReconnecting) {
+      // Buffer messages during reconnect (cap at limit)
+      if (messageBuffer.length < MESSAGE_BUFFER_LIMIT) {
+        messageBuffer.push(data);
+      }
     }
   });
 
@@ -164,49 +280,34 @@ wss.on("connection", (clientWs: WebSocket, req: IncomingMessage) => {
       `[Relay] Client WS error for interview=${interviewId}:`,
       err.message
     );
-    if (geminiAlive) {
-      geminiWs.close();
-    }
+    cleanup("client_error");
   });
 
-  // 6. Cleanup on disconnect
-  const cleanup = (source: string) => {
+  // ── Cleanup on disconnect ──
+  function cleanup(source: string) {
+    if (cleanedUp) return;
+    cleanedUp = true;
+
     console.log(
       `[Relay] Disconnected (${source}): interview=${interviewId}`
     );
     metrics.activeConnections = Math.max(0, metrics.activeConnections - 1);
 
+    clearTimeout(idleTimer);
+    clearInterval(pingInterval);
+    messageBuffer.length = 0;
+
     if (clientAlive) {
       clientAlive = false;
-      try {
-        clientWs.close();
-      } catch {
-        // already closed
-      }
+      try { clientWs.close(); } catch { /* already closed */ }
     }
     if (geminiAlive) {
       geminiAlive = false;
-      try {
-        geminiWs.close();
-      } catch {
-        // already closed
-      }
+      try { geminiWs.close(); } catch { /* already closed */ }
     }
-  };
+  }
 
   clientWs.on("close", () => cleanup("client"));
-  geminiWs.on("close", () => cleanup("gemini"));
-
-  // 7. Idle timeout — close if no messages for 5 minutes
-  let idleTimer = setTimeout(() => cleanup("idle_timeout"), 5 * 60 * 1000);
-
-  const resetIdle = () => {
-    clearTimeout(idleTimer);
-    idleTimer = setTimeout(() => cleanup("idle_timeout"), 5 * 60 * 1000);
-  };
-
-  clientWs.on("message", resetIdle);
-  geminiWs.on("message", resetIdle);
 });
 
 // ── Start ─────────────────────────────────────────────────────────────

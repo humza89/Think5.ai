@@ -372,13 +372,26 @@ export function VoiceInterviewRoom({
 
   const finalizeRecording = async () => {
     if (mediaRecorderRef.current?.state === "recording") mediaRecorderRef.current.stop();
-    try {
-      await fetch(`/api/interviews/${interviewId}/recording`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "finalize", totalChunks: recordedChunksRef.current, format: "webm", durationSeconds: durationMinutes * 60 - timeLeft }),
-      });
-    } catch { /* silent */ }
+    const payload = JSON.stringify({
+      action: "finalize",
+      totalChunks: recordedChunksRef.current,
+      format: "webm",
+      durationSeconds: durationMinutes * 60 - timeLeft,
+    });
+    // Retry up to 3 times with exponential backoff [1s, 2s, 4s]
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const res = await fetch(`/api/interviews/${interviewId}/recording`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: payload,
+        });
+        if (res.ok || res.status === 202) return; // 202 = queued for Inngest retry
+        if (res.status < 500) return; // Client error, don't retry
+      } catch { /* network error, retry */ }
+      if (attempt < 2) await new Promise((r) => setTimeout(r, 1000 * Math.pow(2, attempt)));
+    }
+    console.warn("[Recording] Finalization failed after 3 attempts — server will retry via Inngest");
   };
 
   const toggleCamera = useCallback(() => {

@@ -10,6 +10,7 @@
  */
 
 import { useState, useCallback, useRef, useEffect } from "react";
+import { backupTranscript, clearTranscriptBackup, getBackedUpTranscript } from "@/lib/transcript-backup";
 
 // ── Types ──────────────────────────────────────────────────────────────
 
@@ -105,7 +106,14 @@ export function useVoiceInterview(
   const candidateNameRef = useRef("");
   const processorRef = useRef<ScriptProcessorNode | null>(null);
   const reconnectAttemptsRef = useRef(0);
-  const maxReconnectAttempts = 5;
+  // Adaptive reconnect limits based on WebSocket close code
+  const getMaxReconnectAttempts = (code: number): number => {
+    if (code === 1006 || code === 1001 || code === 4000) return 8;  // transient/network — generous
+    if (code === 4502) return 5;  // upstream Gemini error — moderate
+    if (code === 4001) return 1;  // auth/token failure — minimal
+    return 5;                     // default
+  };
+  const maxReconnectAttempts = 5; // default for non-close-code paths
   const intentionalCloseRef = useRef(false); // True when we close the WS ourselves
   const currentTurnTextRef = useRef(""); // Accumulates interviewer transcript fragments within a turn
   const currentCandidateTextRef = useRef(""); // Accumulates candidate speech transcription
@@ -123,6 +131,7 @@ export function useVoiceInterview(
   const tabHiddenRef = useRef(false); // F5: Tab visibility — suppress heartbeat when hidden
   const circuitBreakerStateRef = useRef<"CLOSED" | "OPEN" | "HALF_OPEN">("CLOSED"); // F3: Circuit breaker state
   const circuitBreakerTimerRef = useRef<NodeJS.Timeout | null>(null); // F3: OPEN → HALF_OPEN timer
+  const endInterviewInternalRef = useRef<() => void>(() => {}); // Forward ref for checkpoint→endInterview
   const audioProcessorErrorCountRef = useRef(0); // F2: Error counter for audio processor
   const micRevokedRef = useRef(false); // F6: Track mic revocation
   const askedQuestionsRef = useRef<string[]>([]); // Question dedup: track AI questions to prevent repeats
@@ -452,22 +461,41 @@ export function useVoiceInterview(
       });
       if (res.ok) {
         checkpointFailuresRef.current = 0;
+        // Clear IndexedDB backup on successful server save
+        clearTranscriptBackup(interviewId).catch(() => {});
         // F8: Refresh session TTL on successful checkpoint
         try {
-          await fetch(`/api/interviews/${interviewId}/voice`, {
+          const ttlRes = await fetch(`/api/interviews/${interviewId}/voice`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ accessToken, action: "refresh_ttl" }),
           });
+          // Server-side max duration enforcement
+          if (ttlRes.status === 410) {
+            const ttlBody = await ttlRes.json().catch(() => ({}));
+            if (ttlBody.forceEnd) {
+              console.warn("[Voice] Max interview duration exceeded — auto-ending");
+              onError?.("Maximum interview duration reached. Ending interview.");
+              endInterviewInternalRef.current();
+              return;
+            }
+          }
         } catch { /* best-effort TTL refresh */ }
       } else {
         throw new Error(`Checkpoint HTTP ${res.status}`);
       }
     } catch {
       checkpointFailuresRef.current += 1;
+      // Fallback: save transcript to IndexedDB when server is unreachable
+      backupTranscript(
+        interviewId,
+        transcriptRef.current,
+        moduleScoresRef.current,
+        questionCountRef.current
+      ).catch(() => {});
       if (checkpointFailuresRef.current >= 3) {
-        console.warn("[Voice] 3+ consecutive checkpoint failures — progress may not be saving");
-        onError?.("Progress may not be saving — check your connection.");
+        console.warn("[Voice] 3+ consecutive checkpoint failures — transcript backed up to IndexedDB");
+        onError?.("Progress may not be saving — check your connection. Local backup active.");
       }
     }
   }, [interviewId, accessToken, onError]);
@@ -535,6 +563,17 @@ export function useVoiceInterview(
       checkpointTimerRef.current = null;
     }
 
+    // Drain any IndexedDB transcript backup before final save
+    try {
+      const backup = await getBackedUpTranscript(interviewId);
+      if (backup && backup.transcript.length > transcriptRef.current.length) {
+        // IndexedDB has more data than current state — use it
+        transcriptRef.current = backup.transcript as typeof transcriptRef.current;
+        moduleScoresRef.current = backup.moduleScores;
+        questionCountRef.current = backup.questionCount;
+      }
+    } catch { /* IndexedDB unavailable — use current state */ }
+
     // Save final state to server
     try {
       await fetch(`/api/interviews/${interviewId}/voice`, {
@@ -548,6 +587,8 @@ export function useVoiceInterview(
           questionCount: questionCountRef.current,
         }),
       });
+      // Clear IndexedDB backup on successful final save
+      clearTranscriptBackup(interviewId).catch(() => {});
     } catch (err) {
       console.error("Failed to save interview end:", err);
     }
@@ -555,6 +596,9 @@ export function useVoiceInterview(
     setInterviewState("COMPLETED");
     onInterviewEnd?.();
   }, [interviewId, accessToken, onInterviewEnd, cleanupAudioResources]);
+
+  // Keep ref in sync for forward-reference from checkpoint callback
+  endInterviewInternalRef.current = endInterviewInternal;
 
   // ── Start Interview ────────────────────────────────────────────────
 
@@ -656,15 +700,34 @@ export function useVoiceInterview(
         mediaStreamRef.current = micStream;
         micRevokedRef.current = false;
 
-        // F6: Detect mic revocation (user removes permission or unplugs device)
+        // F6: Detect mic revocation — auto-attempt re-acquisition before failing
         const audioTrack = micStream.getAudioTracks()[0];
         if (audioTrack) {
-          audioTrack.onended = () => {
+          const handleTrackEnded = async () => {
             micRevokedRef.current = true;
-            console.warn("[Voice] Mic track ended — permission revoked or device disconnected");
-            onError?.("Microphone disconnected. Please reconnect your mic and try again.");
-            setMicIsSilent(true);
+            console.warn("[Voice] Mic track ended — attempting auto-recovery...");
+            try {
+              const newStream = await navigator.mediaDevices.getUserMedia({
+                audio: { sampleRate: 24000, channelCount: 1, echoCancellation: true, noiseSuppression: true },
+              });
+              mediaStreamRef.current = newStream;
+              micRevokedRef.current = false;
+              setMicIsSilent(false);
+              // Re-attach listener to new track
+              const newTrack = newStream.getAudioTracks()[0];
+              if (newTrack) newTrack.onended = handleTrackEnded;
+              // Reconnect ScriptProcessorNode input
+              if (audioContextRef.current && processorRef.current) {
+                const source = audioContextRef.current.createMediaStreamSource(newStream);
+                source.connect(processorRef.current);
+              }
+              console.log("[Voice] Mic auto-recovered successfully");
+            } catch {
+              onError?.("Microphone disconnected. Please reconnect your mic and try again.");
+              setMicIsSilent(true);
+            }
           };
+          audioTrack.onended = handleTrackEnded;
         }
       }
 
@@ -783,13 +846,14 @@ export function useVoiceInterview(
         }
 
         // Auto-reconnect: call recovery API first, then re-establish WebSocket
-        if (reconnectAttemptsRef.current < maxReconnectAttempts) {
+        const adaptiveMax = getMaxReconnectAttempts(event.code);
+        if (reconnectAttemptsRef.current < adaptiveMax) {
           const attempt = reconnectAttemptsRef.current;
           const base = 1000;
           const exp = Math.pow(2, attempt);
           const jitter = Math.random() * base;
           const delay = Math.min(base * exp + jitter, 10000);
-          console.log(`[Voice] Unexpected closure (code ${event.code}) — recovering in ${Math.round(delay)}ms (attempt ${attempt + 1}/${maxReconnectAttempts})`);
+          console.log(`[Voice] Unexpected closure (code ${event.code}) — recovering in ${Math.round(delay)}ms (attempt ${attempt + 1}/${adaptiveMax})`);
           reconnectAttemptsRef.current += 1;
           setIsReconnecting(true);
           setReconnectPhase("recovering");
@@ -1188,6 +1252,33 @@ export function useVoiceInterview(
       onError?.("Voice retry failed. Staying in text mode.");
     }
   }, [startInterview, onError]);
+
+  // ── Emergency Transcript Save on Page Unload ─────────────────────
+  // Prevents data loss if browser crashes or tab is closed between checkpoints.
+  // sendBeacon is the only reliable API that survives page teardown.
+
+  useEffect(() => {
+    const emergencySave = () => {
+      if (!transcriptRef.current.length || !accessToken) return;
+      const payload = JSON.stringify({
+        accessToken,
+        action: "checkpoint",
+        transcript: transcriptRef.current,
+        moduleScores: moduleScoresRef.current,
+        questionCount: questionCountRef.current,
+      });
+      navigator.sendBeacon(
+        `/api/interviews/${interviewId}/voice`,
+        new Blob([payload], { type: "application/json" })
+      );
+    };
+    window.addEventListener("beforeunload", emergencySave);
+    window.addEventListener("pagehide", emergencySave);
+    return () => {
+      window.removeEventListener("beforeunload", emergencySave);
+      window.removeEventListener("pagehide", emergencySave);
+    };
+  }, [interviewId, accessToken]);
 
   // ── Cleanup ────────────────────────────────────────────────────────
 

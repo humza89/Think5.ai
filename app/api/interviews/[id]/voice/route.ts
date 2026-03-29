@@ -23,6 +23,7 @@ import {
   refreshSessionTTL,
   recordHeartbeat,
   releaseSessionLock,
+  refreshSessionLock,
   getSessionState,
   computeTranscriptChecksum,
 } from "@/lib/session-store";
@@ -104,10 +105,59 @@ export async function POST(
       return Response.json({ ok: true });
     }
 
+    // ── Per-interview reliability metrics ──
+    if (action === "record_metric") {
+      const { event: metricEvent, ...metricData } = body;
+      try {
+        const redis = await import("@upstash/redis").then(({ Redis }) =>
+          new Redis({
+            url: process.env.UPSTASH_REDIS_REST_URL!,
+            token: process.env.UPSTASH_REDIS_REST_TOKEN!,
+          })
+        );
+        const key = `interview:metrics:${id}`;
+        const existing = await redis.get(key) as Record<string, unknown> | null;
+        const metrics = existing || {};
+        // Merge metric event
+        if (metricEvent === "connected") {
+          metrics.connectedAt = new Date().toISOString();
+          metrics.connectAttempt = metricData.attempt ?? 0;
+        } else if (metricEvent === "reconnect") {
+          metrics.reconnectCount = ((metrics.reconnectCount as number) || 0) + 1;
+          metrics.lastReconnectMs = metricData.durationMs;
+        } else if (metricEvent === "completed") {
+          metrics.completedAt = new Date().toISOString();
+          metrics.totalReconnects = metricData.totalReconnects;
+          metrics.durationSeconds = metricData.durationSeconds;
+          metrics.questionCount = metricData.questionCount;
+        } else if (metricEvent === "checkpoint_failure") {
+          metrics.checkpointFailures = ((metrics.checkpointFailures as number) || 0) + 1;
+        }
+        await redis.set(key, JSON.stringify(metrics), { ex: 86400 }); // 24h TTL
+      } catch { /* best-effort metrics */ }
+      return Response.json({ ok: true });
+    }
+
     // ── Refresh TTL: keep session alive during active use ──
     if (action === "refresh_ttl") {
+      // Enforce max interview duration (90 minutes hard cap)
+      const interview = await prisma.interview.findUnique({
+        where: { id },
+        select: { startedAt: true },
+      });
+      if (interview?.startedAt) {
+        const elapsed = Date.now() - new Date(interview.startedAt).getTime();
+        if (elapsed > 90 * 60 * 1000) {
+          return Response.json(
+            { error: "Maximum interview duration exceeded", forceEnd: true },
+            { status: 410 }
+          );
+        }
+      }
+
       await refreshSessionTTL(id);
       await recordHeartbeat(id);
+      await refreshSessionLock(id);
       return Response.json({ ok: true });
     }
 
@@ -115,25 +165,35 @@ export async function POST(
     if (action === "checkpoint") {
       const checkpointStart = Date.now();
 
+      // Idempotency: skip write if transcript hasn't changed since last checkpoint
+      const currentTranscript = transcript || [];
+      const incomingDigest = computeTranscriptChecksum(currentTranscript);
+      const existingSession = await getSessionState(id);
+      if (existingSession?.checkpointDigest === incomingDigest) {
+        // Transcript identical — refresh TTL but skip DB write
+        await refreshSessionTTL(id);
+        const checkpointMs = Date.now() - checkpointStart;
+        await recordSLOEvent("transcript.checkpoint.latency_p99", checkpointMs < 500, checkpointMs);
+        return Response.json({ ok: true, deduplicated: true, checkpointMs });
+      }
+
       await prisma.interview.update({
         where: { id },
         data: {
-          transcript: transcript || [],
+          transcript: currentTranscript,
           skillModuleScores: moduleScores || [],
         },
       });
 
       // Sync to durable session store with checkpoint digest
-      const existingSession = await getSessionState(id);
       if (existingSession) {
-        const currentTranscript = transcript || [];
         await saveSessionState(id, {
           ...existingSession,
           transcript: currentTranscript,
           moduleScores: moduleScores || [],
           questionCount: questionCount || existingSession.questionCount,
           lastActiveAt: new Date().toISOString(),
-          checkpointDigest: computeTranscriptChecksum(currentTranscript),
+          checkpointDigest: incomingDigest,
           lastTurnIndex: currentTranscript.length - 1,
         });
       }

@@ -9,3 +9,4 @@ export { recordingProcess } from "./recording-process";
 export { retentionCleanup } from "./retention-cleanup";
 export { sloCheck } from "./slo-check";
 export { dataDeletionExecute } from "./data-deletion-execute";
+export { recordingFinalizeRetry } from "./recording-finalize-retry";

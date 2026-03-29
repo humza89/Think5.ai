@@ -6,7 +6,7 @@
  */
 
 import { inngest } from "@/inngest/client";
-import { checkAndAlertSLOs } from "@/lib/slo-monitor";
+import { checkAndAlertSLOs, recordSLOEvent } from "@/lib/slo-monitor";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 export const sloCheck = inngest.createFunction(
@@ -19,6 +19,30 @@ export const sloCheck = inngest.createFunction(
     await step.run("check-all-slos", async () => {
       await checkAndAlertSLOs();
       return { checked: true, timestamp: new Date().toISOString() };
+    });
+
+    // Detect stale IN_PROGRESS sessions (no update in 10+ min) and mark as hard stops
+    await step.run("detect-stale-sessions", async () => {
+      const { prisma } = await import("@/lib/prisma");
+      const staleThreshold = new Date(Date.now() - 10 * 60 * 1000);
+      const staleSessions = await prisma.interview.findMany({
+        where: {
+          status: "IN_PROGRESS",
+          updatedAt: { lt: staleThreshold },
+        },
+        select: { id: true },
+        take: 50,
+      });
+
+      for (const session of staleSessions) {
+        await recordSLOEvent("session.hard_stop.rate", false);
+        await prisma.interview.update({
+          where: { id: session.id },
+          data: { status: "DISCONNECTED" },
+        });
+      }
+
+      return { staleSessionsDetected: staleSessions.length };
     });
   }
 );

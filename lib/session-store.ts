@@ -37,10 +37,24 @@ async function getRedis() {
   }
 }
 
-// In-memory fallback
+// In-memory fallback with TTL support
 const memoryStore = new Map<string, string>();
+const memoryExpiry = new Map<string, number>();
 
 const SESSION_TTL_SECONDS = 7200; // 2 hours
+
+// Periodic sweep of expired in-memory sessions (every 60s)
+if (typeof setInterval !== "undefined") {
+  setInterval(() => {
+    const now = Date.now();
+    for (const [key, expiresAt] of memoryExpiry) {
+      if (now > expiresAt) {
+        memoryStore.delete(key);
+        memoryExpiry.delete(key);
+      }
+    }
+  }, 60_000).unref?.();
+}
 
 export interface SessionState {
   interviewId: string;
@@ -73,6 +87,7 @@ export async function saveSessionState(
     await redis.set(key, serialized, { ex: SESSION_TTL_SECONDS });
   } else {
     memoryStore.set(key, serialized);
+    memoryExpiry.set(key, Date.now() + SESSION_TTL_SECONDS * 1000);
   }
 }
 
@@ -93,6 +108,13 @@ export async function getSessionState(
 
   const data = memoryStore.get(key);
   if (!data) return null;
+  // Check TTL for in-memory entries
+  const expiresAt = memoryExpiry.get(key);
+  if (expiresAt && Date.now() > expiresAt) {
+    memoryStore.delete(key);
+    memoryExpiry.delete(key);
+    return null;
+  }
   return JSON.parse(data);
 }
 
@@ -109,6 +131,7 @@ export async function deleteSessionState(
     await redis.del(key);
   } else {
     memoryStore.delete(key);
+    memoryExpiry.delete(key);
   }
 }
 
@@ -220,7 +243,10 @@ export async function refreshSessionTTL(interviewId: string): Promise<void> {
       console.warn(`[${interviewId}] Failed to refresh session TTL:`, err);
     }
   }
-  // In-memory store doesn't have TTL, so no-op
+  // Refresh in-memory TTL
+  if (memoryExpiry.has(key)) {
+    memoryExpiry.set(key, Date.now() + SESSION_TTL_SECONDS * 1000);
+  }
 }
 
 /**
