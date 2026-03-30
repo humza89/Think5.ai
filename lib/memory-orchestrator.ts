@@ -163,16 +163,33 @@ export async function composeMemoryPacket(
     }
   }
 
-  // 3. Fetch knowledge graph from Postgres
+  // 3. Fetch knowledge graph from Postgres (with staleness detection)
   let knowledgeGraph: Record<string, unknown> | null = null;
+  const KG_STALENESS_THRESHOLD_MS = 3 * 60 * 1000; // 3 minutes
   try {
     const { prisma } = await import("@/lib/prisma");
     const interview = await prisma.interview.findUnique({
       where: { id: interviewId },
-      select: { knowledgeGraph: true },
+      select: { knowledgeGraph: true, knowledgeGraphUpdatedAt: true },
     });
     knowledgeGraph = (interview?.knowledgeGraph as Record<string, unknown>) || null;
-    retrievalStatus.knowledgeGraphOk = true;
+    // Gap 4: Check KG staleness — if >3 min since last update, mark as not OK
+    const kgUpdatedAt = interview?.knowledgeGraphUpdatedAt;
+    if (knowledgeGraph && kgUpdatedAt) {
+      const staleness = Date.now() - new Date(kgUpdatedAt).getTime();
+      if (staleness > KG_STALENESS_THRESHOLD_MS) {
+        retrievalStatus.knowledgeGraphOk = false;
+        retrievalStatus.errors.push(`knowledgeGraph: stale by ${Math.round(staleness / 1000)}s (threshold: ${KG_STALENESS_THRESHOLD_MS / 1000}s)`);
+      } else {
+        retrievalStatus.knowledgeGraphOk = true;
+      }
+    } else if (knowledgeGraph) {
+      // KG exists but no timestamp — treat as OK (legacy data)
+      retrievalStatus.knowledgeGraphOk = true;
+    } else {
+      // No KG yet — OK for early interviews
+      retrievalStatus.knowledgeGraphOk = true;
+    }
   } catch (err) {
     retrievalStatus.errors.push(`knowledgeGraph: ${(err as Error).message}`);
     try {

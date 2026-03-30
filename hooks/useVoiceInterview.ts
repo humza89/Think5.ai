@@ -167,6 +167,7 @@ export function useVoiceInterview(
   const reconnectStartTimeRef = useRef<number>(0); // Tracks reconnect latency for SLO
   const poorQualityCountRef = useRef(0); // Debounce: consecutive "poor" checks before triggering
   const lastRecoveryCallRef = useRef<number>(0); // Rate-limit recovery API calls
+  const recoveryInFlightRef = useRef(false); // Mutex: prevent concurrent recovery API calls
   const reconnectStateRef = useRef<ReconnectState>("DISCONNECTED"); // Enforced reconnect state machine
   const memoryPacketVersionRef = useRef<number>(0); // Monotonic version for stale packet detection
 
@@ -1146,7 +1147,15 @@ export function useVoiceInterview(
           }
           reconnectStateRef.current = transitionReconnectState("DISCONNECTED", "RECOVERY_PENDING");
           setReconnectPhase(stateToPhase(reconnectStateRef.current));
-        } catch {
+        } catch (err) {
+          console.error(JSON.stringify({
+            event: "reconnect_state_violation",
+            from: reconnectStateRef.current,
+            to: "RECOVERY_PENDING",
+            error: (err as Error).message,
+            severity: "warning",
+            timestamp: new Date().toISOString(),
+          }));
           reconnectStateRef.current = "RECOVERY_PENDING";
           setReconnectPhase("recovering");
         }
@@ -1155,19 +1164,35 @@ export function useVoiceInterview(
           try {
             // Step 1: ALWAYS call recovery API when reconnectToken exists
             if (reconnectTokenRef.current) {
+              // Gap 2: Skip if another recovery call is already in-flight
+              if (recoveryInFlightRef.current) {
+                console.log("[Voice] Recovery already in-flight — skipping duplicate call");
+                return;
+              }
+              recoveryInFlightRef.current = true;
               lastRecoveryCallRef.current = Date.now();
-              const recoveryRes = await fetch(`/api/interviews/${interviewId}/voice/recover`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  reconnectToken: reconnectTokenRef.current,
-                  clientLedgerVersion: ledgerVersionRef.current,
-                  clientStateHash: stateHashRef.current,
-                  lockOwnerToken: lockOwnerTokenRef.current,
-                  clientCheckpointDigest: lastCheckpointDigestRef.current,
-                  clientTurnIndex: transcriptRef.current.length - 1,
-                }),
-              });
+              // Gap 1: AbortController with 15s timeout
+              const controller = new AbortController();
+              const abortTimeout = setTimeout(() => controller.abort(), 15000);
+              let recoveryRes: Response;
+              try {
+                recoveryRes = await fetch(`/api/interviews/${interviewId}/voice/recover`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  signal: controller.signal,
+                  body: JSON.stringify({
+                    reconnectToken: reconnectTokenRef.current,
+                    clientLedgerVersion: ledgerVersionRef.current,
+                    clientStateHash: stateHashRef.current,
+                    lockOwnerToken: lockOwnerTokenRef.current,
+                    clientCheckpointDigest: lastCheckpointDigestRef.current,
+                    clientTurnIndex: transcriptRef.current.length - 1,
+                  }),
+                });
+              } finally {
+                clearTimeout(abortTimeout);
+                recoveryInFlightRef.current = false;
+              }
               if (recoveryRes.ok) {
                 const recovery = await recoveryRes.json();
                 reconnectTokenRef.current = recovery.newReconnectToken;
@@ -1244,7 +1269,15 @@ export function useVoiceInterview(
             // Transition: SOCKET_OPEN → LIVE (startInterview succeeded)
             try {
               reconnectStateRef.current = transitionReconnectState(reconnectStateRef.current, "LIVE");
-            } catch {
+            } catch (err) {
+              console.error(JSON.stringify({
+                event: "reconnect_state_violation",
+                from: reconnectStateRef.current,
+                to: "LIVE",
+                error: (err as Error).message,
+                severity: "warning",
+                timestamp: new Date().toISOString(),
+              }));
               reconnectStateRef.current = "LIVE";
             }
             reconnectAttemptsRef.current = 0;
@@ -1621,7 +1654,15 @@ export function useVoiceInterview(
       }
       reconnectStateRef.current = transitionReconnectState("DISCONNECTED", "RECOVERY_PENDING");
       setReconnectPhase(stateToPhase(reconnectStateRef.current));
-    } catch {
+    } catch (err) {
+      console.error(JSON.stringify({
+        event: "reconnect_state_violation",
+        from: reconnectStateRef.current,
+        to: "RECOVERY_PENDING",
+        error: (err as Error).message,
+        severity: "warning",
+        timestamp: new Date().toISOString(),
+      }));
       reconnectStateRef.current = "RECOVERY_PENDING";
       setReconnectPhase("recovering");
     }
@@ -1629,18 +1670,35 @@ export function useVoiceInterview(
     try {
       // Call recovery API first for authoritative reconciliation
       if (reconnectTokenRef.current) {
-        const recoveryRes = await fetch(`/api/interviews/${interviewId}/voice/recover`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            reconnectToken: reconnectTokenRef.current,
-            clientLedgerVersion: ledgerVersionRef.current,
-            clientStateHash: stateHashRef.current,
-            lockOwnerToken: lockOwnerTokenRef.current,
-            clientCheckpointDigest: lastCheckpointDigestRef.current,
-            clientTurnIndex: transcriptRef.current.length - 1,
-          }),
-        });
+        // Gap 2: Skip if another recovery call is already in-flight
+        if (recoveryInFlightRef.current) {
+          console.log("[Voice] Recovery already in-flight — skipping duplicate call");
+          setIsReconnecting(false);
+          return;
+        }
+        recoveryInFlightRef.current = true;
+        // Gap 1: AbortController with 15s timeout
+        const controller = new AbortController();
+        const abortTimeout = setTimeout(() => controller.abort(), 15000);
+        let recoveryRes: Response;
+        try {
+          recoveryRes = await fetch(`/api/interviews/${interviewId}/voice/recover`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            signal: controller.signal,
+            body: JSON.stringify({
+              reconnectToken: reconnectTokenRef.current,
+              clientLedgerVersion: ledgerVersionRef.current,
+              clientStateHash: stateHashRef.current,
+              lockOwnerToken: lockOwnerTokenRef.current,
+              clientCheckpointDigest: lastCheckpointDigestRef.current,
+              clientTurnIndex: transcriptRef.current.length - 1,
+            }),
+          });
+        } finally {
+          clearTimeout(abortTimeout);
+          recoveryInFlightRef.current = false;
+        }
         if (recoveryRes.ok) {
           const recovery = await recoveryRes.json();
           reconnectTokenRef.current = recovery.newReconnectToken;
@@ -1699,7 +1757,15 @@ export function useVoiceInterview(
       // Transition: SOCKET_OPEN → LIVE
       try {
         reconnectStateRef.current = transitionReconnectState(reconnectStateRef.current, "LIVE");
-      } catch {
+      } catch (err) {
+        console.error(JSON.stringify({
+          event: "reconnect_state_violation",
+          from: reconnectStateRef.current,
+          to: "LIVE",
+          error: (err as Error).message,
+          severity: "warning",
+          timestamp: new Date().toISOString(),
+        }));
         reconnectStateRef.current = "LIVE";
       }
       setIsReconnecting(false);
@@ -1726,19 +1792,36 @@ export function useVoiceInterview(
       // Gate: if we have a reconnect token, call recovery API first (fail-closed)
       const isReconnect = transcriptRef.current.length > 0;
       if (isReconnect && reconnectTokenRef.current) {
+        // Gap 2: Skip if another recovery call is already in-flight
+        if (recoveryInFlightRef.current) {
+          console.log("[Voice] Recovery already in-flight — skipping duplicate call");
+          setIsReconnecting(false);
+          return;
+        }
+        recoveryInFlightRef.current = true;
         reconnectStateRef.current = "RECOVERY_PENDING";
-        const recoveryRes = await fetch(`/api/interviews/${interviewId}/voice/recover`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            reconnectToken: reconnectTokenRef.current,
-            clientLedgerVersion: ledgerVersionRef.current,
-            clientStateHash: stateHashRef.current,
-            lockOwnerToken: lockOwnerTokenRef.current,
-            clientCheckpointDigest: lastCheckpointDigestRef.current,
-            clientTurnIndex: transcriptRef.current.length - 1,
-          }),
-        });
+        // Gap 1: AbortController with 15s timeout
+        const controller = new AbortController();
+        const abortTimeout = setTimeout(() => controller.abort(), 15000);
+        let recoveryRes: Response;
+        try {
+          recoveryRes = await fetch(`/api/interviews/${interviewId}/voice/recover`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            signal: controller.signal,
+            body: JSON.stringify({
+              reconnectToken: reconnectTokenRef.current,
+              clientLedgerVersion: ledgerVersionRef.current,
+              clientStateHash: stateHashRef.current,
+              lockOwnerToken: lockOwnerTokenRef.current,
+              clientCheckpointDigest: lastCheckpointDigestRef.current,
+              clientTurnIndex: transcriptRef.current.length - 1,
+            }),
+          });
+        } finally {
+          clearTimeout(abortTimeout);
+          recoveryInFlightRef.current = false;
+        }
         if (recoveryRes.ok) {
           const recovery = await recoveryRes.json();
           reconnectTokenRef.current = recovery.newReconnectToken;

@@ -611,7 +611,8 @@ model Interview {
   audioUrl        String?           // Future: audio recording URL
 
   // Continuous memory pipeline
-  knowledgeGraph  Json?             // Ongoing assembled semantic memory graph
+  knowledgeGraph          Json?             // Ongoing assembled semantic memory graph
+  knowledgeGraphUpdatedAt DateTime?         // Last time KG was updated (staleness tracking)
   transcripts     InterviewTranscript[] // Full un-truncated postgres transcripts
 
   // Voice interview fields

@@ -76,7 +76,7 @@ Ensure the JSON has these top-level keys:
         // Save the updated graph back to Postgres
         await prisma.interview.update({
           where: { id: interviewId },
-          data: { knowledgeGraph: parsedContext },
+          data: { knowledgeGraph: parsedContext, knowledgeGraphUpdatedAt: new Date() },
         });
         
         return { success: true, keysFound: Object.keys(parsedContext) };
