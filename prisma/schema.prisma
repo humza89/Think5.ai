@@ -905,6 +905,9 @@ model InterviewReport {
   shareScopes     Json?     // Allowed data scopes: ["scores", "summary", "strengths", ...]
   shareRevoked    Boolean   @default(false)
 
+  // Memory diagnostics (enterprise audit)
+  memoryMetadata  Json?     // {memoryConfidence, retrievalStatus, factCount, turnsCount, ...}
+
   // Relations
   views           ReportShareView[]
 

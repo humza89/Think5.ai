@@ -189,6 +189,27 @@ export async function generateReportInBackground(
       ...computedFlags,
     ].filter(Boolean);
 
+    // Compose memory metadata for report diagnostics
+    let memoryMetadata: Record<string, unknown> | null = null;
+    try {
+      const { getSessionState } = await import("@/lib/session-store");
+      const session = await getSessionState(interviewId);
+      if (session) {
+        const { composeMemoryPacket } = await import("@/lib/memory-orchestrator");
+        const packet = await composeMemoryPacket(interviewId, session);
+        memoryMetadata = {
+          memoryConfidence: packet.memoryConfidence,
+          retrievalStatus: packet.retrievalStatus,
+          verifiedFactCount: packet.verifiedFacts.length,
+          recentTurnsCount: packet.recentTurns.length,
+          hasKnowledgeGraph: packet.knowledgeGraph !== null,
+          askedQuestionsCount: packet.askedQuestionIds.length,
+        };
+      }
+    } catch {
+      // Non-fatal — report generation should not fail for memory metadata
+    }
+
     await prisma.interviewReport.create({
       data: {
         interviewId,
@@ -223,6 +244,7 @@ export async function generateReportInBackground(
         jobMatchScore: reportData.jobMatchScore,
         requirementMatches: reportData.requirementMatches as any,
         environmentFitNotes: reportData.environmentFitNotes,
+        memoryMetadata: memoryMetadata as any,
       },
     });
 

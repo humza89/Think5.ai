@@ -162,10 +162,28 @@ export async function POST(
         ? (() => { try { return deserializeState(serverState.interviewerState!); } catch { return null; } })()
         : null;
 
+      // Server-authoritative askedQuestions resolution:
+      // Priority: (1) InterviewerState.askedQuestionIds → (2) session.askedQuestions → (3) client (last resort)
+      let resolvedAskedQuestions: string[] = [];
+      if (reconnectInterviewerState?.askedQuestionIds?.length) {
+        resolvedAskedQuestions = reconnectInterviewerState.askedQuestionIds;
+      } else if (serverState?.askedQuestions?.length) {
+        resolvedAskedQuestions = serverState.askedQuestions;
+      } else if (reconnectContext.askedQuestions?.length) {
+        resolvedAskedQuestions = reconnectContext.askedQuestions;
+        console.warn(`[voice-init] [${id}] askedQuestions sourced from CLIENT — server state empty`);
+        if (isEnabled("TIMELINE_OBSERVABILITY")) {
+          recordEvent(id, "anomaly", {
+            type: "client_fallback_asked_questions",
+            clientCount: reconnectContext.askedQuestions.length,
+          }).catch(() => {});
+        }
+      }
+
       fullPrompt = buildReconnectSystemPrompt(fullPrompt, {
         questionCount: reconnectContext.questionCount || serverState?.questionCount || 0,
         moduleScores: serverState?.moduleScores || reconnectContext.moduleScores || [],
-        askedQuestions: reconnectContext.askedQuestions || [],
+        askedQuestions: resolvedAskedQuestions,
         currentModule: serverState?.currentModule || reconnectContext.currentModule || null,
         candidateName: interview.candidate.fullName,
         // Enterprise memory fields from server-side persisted state

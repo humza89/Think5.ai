@@ -9,6 +9,15 @@ import { createInitialState, serializeState } from "@/lib/interviewer-state";
  * without database dependencies.
  */
 
+// Mock feature flags — disable fail-closed so Prisma mock errors degrade gracefully
+vi.mock("@/lib/feature-flags", () => ({
+  isEnabled: (flag: string) => flag !== "FAIL_CLOSED_PRODUCTION",
+}));
+
+vi.mock("@/lib/slo-monitor", () => ({
+  recordSLOEvent: vi.fn().mockResolvedValue(undefined),
+}));
+
 // Mock Prisma
 vi.mock("@/lib/prisma", () => ({
   prisma: {
@@ -17,6 +26,12 @@ vi.mock("@/lib/prisma", () => ({
     },
     interview: {
       findUnique: vi.fn().mockResolvedValue(null),
+    },
+    interviewEvent: {
+      findMany: vi.fn().mockResolvedValue([]),
+    },
+    interviewTranscript: {
+      findMany: vi.fn().mockResolvedValue([]),
     },
   },
 }));

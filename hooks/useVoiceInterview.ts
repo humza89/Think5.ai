@@ -53,7 +53,7 @@ export interface UseVoiceInterviewReturn {
   isReconnecting: boolean;
   isPaused: boolean;
   fallbackToText: boolean;
-  reconnectPhase: "checking" | "restoring" | "verifying" | "recovering" | "re-synced" | "resume-failed" | "recovery-failed" | null;
+  reconnectPhase: "checking" | "restoring" | "verifying" | "recovering" | "re-synced" | "resume-failed" | "recovery-failed" | "recovery-rate-limited" | null;
   reconnectAttempt: number;
   reconnectMax: number;
   micIsSilent: boolean;
@@ -90,7 +90,7 @@ export function useVoiceInterview(
   const [isReconnecting, setIsReconnecting] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [fallbackToText, setFallbackToText] = useState(false);
-  const [reconnectPhase, setReconnectPhase] = useState<"checking" | "restoring" | "verifying" | "recovering" | "re-synced" | "resume-failed" | "recovery-failed" | null>(null);
+  const [reconnectPhase, setReconnectPhase] = useState<"checking" | "restoring" | "verifying" | "recovering" | "re-synced" | "resume-failed" | "recovery-failed" | "recovery-rate-limited" | null>(null);
   const [micIsSilent, setMicIsSilent] = useState(false);
 
   // Mirror aiState in a ref so audio processor callback can read it
@@ -595,6 +595,9 @@ export function useVoiceInterview(
           if (typeof checkpointData.ledgerVersion === "number") {
             ledgerVersionRef.current = checkpointData.ledgerVersion;
           }
+          if (checkpointData.stateHash) {
+            stateHashRef.current = checkpointData.stateHash;
+          }
           // Output gate enforcement: replace AI content if server blocked and sanitized
           if (checkpointData.correctedAiResponse && transcriptRef.current.length > 0) {
             // Find the last AI turn in the transcript and replace its content
@@ -630,6 +633,27 @@ export function useVoiceInterview(
 
         // R5/R9: Summary generation removed — canonical ledger is authoritative.
         // Reconnect context is now built from full transcript without lossy summarization.
+      } else if (res.status === 503) {
+        // Handle gate hard-block: apply sanitized response and retry
+        try {
+          const errorBody = await res.json();
+          if (errorBody.code === "GATE_HARD_BLOCK" && errorBody.correctedAiResponse) {
+            // Apply the sanitized response to the last AI turn
+            for (let i = transcriptRef.current.length - 1; i >= 0; i--) {
+              const turn = transcriptRef.current[i];
+              if (turn.role === "interviewer") {
+                transcriptRef.current[i] = { ...turn, content: errorBody.correctedAiResponse };
+                break;
+              }
+            }
+            console.warn("[Voice] Gate hard-blocked checkpoint — applied sanitized response, will retry on next cycle");
+            // Don't throw — the sanitized content will be sent on next checkpoint cycle
+          } else {
+            throw new Error(`Checkpoint HTTP 503: ${errorBody.code || "unknown"}`);
+          }
+        } catch (parseErr) {
+          throw parseErr;
+        }
       } else {
         throw new Error(`Checkpoint HTTP ${res.status}`);
       }
@@ -1153,9 +1177,91 @@ export function useVoiceInterview(
                   setIsReconnecting(false);
                   return;
                 }
-              } else if (timeSinceLastRecovery <= 5000) {
-                console.log(`[Voice] Skipping recovery API — called ${timeSinceLastRecovery}ms ago (rate limit: 5s)`);
+              } else if (reconnectTokenRef.current && timeSinceLastRecovery <= 5000) {
+                // CRITICAL: Recovery is needed but rate-limited — block reconnect entirely.
+                // Never call startInterview() without authoritative state sync.
+                const retryDelay = Math.max(1000, 5500 - timeSinceLastRecovery);
+                console.warn(`[Voice] Recovery rate-limited (${timeSinceLastRecovery}ms ago) — deferring reconnect by ${retryDelay}ms`);
+                setReconnectPhase("recovery-rate-limited");
+                reportSLOEvent("session.reconnect.deferred_rate_limit", true);
+                reconnectAttemptsRef.current = Math.max(0, reconnectAttemptsRef.current - 1); // Don't count rate-limited attempt
+                setIsReconnecting(false);
+                reconnectTimeoutRef.current = setTimeout(async () => {
+                  // Rate limit window has passed — re-invoke recovery
+                  reconnectAttemptsRef.current += 1;
+                  setIsReconnecting(true);
+                  setReconnectPhase("recovering");
+                  try {
+                    lastRecoveryCallRef.current = Date.now();
+                    const recoveryRes = await fetch(`/api/interviews/${interviewId}/voice/recover`, {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({
+                        reconnectToken: reconnectTokenRef.current,
+                        clientLedgerVersion: ledgerVersionRef.current,
+                        clientStateHash: stateHashRef.current,
+                        clientCheckpointDigest: lastCheckpointDigestRef.current,
+                        clientTurnIndex: transcriptRef.current.length - 1,
+                      }),
+                    });
+                    if (recoveryRes.ok) {
+                      const recovery = await recoveryRes.json();
+                      reconnectTokenRef.current = recovery.newReconnectToken;
+                      if (typeof recovery.ledgerVersion === "number") ledgerVersionRef.current = recovery.ledgerVersion;
+                      if (recovery.stateHash) stateHashRef.current = recovery.stateHash;
+                      introDoneRef.current = true;
+                      if (Array.isArray(recovery.askedQuestions)) askedQuestionsRef.current = recovery.askedQuestions;
+                      if (recovery.knowledgeGraph) knowledgeGraphRef.current = recovery.knowledgeGraph;
+                      if (recovery.status === "delta" && Array.isArray(recovery.missingTurns)) {
+                        const missingEntries = recovery.missingTurns.map(
+                          (t: { role: string; content: string; timestamp: string }) => ({
+                            role: t.role === "interviewer" || t.role === "model" ? "interviewer" as const : "candidate" as const,
+                            content: t.content, timestamp: t.timestamp, finalized: true,
+                          })
+                        );
+                        setTranscript((prev) => [...prev, ...missingEntries]);
+                      } else if (recovery.status === "full" && recovery.canonicalTranscript) {
+                        const serverTranscript = recovery.canonicalTranscript.map(
+                          (t: { role: string; content: string; timestamp: string }) => ({
+                            role: t.role === "interviewer" || t.role === "model" ? "interviewer" as const : "candidate" as const,
+                            content: t.content, timestamp: t.timestamp, finalized: true,
+                          })
+                        );
+                        setTranscript(serverTranscript);
+                      }
+                      if (recovery.enterpriseMemory) {
+                        const em = recovery.enterpriseMemory;
+                        if (em.flaggedFollowUps && Array.isArray(em.flaggedFollowUps)) flaggedFollowUpsRef.current = em.flaggedFollowUps;
+                        if (em.candidateProfile) candidateProfileRef.current = em.candidateProfile;
+                        if (em.currentDifficultyLevel) difficultyLevelRef.current = em.currentDifficultyLevel;
+                        if (em.currentModule) currentModuleRef.current = em.currentModule;
+                        if (em.interviewerState) interviewerStateRef.current = em.interviewerState;
+                      }
+                      setReconnectPhase("restoring");
+                      await startInterview();
+                      reconnectAttemptsRef.current = 0;
+                      setIsReconnecting(false);
+                      setReconnectPhase(null);
+                      setConnectionQuality("good");
+                      reportSLOEvent("session.reconnect.success_rate", true);
+                    } else {
+                      console.error("[Voice] Deferred recovery API failed — blocking reconnect");
+                      setReconnectPhase("recovery-failed");
+                      setConnectionQuality("poor");
+                      onErrorRef.current?.("Unable to verify interview state. Please refresh the page to continue.");
+                      setIsReconnecting(false);
+                    }
+                  } catch {
+                    setIsReconnecting(false);
+                    setReconnectPhase("recovery-failed");
+                    setConnectionQuality("poor");
+                    onErrorRef.current?.("Recovery failed. Please refresh the page.");
+                    reportSLOEvent("session.reconnect.success_rate", false);
+                  }
+                }, retryDelay);
+                return; // CRITICAL: prevents fall-through to startInterview() with stale state
               }
+              // No reconnectToken means fresh session or token not yet issued — safe to proceed
 
               // Step 2: Re-establish WebSocket
               setReconnectPhase("restoring");
@@ -1176,6 +1282,8 @@ export function useVoiceInterview(
               setReconnectPhase(null);
               if (reconnectAttemptsRef.current >= getMaxReconnectAttempts(lastCloseCodeRef.current)) {
                 setConnectionQuality("poor");
+                // Force final checkpoint before modality switch to preserve continuity
+                try { await checkpointTranscriptRef.current?.(); } catch { /* best-effort */ }
                 setFallbackToText(true);
                 setReconnectPhase("resume-failed");
                 onErrorRef.current?.("Connection lost. You can switch to text mode.");
@@ -1186,6 +1294,8 @@ export function useVoiceInterview(
           }, delay);
         } else {
           setConnectionQuality("poor");
+          // Force final checkpoint before modality switch to preserve continuity
+          try { checkpointTranscriptRef.current?.(); } catch { /* best-effort */ }
           setFallbackToText(true);
           setReconnectPhase("resume-failed");
           onErrorRef.current?.("Connection lost after multiple attempts. Switch to text mode.");

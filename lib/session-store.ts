@@ -7,6 +7,8 @@
  */
 
 import { randomUUID, createHmac, createHash, timingSafeEqual } from "crypto";
+import { isEnabled } from "@/lib/feature-flags";
+import { recordSLOEvent } from "@/lib/slo-monitor";
 
 // HMAC secret for signing reconnect tokens — required in production
 // Lazy-initialized to avoid crashing at build time (Next.js collects page data in production mode)
@@ -150,12 +152,20 @@ export async function saveSessionState(
       try {
         await redis.set(key, serialized, { ex: SESSION_TTL_SECONDS });
       } catch (retryErr) {
+        if (isEnabled("FAIL_CLOSED_PRODUCTION")) {
+          console.error(`[${interviewId}] ALARM: Session save failed after retry — fail-closed, no in-memory fallback`);
+          recordSLOEvent("session.save.failure_rate", false).catch(() => {});
+          throw new Error(`Session save failed for ${interviewId} — Redis write failure after retry`);
+        }
         console.error(`[${interviewId}] Session save retry failed, falling back to memory:`, retryErr);
         memoryStore.set(key, serialized);
         memoryExpiry.set(key, Date.now() + SESSION_TTL_SECONDS * 1000);
       }
     }
   } else {
+    if (isEnabled("FAIL_CLOSED_PRODUCTION")) {
+      throw new Error(`Session save failed for ${interviewId} — no durable store available`);
+    }
     memoryStore.set(key, serialized);
     memoryExpiry.set(key, Date.now() + SESSION_TTL_SECONDS * 1000);
   }

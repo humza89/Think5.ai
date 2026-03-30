@@ -329,6 +329,25 @@ export async function POST(
                 }
               }
             }
+
+            // Hard-block: when FAIL_CLOSED is on, intro/question violations return 503
+            // with the sanitized response so client can apply correction and retry
+            if (isEnabled("FAIL_CLOSED_PRODUCTION") && gateViolations.length > 0) {
+              const hasHardBlock = gateViolations.some(
+                (v: { type: string }) => v.type === "reintroduction" || v.type === "duplicate_question"
+              );
+              if (hasHardBlock) {
+                console.error(`[${id}] Hard-blocking checkpoint: intro/question violation detected`);
+                return Response.json({
+                  error: "Output policy violation",
+                  code: "GATE_HARD_BLOCK",
+                  recoverable: true,
+                  gateViolations,
+                  correctedAiResponse,
+                  recoveryInstruction: "RESEND_WITH_SANITIZED",
+                }, { status: 503 });
+              }
+            }
           }
         } catch (err) {
           if (isEnabled("FAIL_CLOSED_PRODUCTION")) {
@@ -623,6 +642,9 @@ export async function POST(
         },
       });
 
+      // Compute authoritative stateHash (hoisted so it's available for response)
+      let authoritativeStateHash: string | null = null;
+
       // Sync to durable session store with checkpoint digest + enterprise memory fields
       if (existingSession) {
         // Validate enterprise memory fields before persisting (silently drop invalid)
@@ -661,8 +683,8 @@ export async function POST(
           }
         }
 
-        // Compute authoritative stateHash from InterviewerState if available
-        const authoritativeStateHash = updatedInterviewerState
+        // Resolve authoritative stateHash from InterviewerState if available
+        authoritativeStateHash = updatedInterviewerState
           ? (() => { try { return deserializeState(updatedInterviewerState!).stateHash; } catch { return existingSession.stateHash || ""; } })()
           : existingSession.stateHash || "";
 
@@ -696,6 +718,7 @@ export async function POST(
 
       return Response.json({
         ok: true, checkpointDigest: incomingDigest, ledgerVersion,
+        stateHash: authoritativeStateHash,
         ...(gateViolations.length > 0 ? { gateViolations } : {}),
         ...(correctedAiResponse ? { correctedAiResponse } : {}),
       });

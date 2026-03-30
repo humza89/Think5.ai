@@ -25,6 +25,13 @@ export interface RecentTurn {
   turnId: string;
 }
 
+export interface MemoryRetrievalStatus {
+  factsOk: boolean;
+  knowledgeGraphOk: boolean;
+  recentTurnsOk: boolean;
+  errors: string[];
+}
+
 export interface MemoryPacket {
   // From InterviewerState
   currentStep: string;
@@ -48,6 +55,9 @@ export interface MemoryPacket {
   currentDifficultyLevel: string;
   currentModule: string;
   candidateProfile: CandidateProfile | null;
+  // Memory confidence scoring
+  memoryConfidence: number; // 0.0–1.0 based on retrieval source success
+  retrievalStatus: MemoryRetrievalStatus;
 }
 
 // ── Compose ──────────────────────────────────────────────────────────
@@ -70,6 +80,14 @@ export async function composeMemoryPacket(
     interviewerState = createInitialState();
   }
 
+  // Track retrieval success for confidence scoring
+  const retrievalStatus: MemoryRetrievalStatus = {
+    factsOk: false,
+    knowledgeGraphOk: false,
+    recentTurnsOk: false,
+    errors: [],
+  };
+
   // 2. Fetch verified facts from Tier 1
   let verifiedFacts: Array<{ factType: string; content: string; confidence: number }> = [];
   try {
@@ -90,8 +108,17 @@ export async function composeMemoryPacket(
       }
     }
     verifiedFacts = Array.from(factMap.values());
-  } catch {
-    // Non-fatal: continue without facts
+    retrievalStatus.factsOk = true;
+  } catch (err) {
+    retrievalStatus.errors.push(`facts: ${(err as Error).message}`);
+    try {
+      const { recordSLOEvent } = await import("@/lib/slo-monitor");
+      recordSLOEvent("memory.facts.retrieval_failure_rate", false).catch(() => {});
+    } catch { /* slo import fail */ }
+    const { isEnabled } = await import("@/lib/feature-flags");
+    if (isEnabled("FAIL_CLOSED_PRODUCTION")) {
+      throw new Error(`Memory retrieval failed (facts): ${(err as Error).message}`);
+    }
   }
 
   // 3. Fetch knowledge graph from Postgres
@@ -103,28 +130,136 @@ export async function composeMemoryPacket(
       select: { knowledgeGraph: true },
     });
     knowledgeGraph = (interview?.knowledgeGraph as Record<string, unknown>) || null;
-  } catch {
-    // Non-fatal: continue without knowledge graph
+    retrievalStatus.knowledgeGraphOk = true;
+  } catch (err) {
+    retrievalStatus.errors.push(`knowledgeGraph: ${(err as Error).message}`);
+    try {
+      const { recordSLOEvent } = await import("@/lib/slo-monitor");
+      recordSLOEvent("memory.kg.retrieval_failure_rate", false).catch(() => {});
+    } catch { /* slo import fail */ }
+    const { isEnabled } = await import("@/lib/feature-flags");
+    if (isEnabled("FAIL_CLOSED_PRODUCTION")) {
+      throw new Error(`Memory retrieval failed (knowledgeGraph): ${(err as Error).message}`);
+    }
   }
 
-  // 4. Fetch recent turns from canonical conversation ledger
+  // 4. Fetch recent turns from canonical conversation ledger (token-budgeted, three-tier)
+  //    Tier A: Milestone turns (turn 0, state transitions, contradictions)
+  //    Tier B: Unresolved contradiction/follow-up turns from InterviewerState
+  //    Tier C: Recent chronological window fills remaining budget
   let recentTurns: RecentTurn[] = [];
+  const TOTAL_CHAR_BUDGET = 32000;
   try {
     const { getLedgerWindow } = await import("@/lib/conversation-ledger");
+    const { prisma } = await import("@/lib/prisma");
     const lastTurnIndex = session.lastTurnIndex ?? -1;
-    const windowStart = Math.max(0, lastTurnIndex - 19); // Last 20 turns
-    const turns = await getLedgerWindow(interviewId, windowStart, 20, 16000);
-    recentTurns = turns.map((t) => ({
-      role: t.role,
-      content: t.content,
-      turnIndex: t.turnIndex,
-      turnId: t.turnId,
-    }));
-  } catch {
-    // Non-fatal: continue without recent turns
+    let usedCharBudget = 0;
+    const includedTurnIndices = new Set<number>();
+
+    // Tier A: Milestone turns (always include turn 0 + structurally important turns)
+    const milestoneTurnIndices = new Set<number>([0]); // Always include opening
+    try {
+      const milestoneEvents = await prisma.interviewEvent.findMany({
+        where: {
+          interviewId,
+          eventType: { in: ["state_transition", "contradiction_detected", "output_gate_blocked"] },
+          turnIndex: { not: null },
+        },
+        select: { turnIndex: true },
+        orderBy: { timestamp: "asc" },
+        take: 20,
+      });
+      for (const e of milestoneEvents) {
+        if (e.turnIndex !== null) milestoneTurnIndices.add(e.turnIndex);
+      }
+    } catch {
+      // Non-fatal: milestone query failed, proceed with turn 0 only
+    }
+
+    // Tier B: Unresolved contradiction/follow-up turn IDs from InterviewerState
+    const unresolvedTurnIds = new Set<string>();
+    for (const c of interviewerState.contradictionMap) {
+      if (c.turnIdA) unresolvedTurnIds.add(c.turnIdA);
+      if (c.turnIdB) unresolvedTurnIds.add(c.turnIdB);
+    }
+    for (const p of interviewerState.pendingClarifications) {
+      if (p.turnId) unresolvedTurnIds.add(p.turnId);
+    }
+
+    // Fetch priority turns (milestones + unresolved) by specific turnIndex
+    if (milestoneTurnIndices.size > 0 || unresolvedTurnIds.size > 0) {
+      try {
+        const priorityRows = await prisma.interviewTranscript.findMany({
+          where: {
+            interviewId,
+            OR: [
+              ...(milestoneTurnIndices.size > 0
+                ? [{ turnIndex: { in: Array.from(milestoneTurnIndices) } }]
+                : []),
+              ...(unresolvedTurnIds.size > 0
+                ? [{ turnId: { in: Array.from(unresolvedTurnIds) } }]
+                : []),
+            ],
+          },
+          orderBy: { turnIndex: "asc" },
+          take: 30,
+        });
+        for (const t of priorityRows) {
+          const charLen = (t.content || "").length;
+          if (usedCharBudget + charLen <= TOTAL_CHAR_BUDGET) {
+            recentTurns.push({
+              role: t.role,
+              content: t.content,
+              turnIndex: t.turnIndex,
+              turnId: t.turnId,
+            });
+            usedCharBudget += charLen;
+            includedTurnIndices.add(t.turnIndex);
+          }
+        }
+      } catch {
+        // Non-fatal: priority turns query failed, proceed with chronological window
+      }
+    }
+
+    // Tier C: Recent chronological window fills remaining budget
+    const remainingBudget = TOTAL_CHAR_BUDGET - usedCharBudget;
+    if (remainingBudget > 0 && lastTurnIndex >= 0) {
+      const windowStart = Math.max(0, lastTurnIndex - 39); // Expanded from 20 to 40
+      const chronologicalTurns = await getLedgerWindow(interviewId, windowStart, 40, remainingBudget);
+      for (const t of chronologicalTurns) {
+        if (!includedTurnIndices.has(t.turnIndex)) {
+          recentTurns.push({
+            role: t.role,
+            content: t.content,
+            turnIndex: t.turnIndex,
+            turnId: t.turnId,
+          });
+          includedTurnIndices.add(t.turnIndex);
+        }
+      }
+    }
+
+    // Sort by turnIndex for chronological order
+    recentTurns.sort((a, b) => a.turnIndex - b.turnIndex);
+    retrievalStatus.recentTurnsOk = true;
+  } catch (err) {
+    retrievalStatus.errors.push(`recentTurns: ${(err as Error).message}`);
+    try {
+      const { recordSLOEvent } = await import("@/lib/slo-monitor");
+      recordSLOEvent("memory.turns.retrieval_failure_rate", false).catch(() => {});
+    } catch { /* slo import fail */ }
+    const { isEnabled } = await import("@/lib/feature-flags");
+    if (isEnabled("FAIL_CLOSED_PRODUCTION")) {
+      throw new Error(`Memory retrieval failed (recentTurns): ${(err as Error).message}`);
+    }
   }
 
-  // 5. Compose unified packet
+  // 5. Compute memory confidence score (0.0–1.0)
+  const sourcesSucceeded = [retrievalStatus.factsOk, retrievalStatus.knowledgeGraphOk, retrievalStatus.recentTurnsOk].filter(Boolean).length;
+  const memoryConfidence = sourcesSucceeded / 3;
+
+  // 6. Compose unified packet
   return {
     // InterviewerState
     currentStep: interviewerState.currentStep,
@@ -148,5 +283,8 @@ export async function composeMemoryPacket(
     currentDifficultyLevel: session.currentDifficultyLevel || "mid",
     currentModule: session.currentModule || "",
     candidateProfile: session.candidateProfile || null,
+    // Memory confidence scoring
+    memoryConfidence,
+    retrievalStatus,
   };
 }
