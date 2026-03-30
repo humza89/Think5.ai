@@ -16,16 +16,19 @@ export const FeatureFlags = {
   STATEFUL_INTERVIEWER: envBool("FF_STATEFUL_INTERVIEWER", true),
 
   /** Phase 4: Tier 1/2 memory extraction and grounding */
-  MEMORY_TIERS: envBool("FF_MEMORY_TIERS", false),
+  MEMORY_TIERS: envBool("FF_MEMORY_TIERS", true),
 
   /** Phase 5: Fail-closed production mode (no in-memory fallback) */
   FAIL_CLOSED_PRODUCTION: envBool("FF_FAIL_CLOSED_PRODUCTION", true),
 
   /** Phase 6: Anti-hallucination grounding gate */
-  GROUNDING_GATE_ENABLED: envBool("FF_GROUNDING_GATE", false),
+  GROUNDING_GATE_ENABLED: envBool("FF_GROUNDING_GATE", true),
 
   /** Phase 7: Replay-grade observability timeline */
   TIMELINE_OBSERVABILITY: envBool("FF_TIMELINE_OBSERVABILITY", true),
+
+  /** Phase 8: Output gate blocking mode (block + sanitize violations) */
+  OUTPUT_GATE_BLOCKING: envBool("FF_OUTPUT_GATE_BLOCKING", true),
 } as const;
 
 /**

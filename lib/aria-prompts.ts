@@ -686,17 +686,97 @@ ${questionsList}
 - Do NOT apologize more than once for the interruption
 - After each section transition, call updateCandidateProfile to record your assessment`;
 
-  const fullPrompt = basePrompt + reconnectDirective;
-
-  // H5/R5: Guard against oversized reconnect prompts (Gemini context limit)
+  // H5/R5: Priority-tier truncation for oversized reconnect prompts
+  // Sections are ordered by priority — lowest-priority sections are dropped first.
+  // Never truncates mid-section; drops whole sections and adds a marker.
   const MAX_PROMPT_CHARS = 100_000; // ~25K tokens
-  if (fullPrompt.length > MAX_PROMPT_CHARS) {
-    console.warn(`[Reconnect] Prompt too large (${Math.round(fullPrompt.length / 1024)}KB), truncating`);
-    // Truncate from the reconnect directive end (keep base prompt + essentials)
-    return fullPrompt.slice(0, MAX_PROMPT_CHARS);
+
+  // Priority tiers (highest first):
+  // MUST KEEP: basePrompt, reconnect directive core, interviewer state, question dedup list
+  // SHOULD KEEP: candidate profile, module scores, knowledge graph
+  // MAY DROP: follow-up topics, verbose score reasons, notable quotes
+
+  // Build sections in drop-priority order (first = dropped first when over budget)
+  type PromptSection = { label: string; content: string };
+  const mayDropSections: PromptSection[] = [];
+  const shouldKeepSections: PromptSection[] = [];
+
+  // Classify sections into priority tiers
+  if (followUpsSection) {
+    mayDropSections.push({ label: "FOLLOW-UP TOPICS", content: followUpsSection });
+  }
+  if (knowledgeGraphSection) {
+    shouldKeepSections.push({ label: "KNOWLEDGE GRAPH", content: knowledgeGraphSection });
+  }
+  if (profileSection) {
+    shouldKeepSections.push({ label: "CANDIDATE PROFILE", content: profileSection });
   }
 
-  return fullPrompt;
+  // Build the MUST-KEEP reconnect directive (without droppable sections)
+  const coreReconnectDirective = `
+
+## ⚠️ RECONNECT DIRECTIVE — MANDATORY OVERRIDE
+This is a RESUMED session after a technical interruption. The following rules OVERRIDE the opening instructions above.
+
+**DO NOT:**
+- Re-introduce yourself
+- Say "Hi ${safeName}" or "Thanks for joining"
+- Explain the interview format again
+- Start from the beginning
+- Ask any question that was already asked (see list below)
+
+**DO:**
+- Say ONE brief sentence: "We're back. Let's continue where we left off."
+- Resume the exact conversation thread that was interrupted
+- Reference the candidate's prior answers naturally
+- Continue from question ${questionCount + 1}
+
+## INTERVIEW STATE AT RECONNECT
+- Questions completed: ${questionCount}
+- Current section: ${currentModule || "Unknown — infer from transcript context"}
+${difficultySection}
+- Module scores so far:
+${scoresSummary}
+${interviewerStateSection}
+
+## QUESTIONS ALREADY ASKED (DO NOT REPEAT ANY OF THESE)
+${questionsList}
+
+## RECONNECT BEHAVIOR
+- Pick up the conversation mid-flow, not from scratch
+- If the last exchange was incomplete, ask the candidate to briefly recap: "You were telling me about X — what was the key outcome?"
+- Maintain the same difficulty level and tone as before the interruption
+- Do NOT apologize more than once for the interruption
+- After each section transition, call updateCandidateProfile to record your assessment`;
+
+  // Start with MUST-KEEP content
+  let prompt = basePrompt + coreReconnectDirective;
+
+  // Add SHOULD-KEEP sections if they fit
+  for (const section of shouldKeepSections) {
+    if (prompt.length + section.content.length <= MAX_PROMPT_CHARS) {
+      prompt += section.content;
+    } else {
+      console.warn(`[Reconnect] Dropped SHOULD-KEEP section: ${section.label} (${section.content.length} chars)`);
+    }
+  }
+
+  // Add MAY-DROP sections if they fit
+  for (const section of mayDropSections) {
+    if (prompt.length + section.content.length <= MAX_PROMPT_CHARS) {
+      prompt += section.content;
+    } else {
+      console.warn(`[Reconnect] Dropped MAY-DROP section: ${section.label} (${section.content.length} chars)`);
+    }
+  }
+
+  // Final safety check — if MUST-KEEP alone exceeds budget, truncate with marker
+  if (prompt.length > MAX_PROMPT_CHARS) {
+    console.warn(`[Reconnect] MUST-KEEP content exceeds budget (${Math.round(prompt.length / 1024)}KB), hard truncating`);
+    prompt = prompt.slice(0, MAX_PROMPT_CHARS - 50) + "\n\n[CONTEXT TRUNCATED — RESUME FROM LAST QUESTION]";
+  }
+
+  return prompt;
 }
 
 export function countQuestionsFromTranscript(

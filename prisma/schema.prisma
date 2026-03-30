@@ -744,6 +744,7 @@ model InterviewTranscript {
   timestamp           DateTime  @default(now())
   serverReceivedAt    DateTime  @default(now()) // When server persisted this turn
   clientTimestamp      DateTime? // Original client-side timestamp
+  contentChecksum     String?   // SHA-256 of role:content for integrity verification
   finalized           Boolean   @default(true)
 
   createdAt           DateTime  @default(now())
@@ -781,6 +782,7 @@ model InterviewEvent {
   eventType     String   // connect, disconnect, reconnect, checkpoint, grounding_failure, etc.
   payload       Json?    // Event-specific data
   turnIndex     Int?     // Nullable — not all events correlate to a specific turn
+  causalEventId String?  // References another InterviewEvent.id that caused this event
   timestamp     DateTime @default(now())
 
   @@index([interviewId, timestamp])

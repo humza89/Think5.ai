@@ -6,8 +6,9 @@
  * - Duplicate questions (against askedQuestionIds)
  * - Unsupported claims (against verified facts)
  *
- * Initial mode: warn-only (log + record, don't block).
- * Future: promote to block mode with re-generation.
+ * Two modes:
+ * - Warn-only (default): log + record, don't block
+ * - Blocking (FF_OUTPUT_GATE_BLOCKING): sanitize or reject violating content
  */
 
 import { hashQuestion } from "./interviewer-state";
@@ -18,6 +19,10 @@ import { extractAssertions, isClaimSupported } from "./grounding-gate";
 export interface OutputGateInput {
   introDone: boolean;
   askedQuestionIds: string[];
+  /** Full text of previously asked questions for semantic dedup */
+  askedQuestionTexts?: string[];
+  /** Question hashes explicitly allowed to repeat (intentional revisits) */
+  revisitAllowList?: string[];
   verifiedFacts: Array<{ factType: string; content: string; confidence: number }>;
 }
 
@@ -30,6 +35,13 @@ export interface GateViolation {
 export interface GateResult {
   passed: boolean;
   violations: GateViolation[];
+}
+
+export interface GateAction {
+  action: "pass" | "block";
+  violations: GateViolation[];
+  /** Sanitized response with violating content removed/replaced. Only present when action is "block". */
+  sanitizedResponse?: string;
 }
 
 // ── Intro Detection Patterns ─────────────────────────────────────────
@@ -62,6 +74,88 @@ function extractQuestion(text: string): string | null {
   return null;
 }
 
+// ── Tokenization for Semantic Dedup ──────────────────────────────────
+
+const STOP_WORDS = new Set([
+  "the", "a", "an", "is", "was", "were", "are", "been", "be",
+  "have", "has", "had", "do", "does", "did", "will", "would",
+  "could", "should", "may", "might", "shall", "can",
+  "i", "you", "he", "she", "it", "we", "they", "my", "your",
+  "of", "in", "to", "for", "with", "on", "at", "by", "from",
+  "and", "or", "but", "not", "that", "this", "these", "those",
+  "about", "as", "into", "through", "during", "before", "after",
+  "what", "how", "when", "where", "who", "which", "why",
+  "tell", "me", "describe", "explain", "can",
+]);
+
+/**
+ * Tokenize question text for semantic dedup comparison.
+ * Strips stop words and short tokens to focus on content words.
+ */
+function tokenizeForDedup(text: string): string[] {
+  return text
+    .replace(/[^\w\s]/g, " ")
+    .split(/\s+/)
+    .filter((w) => w.length > 2 && !STOP_WORDS.has(w));
+}
+
+// ── Response Sanitization ────────────────────────────────────────────
+
+/**
+ * Strip violating content from AI response based on violation types.
+ * Returns a cleaned response that passes policy checks.
+ */
+export function sanitizeResponse(
+  aiResponse: string,
+  violations: GateViolation[]
+): string {
+  let sanitized = aiResponse;
+  const sentences = sanitized.split(/(?<=[.!?])\s+/);
+
+  for (const violation of violations) {
+    switch (violation.type) {
+      case "reintroduction": {
+        // Remove sentences matching intro patterns
+        const filtered = sentences.filter((sentence) =>
+          !INTRO_PATTERNS.some((p) => p.test(sentence))
+        );
+        sanitized = filtered.join(" ").trim();
+        break;
+      }
+      case "duplicate_question": {
+        // Replace the duplicate question with a transition marker
+        const question = extractQuestion(sanitized);
+        if (question) {
+          sanitized = sanitized.replace(question, "Let me move on to the next topic.");
+        }
+        break;
+      }
+      case "unsupported_claim": {
+        // Strip the unsupported assertion clause
+        // Extract the specific claim text from the violation detail
+        const claimMatch = violation.detail.match(/Unsupported claim: "(.+?)"/);
+        if (claimMatch) {
+          const claim = claimMatch[1];
+          // Remove the sentence containing the claim
+          const claimSentences = sanitized.split(/(?<=[.!?])\s+/);
+          const cleanedSentences = claimSentences.filter(
+            (s) => !s.toLowerCase().includes(claim.toLowerCase().slice(0, 50))
+          );
+          sanitized = cleanedSentences.join(" ").trim();
+        }
+        break;
+      }
+    }
+  }
+
+  // Ensure we don't return an empty response
+  if (!sanitized.trim()) {
+    sanitized = "Let's continue with the interview.";
+  }
+
+  return sanitized;
+}
+
 // ── Main Gate Function ───────────────────────────────────────────────
 
 /**
@@ -88,16 +182,41 @@ export function checkOutputGate(
     }
   }
 
-  // Check 2: No duplicate questions
+  // Check 2: No duplicate questions (hash-exact + semantic similarity)
   const question = extractQuestion(aiResponse);
-  if (question && input.askedQuestionIds.length > 0) {
+  const hasHashIds = input.askedQuestionIds.length > 0;
+  const hasTextIds = (input.askedQuestionTexts?.length ?? 0) > 0;
+  if (question && (hasHashIds || hasTextIds)) {
     const qHash = hashQuestion(question);
-    if (input.askedQuestionIds.includes(qHash)) {
-      violations.push({
-        type: "duplicate_question",
-        detail: `Duplicate question detected (hash: ${qHash}): "${question.slice(0, 100)}..."`,
-        severity: "warn",
-      });
+    const isRevisitAllowed = input.revisitAllowList?.includes(qHash) ?? false;
+
+    if (!isRevisitAllowed) {
+      // Hash-exact dedup
+      if (hasHashIds && input.askedQuestionIds.includes(qHash)) {
+        violations.push({
+          type: "duplicate_question",
+          detail: `Duplicate question detected (hash: ${qHash}): "${question.slice(0, 100)}..."`,
+          severity: "warn",
+        });
+      }
+      // Semantic dedup: check Jaccard similarity against previously asked question texts
+      else if (input.askedQuestionTexts && input.askedQuestionTexts.length > 0) {
+        const questionWords = new Set(tokenizeForDedup(question.toLowerCase()));
+        for (const prevQuestion of input.askedQuestionTexts) {
+          const prevWords = new Set(tokenizeForDedup(prevQuestion.toLowerCase()));
+          const intersection = new Set([...questionWords].filter((w) => prevWords.has(w)));
+          const union = new Set([...questionWords, ...prevWords]);
+          const jaccard = union.size > 0 ? intersection.size / union.size : 0;
+          if (jaccard >= 0.6) {
+            violations.push({
+              type: "duplicate_question",
+              detail: `Semantic duplicate (similarity: ${(jaccard * 100).toFixed(0)}%): "${question.slice(0, 80)}..." ≈ "${prevQuestion.slice(0, 80)}..."`,
+              severity: "warn",
+            });
+            break; // One semantic match is enough
+          }
+        }
+      }
     }
   }
 
@@ -121,5 +240,43 @@ export function checkOutputGate(
   return {
     passed: violations.length === 0,
     violations,
+  };
+}
+
+// ── Blocking Gate Function ───────────────────────────────────────────
+
+/**
+ * Check an AI response and optionally block/sanitize violating content.
+ * When blockingEnabled is true, violations are promoted to "block" severity
+ * and a sanitized response is returned.
+ */
+export function checkOutputGateWithAction(
+  aiResponse: string,
+  input: OutputGateInput,
+  blockingEnabled: boolean
+): GateAction {
+  const result = checkOutputGate(aiResponse, input);
+
+  if (result.passed) {
+    return { action: "pass", violations: [] };
+  }
+
+  if (!blockingEnabled) {
+    // Warn-only mode: return violations but don't block
+    return { action: "pass", violations: result.violations };
+  }
+
+  // Blocking mode: promote severity and sanitize
+  const blockedViolations = result.violations.map((v) => ({
+    ...v,
+    severity: "block" as const,
+  }));
+
+  const sanitized = sanitizeResponse(aiResponse, blockedViolations);
+
+  return {
+    action: "block",
+    violations: blockedViolations,
+    sanitizedResponse: sanitized,
   };
 }

@@ -17,6 +17,7 @@ import {
   getSessionState,
   saveSessionState,
   generateReconnectToken,
+  reconstructSessionFromLedger,
 } from "@/lib/session-store";
 import { recordSLOEvent } from "@/lib/slo-monitor";
 import { classifyError } from "@/lib/error-classification";
@@ -66,11 +67,19 @@ export async function POST(
       );
     }
 
-    // 2. Load session state from Redis
-    const session = await getSessionState(id);
+    // 2. Load session state from Redis (or reconstruct from canonical ledger)
+    let session = await getSessionState(id);
+    if (!session) {
+      // Attempt reconstruction from canonical ledger (Redis outage recovery)
+      session = await reconstructSessionFromLedger(id);
+      if (session) {
+        await saveSessionState(id, session);
+        console.log(`[${id}] Session reconstructed from canonical ledger during recovery`);
+      }
+    }
     if (!session) {
       return Response.json(
-        { error: "Session not found — it may have expired" },
+        { error: "Session not found and reconstruction failed — it may have expired" },
         { status: 404 }
       );
     }

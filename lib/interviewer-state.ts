@@ -40,6 +40,13 @@ export interface PendingClarification {
   question: string;
 }
 
+export interface Commitment {
+  id: string;
+  description: string;
+  turnId: string;
+  fulfilled: boolean;
+}
+
 export interface InterviewerState {
   introDone: boolean;
   currentTopic: string;
@@ -49,6 +56,8 @@ export interface InterviewerState {
   contradictionMap: Contradiction[];
   pendingClarifications: PendingClarification[];
   topicDepthCounters: Record<string, number>;
+  commitments: Commitment[];
+  revisitAllowList: string[];
   stateHash: string;
 }
 
@@ -65,7 +74,10 @@ export type StateEvent =
   | { type: "CLARIFICATION_REQUESTED"; clarification: PendingClarification }
   | { type: "CLARIFICATION_RESOLVED"; turnId: string }
   | { type: "TOPIC_DEPTH_INCREMENT"; topic: string }
-  | { type: "DIFFICULTY_ADJUSTED"; level: string };
+  | { type: "DIFFICULTY_ADJUSTED"; level: string }
+  | { type: "COMMITMENT_MADE"; commitment: { id: string; description: string; turnId: string } }
+  | { type: "COMMITMENT_FULFILLED"; commitmentId: string }
+  | { type: "REVISIT_QUESTION"; questionHash: string };
 
 // ── Core Operations ──────────────────────────────────────────────────
 
@@ -82,6 +94,8 @@ export function createInitialState(): InterviewerState {
     contradictionMap: [],
     pendingClarifications: [],
     topicDepthCounters: {},
+    commitments: [],
+    revisitAllowList: [],
     stateHash: "",
   };
   state.stateHash = computeStateHash(state);
@@ -106,9 +120,18 @@ export function transitionState(
       }
       break;
 
-    case "MOVE_TO_STEP":
+    case "MOVE_TO_STEP": {
+      // Validate topic transitions: reject backward transitions, allow forward
+      const fromIdx = getStepIndex(current.currentStep);
+      const toIdx = getStepIndex(event.step);
+      if (toIdx < fromIdx) {
+        // Backward transition rejected — keep current step
+        console.warn(`[InterviewerState] Rejected backward transition: ${current.currentStep} → ${event.step}`);
+        break;
+      }
       next.currentStep = event.step;
       break;
+    }
 
     case "SET_TOPIC":
       next.currentTopic = event.topic;
@@ -158,6 +181,27 @@ export function transitionState(
 
     case "DIFFICULTY_ADJUSTED":
       // Difficulty is tracked in session state, not interviewer state
+      break;
+
+    case "COMMITMENT_MADE":
+      next.commitments = [...next.commitments, {
+        id: event.commitment.id,
+        description: event.commitment.description,
+        turnId: event.commitment.turnId,
+        fulfilled: false,
+      }];
+      break;
+
+    case "COMMITMENT_FULFILLED":
+      next.commitments = next.commitments.map((c) =>
+        c.id === event.commitmentId ? { ...c, fulfilled: true } : c
+      );
+      break;
+
+    case "REVISIT_QUESTION":
+      if (!next.revisitAllowList.includes(event.questionHash)) {
+        next.revisitAllowList = [...next.revisitAllowList, event.questionHash];
+      }
       break;
   }
 
@@ -243,6 +287,21 @@ export function isTopicExhausted(
 ): boolean {
   return (state.topicDepthCounters[topic] || 0) >= 3;
 }
+
+/**
+ * Valid step transitions map. Each step lists which steps can follow it.
+ * Forward skips are allowed; backward transitions are rejected.
+ */
+export const VALID_STEP_TRANSITIONS: Record<InterviewStep, InterviewStep[]> = {
+  opening: ["candidate_intro"],
+  candidate_intro: ["resume_deep_dive"],
+  resume_deep_dive: ["technical", "behavioral", "domain"],
+  technical: ["behavioral", "domain", "candidate_questions"],
+  behavioral: ["domain", "candidate_questions"],
+  domain: ["candidate_questions"],
+  candidate_questions: ["closing"],
+  closing: [], // terminal
+};
 
 /**
  * Standard step progression order for validation.

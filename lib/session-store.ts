@@ -539,3 +539,97 @@ export async function refreshSessionLock(interviewId: string): Promise<void> {
   if (!redis) return;
   await redis.expire(`voice-lock:${interviewId}`, LOCK_TTL_SECONDS);
 }
+
+// ── Session Reconstruction from Canonical Ledger ─────────────────────
+
+/**
+ * Reconstruct a SessionState from the canonical conversation ledger and
+ * Postgres snapshots when Redis session is lost (e.g., Redis outage).
+ *
+ * Returns null if the interview has no ledger data (nothing to reconstruct from).
+ */
+export async function reconstructSessionFromLedger(
+  interviewId: string
+): Promise<SessionState | null> {
+  try {
+    const { getLedgerSnapshot, getFullTranscript } = await import("@/lib/conversation-ledger");
+    const { computeStateHash, createInitialState, serializeState, deserializeState } = await import("@/lib/interviewer-state");
+    const { prisma } = await import("@/lib/prisma");
+
+    // 1. Get ledger snapshot for version info
+    const snapshot = await getLedgerSnapshot(interviewId);
+    if (snapshot.turnCount === 0) return null;
+
+    // 2. Try to load InterviewerState from latest snapshot in Postgres
+    let interviewerStateJson: string | undefined;
+    let stateHash = "";
+    try {
+      const stateSnapshot = await prisma.interviewerStateSnapshot.findFirst({
+        where: { interviewId },
+        orderBy: { turnIndex: "desc" },
+        select: { state: true },
+      });
+      if (stateSnapshot?.state) {
+        const parsed = typeof stateSnapshot.state === "string"
+          ? stateSnapshot.state
+          : JSON.stringify(stateSnapshot.state);
+        const iState = deserializeState(parsed);
+        interviewerStateJson = serializeState(iState);
+        stateHash = computeStateHash(iState);
+      }
+    } catch {
+      // Fall back to fresh state
+    }
+
+    if (!interviewerStateJson) {
+      const fresh = createInitialState();
+      interviewerStateJson = serializeState(fresh);
+      stateHash = fresh.stateHash;
+    }
+
+    // 3. Count questions from transcript
+    const transcript = await getFullTranscript(interviewId);
+    let questionCount = 0;
+    for (let i = 1; i < transcript.length; i++) {
+      if (
+        (transcript[i].role === "assistant" || transcript[i].role === "model") &&
+        (transcript[i - 1].role === "candidate" || transcript[i - 1].role === "user")
+      ) {
+        questionCount++;
+      }
+    }
+
+    // 4. Fetch module scores from interview record
+    const interview = await prisma.interview.findUnique({
+      where: { id: interviewId },
+      select: { skillModuleScores: true },
+    });
+    const moduleScores = Array.isArray(interview?.skillModuleScores)
+      ? (interview.skillModuleScores as Array<{ module: string; score: number; reason: string }>)
+      : [];
+
+    // 5. Generate fresh reconnect token
+    const reconnectToken = generateReconnectToken(interviewId, snapshot.latestTurnIndex, stateHash);
+
+    // 6. Compose reconstructed session
+    const reconstructed: SessionState = {
+      interviewId,
+      moduleScores,
+      questionCount,
+      reconnectToken,
+      lastActiveAt: new Date().toISOString(),
+      checkpointDigest: snapshot.checksum,
+      lastTurnIndex: snapshot.latestTurnIndex,
+      ledgerVersion: snapshot.latestTurnIndex,
+      stateHash,
+      reconnectCount: 0,
+      interviewerState: interviewerStateJson,
+    };
+
+    console.log(`[${interviewId}] Session reconstructed from ledger: ${snapshot.turnCount} turns, ${questionCount} questions`);
+    return reconstructed;
+  } catch (err) {
+    console.error(`[${interviewId}] Session reconstruction failed:`, err);
+    return null;
+  }
+}

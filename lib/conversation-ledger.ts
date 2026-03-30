@@ -79,6 +79,12 @@ export async function appendTurns(
       const turnIndex = startIndex + i;
       const turnId = turn.turnId || randomUUID();
 
+      // Compute SHA-256 content checksum for integrity verification
+      const contentChecksum = createHash("sha256")
+        .update(`${turn.role}:${turn.content}`)
+        .digest("hex")
+        .slice(0, 16);
+
       const created = await tx.interviewTranscript.create({
         data: {
           interviewId,
@@ -92,6 +98,7 @@ export async function appendTurns(
           timestamp: turn.timestamp ? new Date(turn.timestamp) : now,
           serverReceivedAt: now,
           clientTimestamp: turn.clientTimestamp ? new Date(turn.clientTimestamp) : null,
+          contentChecksum,
           finalized: turn.finalized ?? false,
         },
       });

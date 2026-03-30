@@ -188,3 +188,86 @@ export function extractFactsBatch(
 ): ExtractedFact[] {
   return turns.flatMap((turn) => extractFactsImmediate(turn));
 }
+
+// ── Contradiction Detection ──────────────────────────────────────────
+
+/**
+ * Extract numbers from a string for comparison.
+ */
+function extractNumbers(text: string): number[] {
+  const matches = text.match(/\d+(?:\.\d+)?/g);
+  return matches ? matches.map(Number) : [];
+}
+
+/**
+ * Extract entity keywords (company names, skills, roles) from fact content.
+ * Returns lowercase tokens > 2 chars.
+ */
+function extractEntityTokens(text: string): string[] {
+  return text
+    .toLowerCase()
+    .replace(/[^\w\s]/g, "")
+    .split(/\s+/)
+    .filter((t) => t.length > 2);
+}
+
+/**
+ * Check if two facts contradict each other.
+ * Same factType + overlapping entity context but different values.
+ *
+ * - METRIC: same context words but numbers diverge >20%
+ * - DATE: same company but different date ranges
+ * - COMPANY: same company but different roles/durations
+ */
+export function isContradiction(
+  newFact: ExtractedFact,
+  existingFact: ExtractedFact
+): boolean {
+  // Must be same fact type to contradict
+  if (newFact.factType !== existingFact.factType) return false;
+
+  // Must be from different turns
+  if (newFact.turnId === existingFact.turnId) return false;
+
+  const newTokens = extractEntityTokens(newFact.content);
+  const existingTokens = extractEntityTokens(existingFact.content);
+
+  // Check for entity overlap (at least 2 shared tokens)
+  const overlap = newTokens.filter((t) => existingTokens.includes(t));
+  if (overlap.length < 2) return false;
+
+  // For METRIC facts: check if numbers diverge significantly
+  if (newFact.factType === "METRIC" || newFact.factType === "DATE") {
+    const newNumbers = extractNumbers(newFact.content);
+    const existingNumbers = extractNumbers(existingFact.content);
+
+    if (newNumbers.length > 0 && existingNumbers.length > 0) {
+      // Check pairwise: if any corresponding numbers diverge >20%, it's a contradiction
+      for (let i = 0; i < Math.min(newNumbers.length, existingNumbers.length); i++) {
+        const a = newNumbers[i];
+        const b = existingNumbers[i];
+        const max = Math.max(Math.abs(a), Math.abs(b));
+        if (max > 0 && Math.abs(a - b) / max > 0.2) {
+          return true;
+        }
+      }
+    }
+  }
+
+  // For COMPANY facts: same company but different claim content
+  if (newFact.factType === "COMPANY") {
+    // If overlapping entity but content differs significantly
+    if (newFact.content.toLowerCase() !== existingFact.content.toLowerCase() && overlap.length >= 2) {
+      const newNumbers = extractNumbers(newFact.content);
+      const existingNumbers = extractNumbers(existingFact.content);
+      if (newNumbers.length > 0 && existingNumbers.length > 0) {
+        // Duration mismatch for same company
+        for (let i = 0; i < Math.min(newNumbers.length, existingNumbers.length); i++) {
+          if (newNumbers[i] !== existingNumbers[i]) return true;
+        }
+      }
+    }
+  }
+
+  return false;
+}

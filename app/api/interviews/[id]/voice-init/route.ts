@@ -297,6 +297,11 @@ export async function POST(
       model: "models/gemini-2.5-flash-native-audio-latest",
       reconnectToken,
       ...(enterpriseMemory ? { enterpriseMemory } : {}),
+      // Degraded-network configuration for adaptive checkpoint intervals
+      degradedNetworkConfig: {
+        checkpointIntervalMs: { good: 15000, fair: 30000, poor: 45000 },
+        maxReconnectAttempts: { good: 5, fair: 8, poor: 10 },
+      },
     }, {
       headers: {
         "X-Content-Type-Options": "nosniff",

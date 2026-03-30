@@ -13,12 +13,18 @@ import type { ExtractedFact } from "./fact-extractor";
 
 // ── Types ────────────────────────────────────────────────────────────
 
+export interface ClaimProvenance {
+  claim: string;
+  groundedBy: { factContent: string; factType: string; similarity: number } | null;
+}
+
 export interface GroundingResult {
   grounded: boolean;
   score: number; // 0-1, where 1 = all claims verified
   supportedClaims: string[];
   unsupportedClaims: string[];
   totalClaims: number;
+  provenance: ClaimProvenance[];
 }
 
 // ── Assertion Extraction ─────────────────────────────────────────────
@@ -94,21 +100,34 @@ export function verifyGrounding(
       supportedClaims: [],
       unsupportedClaims: [],
       totalClaims: 0,
+      provenance: [],
     };
   }
 
   const supportedClaims: string[] = [];
   const unsupportedClaims: string[] = [];
+  const provenance: ClaimProvenance[] = [];
 
   for (const assertion of assertions) {
-    const isSupported = facts.some((fact) =>
-      isClaimSupported(assertion, fact.content)
-    );
+    let bestMatch: { factContent: string; factType: string; similarity: number } | null = null;
+    let bestSimilarity = 0;
+
+    for (const fact of facts) {
+      const sim = computeSimilarity(assertion, fact.content);
+      if (sim > bestSimilarity) {
+        bestSimilarity = sim;
+        bestMatch = { factContent: fact.content, factType: fact.factType, similarity: sim };
+      }
+    }
+
+    const isSupported = bestMatch !== null && isClaimSupported(assertion, bestMatch.factContent);
 
     if (isSupported) {
       supportedClaims.push(assertion);
+      provenance.push({ claim: assertion, groundedBy: bestMatch });
     } else {
       unsupportedClaims.push(assertion);
+      provenance.push({ claim: assertion, groundedBy: null });
     }
   }
 
@@ -121,6 +140,7 @@ export function verifyGrounding(
     supportedClaims,
     unsupportedClaims,
     totalClaims: assertions.length,
+    provenance,
   };
 }
 
@@ -148,17 +168,29 @@ export function isClaimSupported(claim: string, factContent: string): boolean {
 
   const jaccard = union.size > 0 ? intersection.size / union.size : 0;
 
-  // Number-aware comparison: extract numbers and compare
+  // Number-aware comparison: extract numbers and compare (5% tolerance for enterprise precision)
   const claimNumbers = extractNumbers(claim);
   const factNumbers = extractNumbers(factContent);
   const numberMatch =
     claimNumbers.length > 0 &&
     claimNumbers.some((cn) =>
-      factNumbers.some((fn) => Math.abs(cn - fn) / Math.max(cn, fn, 1) < 0.1)
+      factNumbers.some((fn) => Math.abs(cn - fn) / Math.max(cn, fn, 1) < 0.05)
     );
 
   // Thresholds: Jaccard ≥ 0.4 OR (Jaccard ≥ 0.25 AND numbers match)
   return jaccard >= 0.4 || (jaccard >= 0.25 && numberMatch);
+}
+
+/**
+ * Compute raw Jaccard similarity between claim and fact text.
+ * Used for provenance tracking (returns 0-1 score).
+ */
+function computeSimilarity(claim: string, factContent: string): number {
+  const claimWords = new Set(tokenize(claim.toLowerCase()));
+  const factWords = new Set(tokenize(factContent.toLowerCase()));
+  const intersection = new Set([...claimWords].filter((w) => factWords.has(w)));
+  const union = new Set([...claimWords, ...factWords]);
+  return union.size > 0 ? intersection.size / union.size : 0;
 }
 
 /**

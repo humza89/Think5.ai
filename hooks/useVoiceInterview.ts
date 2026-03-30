@@ -53,7 +53,7 @@ export interface UseVoiceInterviewReturn {
   isReconnecting: boolean;
   isPaused: boolean;
   fallbackToText: boolean;
-  reconnectPhase: "checking" | "restoring" | "verifying" | "recovering" | "re-synced" | "resume-failed" | null;
+  reconnectPhase: "checking" | "restoring" | "verifying" | "recovering" | "re-synced" | "resume-failed" | "recovery-failed" | null;
   reconnectAttempt: number;
   reconnectMax: number;
   micIsSilent: boolean;
@@ -90,7 +90,7 @@ export function useVoiceInterview(
   const [isReconnecting, setIsReconnecting] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [fallbackToText, setFallbackToText] = useState(false);
-  const [reconnectPhase, setReconnectPhase] = useState<"checking" | "restoring" | "verifying" | "recovering" | "re-synced" | "resume-failed" | null>(null);
+  const [reconnectPhase, setReconnectPhase] = useState<"checking" | "restoring" | "verifying" | "recovering" | "re-synced" | "resume-failed" | "recovery-failed" | null>(null);
   const [micIsSilent, setMicIsSilent] = useState(false);
 
   // Mirror aiState in a ref so audio processor callback can read it
@@ -594,6 +594,17 @@ export function useVoiceInterview(
           }
           if (typeof checkpointData.ledgerVersion === "number") {
             ledgerVersionRef.current = checkpointData.ledgerVersion;
+          }
+          // Output gate enforcement: replace AI content if server blocked and sanitized
+          if (checkpointData.correctedAiResponse && transcriptRef.current.length > 0) {
+            // Find the last AI turn in the transcript and replace its content
+            for (let i = transcriptRef.current.length - 1; i >= 0; i--) {
+              const turn = transcriptRef.current[i];
+              if (turn.role === "interviewer") {
+                transcriptRef.current[i] = { ...turn, content: checkpointData.correctedAiResponse };
+                break;
+              }
+            }
           }
         } catch { /* response already consumed or empty */ }
         // Clear IndexedDB backup on successful server save
@@ -1134,7 +1145,13 @@ export function useVoiceInterview(
                   }
                   setReconnectPhase("re-synced");
                 } else {
-                  console.warn("[Voice] Recovery API failed, proceeding with WebSocket reconnect");
+                  // Fail-closed: do NOT proceed with WebSocket reconnect if recovery failed
+                  console.error("[Voice] Recovery API failed — blocking reconnect (fail-closed)");
+                  setReconnectPhase("recovery-failed");
+                  setConnectionQuality("poor");
+                  onErrorRef.current?.("Unable to verify interview state. Please refresh the page to continue.");
+                  setIsReconnecting(false);
+                  return;
                 }
               } else if (timeSinceLastRecovery <= 5000) {
                 console.log(`[Voice] Skipping recovery API — called ${timeSinceLastRecovery}ms ago (rate limit: 5s)`);
@@ -1350,6 +1367,10 @@ export function useVoiceInterview(
       interviewStartTimeRef.current = interviewStartTimeRef.current || Date.now();
       const getCheckpointInterval = () => {
         const elapsed = Date.now() - interviewStartTimeRef.current;
+        // Degraded-network mode: reduce checkpoint frequency on poor connections
+        const quality = connectionQuality;
+        if (quality === "poor") return 45_000;
+        if (quality === "fair") return 30_000;
         return elapsed < 5 * 60 * 1000 ? 15_000 : CHECKPOINT_INTERVAL_MS;
       };
       const runAdaptiveCheckpoint = () => {

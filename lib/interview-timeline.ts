@@ -27,6 +27,8 @@ export type EventType =
   | "memory_update"
   | "maintenance_mode"
   | "output_gate_violation"
+  | "output_gate_blocked"
+  | "contradiction_detected"
   | "error"
   | "anomaly";
 
@@ -36,6 +38,7 @@ export interface TimelineEvent {
   eventType: string;
   payload: Record<string, unknown> | null;
   turnIndex: number | null;
+  causalEventId: string | null;
   timestamp: Date;
 }
 
@@ -49,7 +52,8 @@ export async function recordEvent(
   interviewId: string,
   eventType: EventType,
   payload?: Record<string, unknown>,
-  turnIndex?: number
+  turnIndex?: number,
+  causalEventId?: string
 ): Promise<void> {
   try {
     await prisma.interviewEvent.create({
@@ -58,6 +62,7 @@ export async function recordEvent(
         eventType,
         payload: payload || undefined,
         turnIndex: turnIndex ?? null,
+        causalEventId: causalEventId ?? null,
       },
     });
   } catch (err) {
@@ -126,12 +131,13 @@ export async function getTimeline(
     orderBy: { timestamp: "asc" },
   });
 
-  return rows.map((r: { id: string; interviewId: string; eventType: string; payload: unknown; turnIndex: number | null; timestamp: Date }) => ({
+  return rows.map((r: { id: string; interviewId: string; eventType: string; payload: unknown; turnIndex: number | null; causalEventId: string | null; timestamp: Date }) => ({
     id: r.id,
     interviewId: r.interviewId,
     eventType: r.eventType,
     payload: r.payload as Record<string, unknown> | null,
     turnIndex: r.turnIndex,
+    causalEventId: r.causalEventId ?? null,
     timestamp: r.timestamp,
   }));
 }

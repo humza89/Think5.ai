@@ -34,10 +34,10 @@ import { validateTranscript, repairTranscript } from "@/lib/transcript-validator
 import { isMaintenanceMode, getMaintenanceMessage, maintenanceResponse } from "@/lib/maintenance-mode";
 import { recordEvent } from "@/lib/interview-timeline";
 import { isEnabled } from "@/lib/feature-flags";
-import { extractFactsImmediate } from "@/lib/fact-extractor";
+import { extractFactsImmediate, isContradiction } from "@/lib/fact-extractor";
 import { verifyGrounding } from "@/lib/grounding-gate";
 import { transitionState, deserializeState, serializeState, hashQuestion, createInitialState } from "@/lib/interviewer-state";
-import { checkOutputGate } from "@/lib/output-gate";
+import { checkOutputGateWithAction } from "@/lib/output-gate";
 import * as Sentry from "@sentry/nextjs";
 
 // C7: Per-interview checkpoint rate limiter (max 1 per 2 seconds)
@@ -240,6 +240,94 @@ export async function POST(
       // Write to canonical conversation ledger (Tier 0: lossless, never truncated)
       const ledgerSnapshot = await getLedgerSnapshot(id);
       const newTurns = diffTurns(currentTranscript, ledgerSnapshot.latestTurnIndex);
+
+      // Output gate pre-write: sanitize AI turns BEFORE they enter the canonical ledger
+      // Uses pre-existing state (not post-transition) so gate runs before state machine
+      let gateViolations: Array<{ type: string; detail: string; severity: string }> = [];
+      let correctedAiResponse: string | undefined;
+      if (isEnabled("OUTPUT_GATE_BLOCKING") && newTurns.length > 0) {
+        try {
+          const preState = existingSession?.interviewerState
+            ? deserializeState(existingSession.interviewerState)
+            : null;
+
+          if (preState) {
+            const verifiedFacts = isEnabled("MEMORY_TIERS")
+              ? await prisma.interviewFact.findMany({
+                  where: { interviewId: id },
+                  orderBy: { createdAt: "desc" },
+                  take: 100,
+                  select: { factType: true, content: true, confidence: true },
+                })
+              : [];
+
+            // Build question texts from existing transcript for semantic dedup
+            const askedQuestionTexts: string[] = currentTranscript
+              .filter((t: { role: string; content: string }) =>
+                (t.role === "assistant" || t.role === "model") && typeof t.content === "string" && t.content.includes("?")
+              )
+              .map((t: { content: string }) => t.content)
+              .slice(-50); // Last 50 AI turns for efficiency
+
+            const aiTurns = newTurns.filter((t: { role: string }) => t.role === "assistant" || t.role === "model");
+            for (const aiTurn of aiTurns) {
+              const content = typeof aiTurn.content === "string" ? aiTurn.content : "";
+              if (content.length > 0) {
+                const gateAction = checkOutputGateWithAction(content, {
+                  introDone: preState.introDone,
+                  askedQuestionIds: preState.askedQuestionIds,
+                  askedQuestionTexts,
+                  revisitAllowList: preState.revisitAllowList || [],
+                  verifiedFacts: verifiedFacts.map((f: { factType: string; content: string; confidence: number }) => ({
+                    factType: f.factType,
+                    content: f.content,
+                    confidence: f.confidence,
+                  })),
+                }, true); // blocking always enabled here (flag already checked above)
+
+                if (gateAction.violations.length > 0) {
+                  gateViolations.push(...gateAction.violations);
+
+                  if (isEnabled("TIMELINE_OBSERVABILITY")) {
+                    const eventType = gateAction.action === "block" ? "output_gate_blocked" : "output_gate_violation";
+                    for (const v of gateAction.violations) {
+                      recordEvent(id, eventType, {
+                        violationType: v.type,
+                        detail: v.detail,
+                        severity: v.severity,
+                        blocked: gateAction.action === "block",
+                      }, ledgerSnapshot.latestTurnIndex).catch(() => {});
+                    }
+                  }
+
+                  await recordSLOEvent("transcript.anomaly.rate", false);
+
+                  // Replace AI turn content in-place with sanitized version BEFORE ledger write
+                  if (gateAction.action === "block" && gateAction.sanitizedResponse) {
+                    aiTurn.content = gateAction.sanitizedResponse;
+                    correctedAiResponse = gateAction.sanitizedResponse;
+
+                    // Also update the corresponding turn in currentTranscript for Interview.update
+                    const transcriptIdx = currentTranscript.findIndex(
+                      (t: { role: string; content: string }) =>
+                        (t.role === "assistant" || t.role === "model") && t.content === content
+                    );
+                    if (transcriptIdx >= 0) {
+                      currentTranscript[transcriptIdx] = {
+                        ...currentTranscript[transcriptIdx],
+                        content: gateAction.sanitizedResponse,
+                      };
+                    }
+                  }
+                }
+              }
+            }
+          }
+        } catch (err) {
+          console.warn(`[${id}] Pre-write output gate check failed (non-fatal):`, err);
+        }
+      }
+
       let ledgerVersion = ledgerSnapshot.latestTurnIndex;
       if (newTurns.length > 0) {
         const appended = await appendTurns(id, newTurns, ledgerSnapshot.turnCount);
@@ -364,64 +452,104 @@ export async function POST(
             }
           }
 
-          updatedInterviewerState = serializeState(state);
-        } catch (err) {
-          console.warn(`[${id}] InterviewerState transition failed (non-fatal):`, err);
-        }
-      }
-
-      // Output gate: server-side pre-send policy checks on AI responses
-      let gateViolations: Array<{ type: string; detail: string; severity: string }> = [];
-      if (isEnabled("STATEFUL_INTERVIEWER") && newTurns.length > 0) {
-        try {
-          const currentState = updatedInterviewerState
-            ? deserializeState(updatedInterviewerState)
-            : (existingSession?.interviewerState ? deserializeState(existingSession.interviewerState) : null);
-
-          if (currentState) {
-            // Fetch verified facts for grounding check
-            const verifiedFacts = isEnabled("MEMORY_TIERS")
-              ? await prisma.interviewFact.findMany({
-                  where: { interviewId: id },
-                  orderBy: { createdAt: "desc" },
-                  take: 100,
-                  select: { factType: true, content: true, confidence: true },
-                })
-              : [];
-
-            const aiTurns = newTurns.filter((t: { role: string }) => t.role === "assistant" || t.role === "model");
-            for (const aiTurn of aiTurns) {
-              const content = typeof aiTurn.content === "string" ? aiTurn.content : "";
-              if (content.length > 0) {
-                const gateResult = checkOutputGate(content, {
-                  introDone: currentState.introDone,
-                  askedQuestionIds: currentState.askedQuestionIds,
-                  verifiedFacts: verifiedFacts.map((f: { factType: string; content: string; confidence: number }) => ({
-                    factType: f.factType,
-                    content: f.content,
-                    confidence: f.confidence,
-                  })),
-                });
-                if (!gateResult.passed) {
-                  gateViolations.push(...gateResult.violations);
-                  // Record each violation as a timeline event
-                  if (isEnabled("TIMELINE_OBSERVABILITY")) {
-                    for (const v of gateResult.violations) {
-                      recordEvent(id, "output_gate_violation", {
-                        violationType: v.type,
-                        detail: v.detail,
-                        severity: v.severity,
+          // Contradiction detection: compare new facts against existing for state machine
+          if (isEnabled("MEMORY_TIERS")) {
+            try {
+              const existingFacts = await prisma.interviewFact.findMany({
+                where: { interviewId: id, factType: { in: ["METRIC", "DATE", "COMPANY"] } },
+                orderBy: { createdAt: "asc" },
+                select: { turnId: true, factType: true, content: true, confidence: true, extractedBy: true },
+              });
+              const candidateTurns = newTurns
+                .filter((t: { role: string }) => t.role === "candidate" || t.role === "user")
+                .map((t: { role: string; content: string }, i: number) => ({
+                  turnId: `turn-${ledgerVersion - newTurns.length + i + 1}`,
+                  role: "candidate",
+                  content: typeof t.content === "string" ? t.content : "",
+                }));
+              const newFacts = candidateTurns.flatMap((turn: { turnId: string; role: string; content: string }) => extractFactsImmediate(turn));
+              for (const newFact of newFacts) {
+                for (const existing of existingFacts) {
+                  if (isContradiction(newFact, existing as any)) {
+                    state = transitionState(state, {
+                      type: "CONTRADICTION_DETECTED",
+                      contradiction: {
+                        turnIdA: existing.turnId,
+                        turnIdB: newFact.turnId,
+                        description: `${newFact.factType}: "${newFact.content}" contradicts "${existing.content}"`,
+                      },
+                    });
+                    if (isEnabled("TIMELINE_OBSERVABILITY")) {
+                      recordEvent(id, "contradiction_detected", {
+                        turnIdA: existing.turnId,
+                        turnIdB: newFact.turnId,
+                        factType: newFact.factType,
                       }, ledgerVersion).catch(() => {});
                     }
                   }
-                  // Record SLO for output gate failures
-                  await recordSLOEvent("transcript.anomaly.rate", false);
+                }
+              }
+            } catch (err) {
+              console.warn(`[${id}] Contradiction detection failed (non-fatal):`, err);
+            }
+          }
+
+          // Commitment detection: scan AI turns for promises to follow up
+          for (const aiTurn of aiTurns) {
+            const content = typeof aiTurn.content === "string" ? aiTurn.content : "";
+            if (content.length > 0) {
+              const commitmentPatterns = [
+                /I'll\s+(?:ask|come back|follow up|return to|dig into|explore)\s+(.{5,80}?)(?:\.|,|$)/gi,
+                /(?:we'll|let's)\s+(?:revisit|come back to|circle back to|return to)\s+(.{5,80}?)(?:\.|,|$)/gi,
+                /I want to\s+(?:ask|explore|understand)\s+(?:more about\s+)?(.{5,80}?)(?:\.|,|$)/gi,
+              ];
+              for (const pattern of commitmentPatterns) {
+                let match;
+                while ((match = pattern.exec(content)) !== null) {
+                  const description = match[1].trim();
+                  const commitmentId = `commit-${ledgerVersion}-${hashQuestion(description).slice(0, 8)}`;
+                  // Check for revisit: if this matches an existing commitment topic, mark as revisit
+                  const isRevisit = state.commitments.some(
+                    (c) => !c.fulfilled && description.toLowerCase().includes(c.description.toLowerCase().slice(0, 20))
+                  );
+                  if (isRevisit) {
+                    // Dispatch REVISIT_QUESTION to allow the duplicate through the gate
+                    const qHash = hashQuestion(content);
+                    state = transitionState(state, { type: "REVISIT_QUESTION", questionHash: qHash });
+                  } else {
+                    state = transitionState(state, {
+                      type: "COMMITMENT_MADE",
+                      commitment: {
+                        id: commitmentId,
+                        description,
+                        turnId: `turn-${ledgerVersion}`,
+                      },
+                    });
+                  }
+                }
+              }
+
+              // Check if the current question fulfills a prior commitment
+              for (const commitment of state.commitments) {
+                if (!commitment.fulfilled) {
+                  // Simple keyword overlap check
+                  const commitWords = commitment.description.toLowerCase().split(/\s+/);
+                  const contentWords = content.toLowerCase().split(/\s+/);
+                  const overlap = commitWords.filter((w) => w.length > 3 && contentWords.includes(w));
+                  if (overlap.length >= 2) {
+                    state = transitionState(state, {
+                      type: "COMMITMENT_FULFILLED",
+                      commitmentId: commitment.id,
+                    });
+                  }
                 }
               }
             }
           }
+
+          updatedInterviewerState = serializeState(state);
         } catch (err) {
-          console.warn(`[${id}] Output gate check failed (non-fatal):`, err);
+          console.warn(`[${id}] InterviewerState transition failed (non-fatal):`, err);
         }
       }
 
@@ -508,6 +636,7 @@ export async function POST(
       return Response.json({
         ok: true, checkpointDigest: incomingDigest, ledgerVersion,
         ...(gateViolations.length > 0 ? { gateViolations } : {}),
+        ...(correctedAiResponse ? { correctedAiResponse } : {}),
       });
     }
 
