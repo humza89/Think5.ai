@@ -20,6 +20,7 @@ import { classifyError } from "@/lib/error-classification";
 import { isMaintenanceMode, getMaintenanceMessage, maintenanceResponse } from "@/lib/maintenance-mode";
 import { recordEvent } from "@/lib/interview-timeline";
 import { isEnabled } from "@/lib/feature-flags";
+import { createInitialState, serializeState, deserializeState } from "@/lib/interviewer-state";
 import * as Sentry from "@sentry/nextjs";
 
 export async function POST(
@@ -155,6 +156,11 @@ export async function POST(
         select: { knowledgeGraph: true },
       });
 
+      // Deserialize InterviewerState for reconnect prompt injection
+      const reconnectInterviewerState = serverState?.interviewerState && isEnabled("STATEFUL_INTERVIEWER")
+        ? (() => { try { return deserializeState(serverState.interviewerState!); } catch { return null; } })()
+        : null;
+
       fullPrompt = buildReconnectSystemPrompt(fullPrompt, {
         questionCount: reconnectContext.questionCount || serverState?.questionCount || 0,
         moduleScores: serverState?.moduleScores || reconnectContext.moduleScores || [],
@@ -167,6 +173,15 @@ export async function POST(
         candidateProfile: serverState?.candidateProfile,
         // LLM-powered semantic memory from knowledge graph pipeline
         knowledgeGraph: interviewWithGraph?.knowledgeGraph as Record<string, unknown> | null,
+        // Deterministic interviewer state for continuity
+        interviewerState: reconnectInterviewerState ? {
+          currentStep: reconnectInterviewerState.currentStep,
+          introDone: reconnectInterviewerState.introDone,
+          followupQueue: reconnectInterviewerState.followupQueue,
+          contradictions: reconnectInterviewerState.contradictionMap,
+          pendingClarifications: reconnectInterviewerState.pendingClarifications,
+          topicDepthCounters: reconnectInterviewerState.topicDepthCounters,
+        } : undefined,
       });
     }
 
@@ -228,12 +243,14 @@ export async function POST(
         });
       }
     } else {
-      // FIRST CONNECT: Initialize fresh state
+      // FIRST CONNECT: Initialize fresh state with deterministic interviewer state
+      const initialInterviewerState = isEnabled("STATEFUL_INTERVIEWER") ? createInitialState() : null;
       await saveSessionState(id, {
         interviewId: id, moduleScores: [], questionCount: 0,
         reconnectToken, lastActiveAt: new Date().toISOString(),
         checkpointDigest: "", lastTurnIndex: -1, ledgerVersion: -1,
-        stateHash: "", reconnectCount: 0, lockOwnerToken,
+        stateHash: initialInterviewerState?.stateHash || "", reconnectCount: 0, lockOwnerToken,
+        ...(initialInterviewerState ? { interviewerState: serializeState(initialInterviewerState) } : {}),
       });
     }
 
@@ -265,6 +282,7 @@ export async function POST(
           flaggedFollowUps: serverState.flaggedFollowUps,
           currentModule: serverState.currentModule,
           candidateProfile: serverState.candidateProfile,
+          ...(serverState.interviewerState ? { interviewerState: serverState.interviewerState } : {}),
         };
       }
     }

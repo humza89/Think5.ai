@@ -130,7 +130,7 @@ export function verifyGrounding(
  * Check if a claim is supported by a fact using fuzzy matching.
  * Combines Jaccard word overlap with number normalization.
  */
-function isClaimSupported(claim: string, factContent: string): boolean {
+export function isClaimSupported(claim: string, factContent: string): boolean {
   const claimLower = claim.toLowerCase();
   const factLower = factContent.toLowerCase();
 

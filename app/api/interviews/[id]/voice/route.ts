@@ -36,6 +36,8 @@ import { recordEvent } from "@/lib/interview-timeline";
 import { isEnabled } from "@/lib/feature-flags";
 import { extractFactsImmediate } from "@/lib/fact-extractor";
 import { verifyGrounding } from "@/lib/grounding-gate";
+import { transitionState, deserializeState, serializeState, hashQuestion, createInitialState } from "@/lib/interviewer-state";
+import { checkOutputGate } from "@/lib/output-gate";
 import * as Sentry from "@sentry/nextjs";
 
 // C7: Per-interview checkpoint rate limiter (max 1 per 2 seconds)
@@ -328,6 +330,101 @@ export async function POST(
         }
       }
 
+      // Stateful interviewer: transition state machine on each checkpoint
+      let updatedInterviewerState: string | undefined;
+      if (isEnabled("STATEFUL_INTERVIEWER") && newTurns.length > 0) {
+        try {
+          let state = existingSession?.interviewerState
+            ? deserializeState(existingSession.interviewerState)
+            : createInitialState();
+
+          // Track if this is the first checkpoint with content (intro completed)
+          if (!state.introDone && newTurns.length > 0) {
+            state = transitionState(state, { type: "INTRO_COMPLETED" });
+          }
+
+          // Apply QUESTION_ASKED for each AI turn (interviewer question dedup)
+          const aiTurns = newTurns.filter((t: { role: string; content: string }) =>
+            (t.role === "assistant" || t.role === "model") && t.content?.length > 20
+          );
+          for (const aiTurn of aiTurns) {
+            const qHash = hashQuestion(typeof aiTurn.content === "string" ? aiTurn.content : "");
+            state = transitionState(state, { type: "QUESTION_ASKED", questionHash: qHash });
+          }
+
+          // Apply FOLLOW_UP_FLAGGED from client-reported flaggedFollowUps
+          if (Array.isArray(flaggedFollowUps)) {
+            for (const fu of flaggedFollowUps) {
+              if (fu?.topic && !state.followupQueue.some((q: { topic: string }) => q.topic === fu.topic)) {
+                state = transitionState(state, {
+                  type: "FOLLOW_UP_FLAGGED",
+                  item: { topic: fu.topic, reason: fu.reason || "", priority: (fu.depth === "deep" ? "high" : "medium") as "high" | "medium" | "low" },
+                });
+              }
+            }
+          }
+
+          updatedInterviewerState = serializeState(state);
+        } catch (err) {
+          console.warn(`[${id}] InterviewerState transition failed (non-fatal):`, err);
+        }
+      }
+
+      // Output gate: server-side pre-send policy checks on AI responses
+      let gateViolations: Array<{ type: string; detail: string; severity: string }> = [];
+      if (isEnabled("STATEFUL_INTERVIEWER") && newTurns.length > 0) {
+        try {
+          const currentState = updatedInterviewerState
+            ? deserializeState(updatedInterviewerState)
+            : (existingSession?.interviewerState ? deserializeState(existingSession.interviewerState) : null);
+
+          if (currentState) {
+            // Fetch verified facts for grounding check
+            const verifiedFacts = isEnabled("MEMORY_TIERS")
+              ? await prisma.interviewFact.findMany({
+                  where: { interviewId: id },
+                  orderBy: { createdAt: "desc" },
+                  take: 100,
+                  select: { factType: true, content: true, confidence: true },
+                })
+              : [];
+
+            const aiTurns = newTurns.filter((t: { role: string }) => t.role === "assistant" || t.role === "model");
+            for (const aiTurn of aiTurns) {
+              const content = typeof aiTurn.content === "string" ? aiTurn.content : "";
+              if (content.length > 0) {
+                const gateResult = checkOutputGate(content, {
+                  introDone: currentState.introDone,
+                  askedQuestionIds: currentState.askedQuestionIds,
+                  verifiedFacts: verifiedFacts.map((f: { factType: string; content: string; confidence: number }) => ({
+                    factType: f.factType,
+                    content: f.content,
+                    confidence: f.confidence,
+                  })),
+                });
+                if (!gateResult.passed) {
+                  gateViolations.push(...gateResult.violations);
+                  // Record each violation as a timeline event
+                  if (isEnabled("TIMELINE_OBSERVABILITY")) {
+                    for (const v of gateResult.violations) {
+                      recordEvent(id, "output_gate_violation", {
+                        violationType: v.type,
+                        detail: v.detail,
+                        severity: v.severity,
+                      }, ledgerVersion).catch(() => {});
+                    }
+                  }
+                  // Record SLO for output gate failures
+                  await recordSLOEvent("transcript.anomaly.rate", false);
+                }
+              }
+            }
+          }
+        } catch (err) {
+          console.warn(`[${id}] Output gate check failed (non-fatal):`, err);
+        }
+      }
+
       // Denormalized cache on Interview record (backward compat — ledger is authoritative)
       await prisma.interview.update({
         where: { id },
@@ -375,6 +472,11 @@ export async function POST(
           }
         }
 
+        // Compute authoritative stateHash from InterviewerState if available
+        const authoritativeStateHash = updatedInterviewerState
+          ? (() => { try { return deserializeState(updatedInterviewerState!).stateHash; } catch { return existingSession.stateHash || ""; } })()
+          : existingSession.stateHash || "";
+
         await saveSessionState(id, {
           ...existingSession,
           moduleScores: validatedScores,
@@ -383,7 +485,8 @@ export async function POST(
           checkpointDigest: incomingDigest,
           lastTurnIndex: ledgerVersion,
           ledgerVersion,
-          stateHash: existingSession.stateHash || "",
+          stateHash: authoritativeStateHash,
+          ...(updatedInterviewerState ? { interviewerState: updatedInterviewerState } : {}),
           ...validatedMemory,
         });
       }
@@ -402,7 +505,10 @@ export async function POST(
           });
       }
 
-      return Response.json({ ok: true, checkpointDigest: incomingDigest, ledgerVersion });
+      return Response.json({
+        ok: true, checkpointDigest: incomingDigest, ledgerVersion,
+        ...(gateViolations.length > 0 ? { gateViolations } : {}),
+      });
     }
 
     // ── End Interview: final save + report generation ──

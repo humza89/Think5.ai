@@ -24,6 +24,7 @@ import { getFullTranscript, getLedgerSnapshot, getTurnsSince } from "@/lib/conve
 import { isMaintenanceMode, getMaintenanceMessage, maintenanceResponse } from "@/lib/maintenance-mode";
 import { recordEvent } from "@/lib/interview-timeline";
 import { isEnabled } from "@/lib/feature-flags";
+import { deserializeState, computeStateHash } from "@/lib/interviewer-state";
 
 export async function POST(
   request: NextRequest,
@@ -118,7 +119,15 @@ export async function POST(
     // 6. Deterministic reconciliation against canonical ledger
     const ledgerSnapshot = await getLedgerSnapshot(id);
     const serverLedgerVersion = ledgerSnapshot.latestTurnIndex;
-    const serverStateHash = session.stateHash || "";
+
+    // Compute authoritative stateHash from InterviewerState if available
+    let serverStateHash = session.stateHash || "";
+    if (isEnabled("STATEFUL_INTERVIEWER") && session.interviewerState) {
+      try {
+        const iState = deserializeState(session.interviewerState);
+        serverStateHash = computeStateHash(iState);
+      } catch { /* fall back to stored stateHash */ }
+    }
 
     // Resolve client ledger version (support both new and legacy fields)
     const clientVersion = typeof clientLedgerVersion === "number"
@@ -181,6 +190,7 @@ export async function POST(
         flaggedFollowUps: session.flaggedFollowUps,
         currentModule: session.currentModule,
         candidateProfile: session.candidateProfile,
+        ...(session.interviewerState ? { interviewerState: session.interviewerState } : {}),
       },
     };
 

@@ -534,6 +534,15 @@ export interface ReconnectContext {
   };
   // LLM-powered semantic memory (from inngest/functions/update-aria-memory.ts)
   knowledgeGraph?: KnowledgeGraph | null;
+  // Deterministic interviewer state for continuity
+  interviewerState?: {
+    currentStep: string;
+    introDone: boolean;
+    followupQueue: Array<{ topic: string; reason: string; priority: string }>;
+    contradictions: Array<{ description: string }>;
+    pendingClarifications: Array<{ question: string }>;
+    topicDepthCounters: Record<string, number>;
+  };
 }
 
 /**
@@ -547,7 +556,8 @@ export function buildReconnectSystemPrompt(
   context: ReconnectContext
 ): string {
   const { questionCount, moduleScores, askedQuestions, currentModule,
-    currentDifficultyLevel, flaggedFollowUps, candidateProfile, knowledgeGraph } = context;
+    currentDifficultyLevel, flaggedFollowUps, candidateProfile, knowledgeGraph,
+    interviewerState } = context;
   const safeName = sanitizeForPrompt(context.candidateName, 100);
 
   const scoresSummary = moduleScores.length > 0
@@ -558,7 +568,7 @@ export function buildReconnectSystemPrompt(
     : "No modules scored yet.";
 
   const questionsList = askedQuestions.length > 0
-    ? askedQuestions.map((q, i) => `${i + 1}. ${q.slice(0, 150)}`).join("\n")
+    ? askedQuestions.map((q, i) => `${i + 1}. ${q.slice(0, 500)}`).join("\n")
     : "No questions tracked yet.";
 
   // Build difficulty section
@@ -603,6 +613,40 @@ export function buildReconnectSystemPrompt(
     }
   }
 
+  // Build interviewer state section (deterministic state machine)
+  let interviewerStateSection = "";
+  if (interviewerState) {
+    const followups = interviewerState.followupQueue.length > 0
+      ? interviewerState.followupQueue.map(f => `- ${sanitizeForPrompt(f.topic)}: ${sanitizeForPrompt(f.reason)} [${f.priority}]`).join("\n")
+      : "None pending.";
+    const contradictions = interviewerState.contradictions.length > 0
+      ? interviewerState.contradictions.map(c => `- ${sanitizeForPrompt(c.description)}`).join("\n")
+      : "None detected.";
+    const clarifications = interviewerState.pendingClarifications.length > 0
+      ? interviewerState.pendingClarifications.map(p => `- ${sanitizeForPrompt(p.question)}`).join("\n")
+      : "None pending.";
+    const depthCounters = Object.entries(interviewerState.topicDepthCounters)
+      .map(([topic, count]) => `- ${sanitizeForPrompt(topic)}: ${count} questions`)
+      .join("\n") || "No topic depth tracked yet.";
+
+    interviewerStateSection = `
+## INTERVIEWER STATE (AUTHORITATIVE — DO NOT DEVIATE)
+Current interview step: ${sanitizeForPrompt(interviewerState.currentStep)}
+Intro completed: ${interviewerState.introDone}
+
+Pending follow-ups (ask these next):
+${followups}
+
+Detected contradictions to probe:
+${contradictions}
+
+Pending clarifications needed:
+${clarifications}
+
+Topic depth counters:
+${depthCounters}`;
+  }
+
   const reconnectDirective = `
 
 ## ⚠️ RECONNECT DIRECTIVE — MANDATORY OVERRIDE
@@ -629,6 +673,7 @@ ${difficultySection}
 ${scoresSummary}
 ${profileSection}
 ${knowledgeGraphSection}
+${interviewerStateSection}
 ${followUpsSection}
 
 ## QUESTIONS ALREADY ASKED (DO NOT REPEAT ANY OF THESE)

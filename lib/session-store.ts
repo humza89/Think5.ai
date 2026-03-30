@@ -115,6 +115,7 @@ export interface SessionState {
   summarizedTurnCount?: number;
   lockOwnerToken?: string;
   askedQuestions?: string[];
+  interviewerState?: string; // Serialized InterviewerState JSON for deterministic continuity
 }
 
 function sessionKey(interviewId: string): string {

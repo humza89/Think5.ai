@@ -152,6 +152,7 @@ export function useVoiceInterview(
   const flaggedFollowUpsRef = useRef<Array<{ topic: string; reason: string; depth?: string }>>([]);
   const currentModuleRef = useRef<string>("");
   const candidateProfileRef = useRef<CandidateProfile | null>(null);
+  const interviewerStateRef = useRef<string | null>(null); // Serialized InterviewerState for deterministic continuity
   const ledgerVersionRef = useRef<number>(-1); // R6: Track server ledger version for Phase 2 protocol
   const stateHashRef = useRef<string>(""); // R6: Track server state hash for Phase 2 protocol
   const interviewStartTimeRef = useRef<number>(0); // for adaptive checkpoint intervals
@@ -854,6 +855,7 @@ export function useVoiceInterview(
         if (enterpriseMemory.currentModule) currentModuleRef.current = enterpriseMemory.currentModule;
         if (enterpriseMemory.candidateProfile) candidateProfileRef.current = enterpriseMemory.candidateProfile;
         if (enterpriseMemory.moduleScores) moduleScoresRef.current = enterpriseMemory.moduleScores;
+        if (enterpriseMemory.interviewerState) interviewerStateRef.current = enterpriseMemory.interviewerState;
         console.log(`[Voice] Restored enterprise memory from server: difficulty=${enterpriseMemory.currentDifficultyLevel}, module=${enterpriseMemory.currentModule}, followUps=${enterpriseMemory.flaggedFollowUps?.length || 0}, moduleScores=${enterpriseMemory.moduleScores?.length || 0}`);
       }
 
@@ -1128,6 +1130,7 @@ export function useVoiceInterview(
                     if (em.candidateProfile) candidateProfileRef.current = em.candidateProfile;
                     if (em.currentDifficultyLevel) difficultyLevelRef.current = em.currentDifficultyLevel;
                     if (em.currentModule) currentModuleRef.current = em.currentModule;
+                    if (em.interviewerState) interviewerStateRef.current = em.interviewerState;
                   }
                   setReconnectPhase("re-synced");
                 } else {
@@ -1180,7 +1183,7 @@ export function useVoiceInterview(
         // R5: Send FULL transcript to Gemini without lossy TOKEN_CHAR_BUDGET trimming.
         // Canonical ledger preserves all turns — no summarization needed.
         const hasKnowledgeGraph = knowledgeGraphRef.current && Object.keys(knowledgeGraphRef.current).length > 0;
-        const MAX_ENTRY_CHARS = 4000; // Individual entry cap
+        const MAX_ENTRY_CHARS = 12000; // Increased from 4000 — canonical ledger is source of truth
 
         const recentEntries = existingTranscript
           .filter((entry) => entry.content && typeof entry.content === "string" && entry.content.trim().length > 0);

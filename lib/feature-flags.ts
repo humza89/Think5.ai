@@ -13,7 +13,7 @@ export const FeatureFlags = {
   DETERMINISTIC_RESUME: envBool("FF_DETERMINISTIC_RESUME", true),
 
   /** Phase 3: Stateful interviewer with persisted state machine */
-  STATEFUL_INTERVIEWER: envBool("FF_STATEFUL_INTERVIEWER", false),
+  STATEFUL_INTERVIEWER: envBool("FF_STATEFUL_INTERVIEWER", true),
 
   /** Phase 4: Tier 1/2 memory extraction and grounding */
   MEMORY_TIERS: envBool("FF_MEMORY_TIERS", false),

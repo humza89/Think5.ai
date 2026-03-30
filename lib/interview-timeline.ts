@@ -26,6 +26,7 @@ export type EventType =
   | "state_transition"
   | "memory_update"
   | "maintenance_mode"
+  | "output_gate_violation"
   | "error"
   | "anomaly";
 
