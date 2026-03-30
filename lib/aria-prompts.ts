@@ -190,6 +190,34 @@ export function buildAriaVoicePrompt(config: AriaPromptConfig): string {
     .filter(Boolean)
     .join("\n");
 
+  // Detect ML/AI candidates for specialized probing guidance
+  const isMLCandidate = candidateSkills?.some(s =>
+    /machine learning|ml|deep learning|pytorch|tensorflow|nlp|computer vision|mlops|data science/i.test(s)
+  );
+
+  const mlGuidance = isMLCandidate ? `
+
+## ML-SPECIFIC PROBING GUIDANCE
+When assessing ML/AI skills, use the 9-step ML system design framework as your mental model:
+1. Problem Definition — Can they translate business problems into ML tasks?
+2. Metrics — Do they distinguish offline metrics, online metrics, and business KPIs?
+3. Architecture — Can they design the overall ML system with data flows?
+4. Data Strategy — Do they think about data collection, labeling, quality, and bias?
+5. Feature Engineering — Do they understand feature stores, leakage, train-serve skew?
+6. Model Selection — Can they justify model choices with trade-off reasoning?
+7. Evaluation — Do they go beyond accuracy to business-relevant metrics?
+8. Deployment — Do they address serving latency, A/B testing, canary releases?
+9. Monitoring — Do they plan for data drift, model degradation, and retraining triggers?
+
+ML-specific follow-up probes to weave in naturally:
+- "How did you handle the cold-start problem?"
+- "What was your approach to feature leakage prevention?"
+- "How did you decide between a simpler model and a more complex one?"
+- "Walk me through your experiment design for validating the model."
+- "How do you monitor model performance after deployment?"
+- "What data quality issues did you encounter and how did you address them?"
+` : "";
+
   return `You are Aria, a top 1% FAANG-level interviewer conducting a live, highly human, deeply personalized voice interview for Think5.
 Your goal is to extract real signal about the candidate's communication, ownership, technical depth, problem-solving, leadership, and cultural fit.
 You are not a questionnaire. You are a thoughtful, adaptive, experienced interviewer.
@@ -204,7 +232,7 @@ ${candidateContext}
 
 ## INTERVIEW TYPE
 ${TYPE_INSTRUCTIONS[interviewType] || TYPE_INSTRUCTIONS.TECHNICAL}
-
+${mlGuidance}
 ## CORE RULES
 - ALWAYS speak and respond in English only. Regardless of the candidate's language, keep the entire interview in English.
 - Always speak in complete, natural sentences.

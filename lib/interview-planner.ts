@@ -309,6 +309,7 @@ function generateDefaultPlan(
 
   // Pick default modules based on mode and job title
   const isTechnical = /engineer|developer|architect|sre|devops/i.test(job.title);
+  const isMLRole = /machine learning|ml engineer|data scientist|applied scientist|research scientist|mlops|ai engineer/i.test(job.title);
 
   let defaultModules: string[];
   switch (mode) {
@@ -316,7 +317,9 @@ function generateDefaultPlan(
       defaultModules = ["Communication", "Leadership & Influence", "Teamwork & Collaboration"];
       break;
     case "TECHNICAL_DEEP_DIVE":
-      defaultModules = ["System Design", "Backend Engineering", "Data Structures & Algorithms"];
+      defaultModules = isMLRole
+        ? ["ML System Design", "ML Fundamentals", "Model Evaluation & Experimentation"]
+        : ["System Design", "Backend Engineering", "Data Structures & Algorithms"];
       break;
     case "SCREENING":
       defaultModules = isTechnical
@@ -324,9 +327,11 @@ function generateDefaultPlan(
         : ["Communication", "Problem Solving & Decision Making"];
       break;
     default:
-      defaultModules = isTechnical
-        ? ["System Design", "Backend Engineering", "Problem Solving & Decision Making"]
-        : ["Communication", "Leadership & Influence", "Problem Solving & Decision Making"];
+      defaultModules = isMLRole
+        ? ["ML System Design", "MLOps & Production ML", "Problem Solving & Decision Making"]
+        : isTechnical
+          ? ["System Design", "Backend Engineering", "Problem Solving & Decision Making"]
+          : ["Communication", "Leadership & Influence", "Problem Solving & Decision Making"];
   }
 
   const sections: InterviewPlanSection[] = defaultModules.map((name) => {
