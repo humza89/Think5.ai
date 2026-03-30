@@ -65,7 +65,7 @@ async function getRedis() {
  * Throws in production if Redis is not connected. No-op in dev/test.
  */
 export async function assertDurableStore(): Promise<void> {
-  if (!isProduction) return;
+  if (!isProduction()) return;
   const redis = await getRedis();
   if (!redis) {
     throw new Error("Redis unavailable in production — cannot proceed without durable session store");
@@ -121,6 +121,13 @@ export interface SessionState {
   interviewerState?: string; // Serialized InterviewerState JSON for deterministic continuity
   violationCount?: number;
   memoryPacketVersion?: number;
+  reconnectHistory?: Array<{
+    timestamp: string;
+    ledgerVersion: number;
+    stateHash: string;
+    outcome: "synced" | "delta" | "full" | "failed";
+    recoveryMs: number;
+  }>;
 }
 
 function sessionKey(interviewId: string): string {

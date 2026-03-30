@@ -38,6 +38,7 @@ vi.mock("@/lib/session-store", () => ({
   acquireSessionLock: vi.fn().mockResolvedValue({ acquired: true, ownerToken: "lock-owner-1" }),
   refreshSessionTTL: vi.fn().mockResolvedValue(undefined),
   recordHeartbeat: vi.fn().mockResolvedValue(undefined),
+  assertDurableStore: vi.fn().mockResolvedValue(undefined),
 }));
 
 // Mock interviewer state

@@ -15,7 +15,7 @@ import { getInterviewTools } from "@/lib/gemini-live";
 import { checkCandidateEligibility } from "@/lib/interview-eligibility";
 import { logInterviewActivity, getClientIp } from "@/lib/interview-audit";
 import { isValidTransition } from "@/lib/interview-state-machine";
-import { acquireSessionLock, swapSessionLock, releaseSessionLock, saveSessionState, getSessionState, generateReconnectToken } from "@/lib/session-store";
+import { acquireSessionLock, swapSessionLock, releaseSessionLock, saveSessionState, getSessionState, generateReconnectToken, assertDurableStore } from "@/lib/session-store";
 import { recordSLOEvent } from "@/lib/slo-monitor";
 import { classifyError } from "@/lib/error-classification";
 import { isMaintenanceMode, getMaintenanceMessage, maintenanceResponse } from "@/lib/maintenance-mode";
@@ -40,6 +40,9 @@ export async function POST(
 
   let lockOwnerToken = "";
   try {
+    // Fail-fast: ensure durable store is available in production
+    await assertDurableStore();
+
     const body = await request.json();
     const { accessToken, reconnect, reconnectContext } = body;
 
@@ -343,6 +346,7 @@ export async function POST(
       candidateName: interview.candidate.fullName,
       model: "models/gemini-2.5-flash-native-audio-latest",
       reconnectToken,
+      lockOwnerToken,
       ...(enterpriseMemory ? { enterpriseMemory } : {}),
       // Degraded-network configuration for adaptive checkpoint intervals
       degradedNetworkConfig: {

@@ -85,9 +85,9 @@ export const SLO_DEFINITIONS: SLODefinition[] = [
   },
   {
     name: "session.reconnect.context_loss.rate",
-    target: 0.995,
+    target: 0.999,
     windowHours: 24,
-    description: "Post-reconnect context preservation rate (≤0.5% loss)",
+    description: "Post-reconnect context preservation rate (≤0.1% loss)",
     unit: "rate",
   },
   {

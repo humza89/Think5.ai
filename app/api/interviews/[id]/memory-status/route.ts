@@ -66,6 +66,7 @@ export async function GET(
       },
       violationHistory: { totalViolations: session.violationCount || 0 },
       recoveryCycleCount: session.reconnectCount || 0,
+      reconnectHistory: session.reconnectHistory || [],
       redisPersistenceStatus: "confirmed",
     });
   } catch (err) {

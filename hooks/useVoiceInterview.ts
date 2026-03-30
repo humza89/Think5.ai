@@ -150,6 +150,7 @@ export function useVoiceInterview(
   const micRevokedRef = useRef(false); // F6: Track mic revocation
   const askedQuestionsRef = useRef<string[]>([]); // Question dedup: track AI questions to prevent repeats
   const reconnectTokenRef = useRef<string>(""); // HMAC-signed reconnect token from server
+  const lockOwnerTokenRef = useRef<string>(""); // Lock owner token for session recovery authorization
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null); // H1: Cancel on unmount to prevent stale closures
   const lastCheckpointDigestRef = useRef<string | null>(null); // Fix 2: Track last checkpoint digest for reconciliation
   const introDoneRef = useRef(false); // R3: Server-authoritative intro suppression (replaces regex introFilterActiveRef)
@@ -739,6 +740,7 @@ export function useVoiceInterview(
 
     // M7/R5: Clear reconnect state so new interview doesn't send stale tokens
     reconnectTokenRef.current = "";
+    lockOwnerTokenRef.current = "";
     lastCheckpointDigestRef.current = null;
 
     // Close WebSocket (intentional)
@@ -910,9 +912,10 @@ export function useVoiceInterview(
       }
 
       const initData = await initRes.json();
-      const { relayUrl, sessionToken, systemPrompt, tools, voiceName, candidateName, model, reconnectToken: initReconnectToken, enterpriseMemory } = initData;
+      const { relayUrl, sessionToken, systemPrompt, tools, voiceName, candidateName, model, reconnectToken: initReconnectToken, lockOwnerToken: initLockOwnerToken, enterpriseMemory } = initData;
       candidateNameRef.current = candidateName;
       if (initReconnectToken) reconnectTokenRef.current = initReconnectToken;
+      if (initLockOwnerToken) lockOwnerTokenRef.current = initLockOwnerToken;
 
       // Restore enterprise memory refs from server state (server wins over stale client)
       if (enterpriseMemory) {
@@ -1160,6 +1163,7 @@ export function useVoiceInterview(
                   reconnectToken: reconnectTokenRef.current,
                   clientLedgerVersion: ledgerVersionRef.current,
                   clientStateHash: stateHashRef.current,
+                  lockOwnerToken: lockOwnerTokenRef.current,
                   clientCheckpointDigest: lastCheckpointDigestRef.current,
                   clientTurnIndex: transcriptRef.current.length - 1,
                 }),
@@ -1225,7 +1229,7 @@ export function useVoiceInterview(
                 reconnectStateRef.current = "FAILED";
                 setReconnectPhase(stateToPhase(reconnectStateRef.current));
                 setConnectionQuality("poor");
-                onErrorRef.current?.("Unable to verify interview state. Please refresh the page to continue.");
+                onErrorRef.current?.(`Unable to verify interview state. Please use this link to resume: /interview/${interviewId}?resume=true`);
                 setIsReconnecting(false);
                 return;
               }
@@ -1632,6 +1636,7 @@ export function useVoiceInterview(
             reconnectToken: reconnectTokenRef.current,
             clientLedgerVersion: ledgerVersionRef.current,
             clientStateHash: stateHashRef.current,
+            lockOwnerToken: lockOwnerTokenRef.current,
             clientCheckpointDigest: lastCheckpointDigestRef.current,
             clientTurnIndex: transcriptRef.current.length - 1,
           }),
@@ -1679,7 +1684,7 @@ export function useVoiceInterview(
           setReconnectPhase(stateToPhase(reconnectStateRef.current));
           setIsReconnecting(false);
           setFallbackToText(true);
-          onError?.("Unable to verify interview state. Please refresh the page.");
+          onError?.(`Unable to verify interview state. Please use this link to resume: /interview/${interviewId}?resume=true`);
           return;
         }
       } else {
@@ -1729,6 +1734,7 @@ export function useVoiceInterview(
             reconnectToken: reconnectTokenRef.current,
             clientLedgerVersion: ledgerVersionRef.current,
             clientStateHash: stateHashRef.current,
+            lockOwnerToken: lockOwnerTokenRef.current,
             clientCheckpointDigest: lastCheckpointDigestRef.current,
             clientTurnIndex: transcriptRef.current.length - 1,
           }),
@@ -1745,7 +1751,7 @@ export function useVoiceInterview(
           setReconnectPhase(stateToPhase(reconnectStateRef.current));
           setIsReconnecting(false);
           setFallbackToText(true);
-          onError?.("Unable to verify interview state for retry. Please refresh the page.");
+          onError?.(`Unable to verify interview state. Please use this link to resume: /interview/${interviewId}?resume=true`);
           return;
         }
       } else if (isReconnect) {

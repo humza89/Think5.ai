@@ -148,20 +148,31 @@ export async function POST(
     // Determine reconciliation strategy
     const versionsMatch = clientVersion === serverLedgerVersion;
     const stateHashMatch = clientStateHash && clientStateHash === serverStateHash;
+    const reconciliationType: "synced" | "delta" | "full" = versionsMatch && (stateHashMatch || !clientStateHash) ? "synced"
+      : (!versionsMatch && clientVersion >= 0 && clientVersion < serverLedgerVersion) ? "delta"
+      : "full";
+    const recoveryMs = Date.now() - recoveryStart;
 
     // 7. Rotate reconnect token (one-time use: old token is now invalid)
     const newReconnectToken = generateReconnectToken(id, serverLedgerVersion, serverStateHash);
+    const reconnectHistory = [...(session.reconnectHistory || []), {
+      timestamp: new Date().toISOString(),
+      ledgerVersion: serverLedgerVersion,
+      stateHash: serverStateHash,
+      outcome: reconciliationType,
+      recoveryMs,
+    }].slice(-20); // Cap at 20 entries
     const updatedSession = {
       ...session,
       reconnectToken: newReconnectToken,
       reconnectCount: (session.reconnectCount || 0) + 1,
       lastActiveAt: new Date().toISOString(),
       ledgerVersion: serverLedgerVersion,
+      reconnectHistory,
     };
     await saveSessionState(id, updatedSession);
 
     // 8. Record SLO events
-    const recoveryMs = Date.now() - recoveryStart;
     await Promise.all([
       recordSLOEvent("session.reconnect.success_rate", true),
       recordSLOEvent("session.reconnect.latency_p95", recoveryMs <= 15000, recoveryMs),
@@ -170,9 +181,6 @@ export async function POST(
 
     // Timeline observability: record reconnect event with reconciliation strategy
     if (isEnabled("TIMELINE_OBSERVABILITY")) {
-      const reconciliationType = versionsMatch && (stateHashMatch || !clientStateHash) ? "synced"
-        : (!versionsMatch && clientVersion >= 0 && clientVersion < serverLedgerVersion) ? "delta"
-        : "full";
       // Link reconnect event to prior checkpoint for causal tracing
       const priorCheckpointCausalId = session.ledgerVersion !== undefined
         ? `checkpoint-${session.ledgerVersion}` : undefined;

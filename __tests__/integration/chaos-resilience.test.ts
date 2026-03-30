@@ -287,4 +287,78 @@ describe("Chaos & Resilience Tests", () => {
       expect(hash1).toBe(hash2);
     });
   });
+
+  describe("long-session soak (60+ min simulated)", () => {
+    it("state integrity preserved across 60-minute simulated session with reconnects", () => {
+      let state = createInitialState();
+      state = transitionState(state, { type: "INTRO_COMPLETED" });
+      state = transitionState(state, { type: "MOVE_TO_STEP", step: "technical" });
+
+      // Simulate 60 minutes: ~2 turns/min = 120 turns, with 3 reconnect cycles
+      const reconnectAtMinutes = [15, 35, 50];
+      let reconnectIdx = 0;
+      const hashes = new Set<string>();
+
+      for (let minute = 0; minute < 60; minute++) {
+        // 2 question-answer cycles per minute
+        for (let turn = 0; turn < 2; turn++) {
+          const qIdx = minute * 2 + turn;
+          state = transitionState(state, {
+            type: "QUESTION_ASKED",
+            questionHash: `soak_q_${qIdx}`,
+          });
+
+          // Every 5th question triggers a follow-up
+          if (qIdx % 5 === 0) {
+            state = transitionState(state, {
+              type: "FOLLOW_UP_FLAGGED",
+              item: {
+                topic: `followup_topic_${qIdx}`,
+                reason: "candidate mentioned interesting point",
+                priority: "medium",
+              },
+            });
+          }
+
+          // Every 20th question changes topic depth
+          if (qIdx % 20 === 0 && qIdx > 0) {
+            state = transitionState(state, {
+              type: "TOPIC_DEPTH_INCREMENT",
+              topic: `topic_${Math.floor(qIdx / 20)}`,
+            });
+          }
+        }
+
+        // Simulate reconnect at scheduled minutes
+        if (reconnectIdx < reconnectAtMinutes.length && minute === reconnectAtMinutes[reconnectIdx]) {
+          // Serialize + deserialize simulates checkpoint → recovery
+          const serialized = serializeState(state);
+          const recovered = deserializeState(serialized);
+          const recoveredHash = computeStateHash(recovered);
+
+          // State must survive serialization round-trip
+          expect(recoveredHash).toBe(state.stateHash);
+          expect(recovered.introDone).toBe(true);
+          expect(recovered.askedQuestionIds.length).toBe(state.askedQuestionIds.length);
+
+          // Continue from recovered state
+          state = recovered;
+          reconnectIdx++;
+        }
+
+        hashes.add(state.stateHash);
+      }
+
+      // 120 questions asked over 60 minutes
+      expect(state.askedQuestionIds).toHaveLength(120);
+      // introDone remains true throughout
+      expect(state.introDone).toBe(true);
+      // State hash changed many times across question + depth + followup events
+      expect(hashes.size).toBeGreaterThan(50);
+      // Follow-ups were tracked
+      expect(state.followupQueue.length).toBeGreaterThan(0);
+      // Hash is still valid and deterministic
+      expect(computeStateHash(state)).toBe(state.stateHash);
+    });
+  });
 });
