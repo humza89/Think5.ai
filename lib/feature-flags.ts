@@ -29,6 +29,18 @@ export const FeatureFlags = {
 
   /** Phase 8: Output gate blocking mode (block + sanitize violations) */
   OUTPUT_GATE_BLOCKING: envBool("FF_OUTPUT_GATE_BLOCKING", true),
+
+  /** Phase 9: Turn-commit protocol (per-turn server verification) */
+  TURN_COMMIT_PROTOCOL: envBool("FF_TURN_COMMIT_PROTOCOL", true),
+
+  /** Phase 10: Memory truth service (canonical turn graph + facts) */
+  MEMORY_TRUTH_SERVICE: envBool("FF_MEMORY_TRUTH_SERVICE", true),
+
+  /** Phase 11: Semantic contradiction detection (multi-dimensional) */
+  SEMANTIC_CONTRADICTION_DETECTOR: envBool("FF_SEMANTIC_CONTRADICTION_DETECTOR", true),
+
+  /** Phase 12: Recruiter memory integrity scorecard */
+  MEMORY_INTEGRITY_SCORECARD: envBool("FF_MEMORY_INTEGRITY_SCORECARD", true),
 } as const;
 
 /**

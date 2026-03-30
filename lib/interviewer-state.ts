@@ -47,6 +47,8 @@ export interface Commitment {
   fulfilled: boolean;
 }
 
+export type PersonaMode = "interviewer" | "clarifier" | "closer";
+
 export interface InterviewerState {
   introDone: boolean;
   currentTopic: string;
@@ -58,6 +60,10 @@ export interface InterviewerState {
   topicDepthCounters: Record<string, number>;
   commitments: Commitment[];
   revisitAllowList: string[];
+  /** Once true (after first AI turn), persona cannot re-introduce */
+  personaLocked: boolean;
+  /** Constrains valid output types for the current phase */
+  activePersonaMode: PersonaMode;
   stateHash: string;
 }
 
@@ -77,7 +83,9 @@ export type StateEvent =
   | { type: "DIFFICULTY_ADJUSTED"; level: string }
   | { type: "COMMITMENT_MADE"; commitment: { id: string; description: string; turnId: string } }
   | { type: "COMMITMENT_FULFILLED"; commitmentId: string }
-  | { type: "REVISIT_QUESTION"; questionHash: string };
+  | { type: "REVISIT_QUESTION"; questionHash: string }
+  | { type: "PERSONA_LOCKED" }
+  | { type: "SET_PERSONA_MODE"; mode: PersonaMode };
 
 // ── Core Operations ──────────────────────────────────────────────────
 
@@ -96,6 +104,8 @@ export function createInitialState(): InterviewerState {
     topicDepthCounters: {},
     commitments: [],
     revisitAllowList: [],
+    personaLocked: false,
+    activePersonaMode: "interviewer",
     stateHash: "",
   };
   state.stateHash = computeStateHash(state);
@@ -203,6 +213,14 @@ export function transitionState(
         next.revisitAllowList = [...next.revisitAllowList, event.questionHash];
       }
       break;
+
+    case "PERSONA_LOCKED":
+      next.personaLocked = true;
+      break;
+
+    case "SET_PERSONA_MODE":
+      next.activePersonaMode = event.mode;
+      break;
   }
 
   next.stateHash = computeStateHash(next);
@@ -282,6 +300,14 @@ export function deserializeState(json: string): InterviewerState {
   }
   if (typeof parsed.stateHash !== "string") {
     throw new Error("Invalid interviewer state: stateHash must be string");
+  }
+
+  // Backward-compatible defaults for new persona fields
+  if (typeof parsed.personaLocked !== "boolean") {
+    parsed.personaLocked = parsed.introDone === true;
+  }
+  if (!parsed.activePersonaMode || !["interviewer", "clarifier", "closer"].includes(parsed.activePersonaMode)) {
+    parsed.activePersonaMode = parsed.currentStep === "closing" ? "closer" : "interviewer";
   }
 
   return parsed as InterviewerState;

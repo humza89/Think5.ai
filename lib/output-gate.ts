@@ -24,6 +24,10 @@ export interface OutputGateInput {
   /** Question hashes explicitly allowed to repeat (intentional revisits) */
   revisitAllowList?: string[];
   verifiedFacts: Array<{ factType: string; content: string; confidence: number }>;
+  /** State-locked persona: if true, persona is locked and cannot re-introduce */
+  personaLocked?: boolean;
+  /** Current interview step from state machine — used for state-driven gating */
+  currentStep?: string;
 }
 
 export interface GateViolation {
@@ -177,13 +181,18 @@ export function checkOutputGate(
 ): GateResult {
   const violations: GateViolation[] = [];
 
-  // Check 1: No re-introduction after introDone
-  if (input.introDone) {
+  // Check 1: No re-introduction — state-machine-driven + pattern fallback
+  // Primary gate: if persona is locked (state machine), any intro is a violation
+  // Secondary gate: if introDone flag is set (legacy), use pattern matching
+  const personaBlocked = input.personaLocked === true || (input.currentStep && input.currentStep !== "opening");
+  if (personaBlocked || input.introDone) {
     for (const pattern of INTRO_PATTERNS) {
       if (pattern.test(aiResponse)) {
         violations.push({
           type: "reintroduction",
-          detail: `Detected re-introduction pattern after introDone: ${pattern.source}`,
+          detail: personaBlocked
+            ? `Persona locked (step: ${input.currentStep || "post-opening"}): re-introduction blocked`
+            : `Detected re-introduction pattern after introDone: ${pattern.source}`,
           severity: "warn",
         });
         break; // One violation per type is enough

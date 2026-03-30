@@ -52,6 +52,11 @@ export interface StoredTurn {
  * Append new turns to the ledger in a single transaction.
  * Assigns monotonic turnIndex starting from the current max + 1.
  * Returns the new turns with their assigned turnIndex and turnId.
+ *
+ * Event-sourcing guarantees:
+ * - Idempotent: duplicate turnIds are silently skipped (no-op)
+ * - Monotonic: turnIndex is always lastIndex + 1
+ * - Integrity: SHA-256 content checksum on every turn
  */
 export async function appendTurns(
   interviewId: string,
@@ -72,12 +77,30 @@ export async function appendTurns(
     const version = checkpointVersion ?? 0;
     const now = new Date();
 
+    // Idempotent: filter out turns with turnIds already in the ledger
+    const incomingTurnIds = turns
+      .map((t) => t.turnId)
+      .filter((id): id is string => !!id);
+    const existingTurnIds = new Set<string>();
+    if (incomingTurnIds.length > 0) {
+      const existing = await tx.interviewTranscript.findMany({
+        where: { interviewId, turnId: { in: incomingTurnIds } },
+        select: { turnId: true },
+      });
+      for (const e of existing) existingTurnIds.add(e.turnId);
+    }
+
     const results: StoredTurn[] = [];
+    let indexOffset = 0;
 
     for (let i = 0; i < turns.length; i++) {
       const turn = turns[i];
-      const turnIndex = startIndex + i;
       const turnId = turn.turnId || randomUUID();
+
+      // Idempotent: skip duplicate turnIds
+      if (existingTurnIds.has(turnId)) continue;
+
+      const turnIndex = startIndex + indexOffset;
 
       // Compute SHA-256 content checksum for integrity verification
       const contentChecksum = createHash("sha256")
@@ -117,9 +140,87 @@ export async function appendTurns(
         checkpointVersion: created.checkpointVersion,
         finalized: created.finalized,
       });
+
+      indexOffset++;
     }
 
     return results;
+  });
+}
+
+/**
+ * Commit a single turn atomically with version assertion.
+ * Used by the turn-commit protocol for per-turn server verification.
+ *
+ * @param expectedVersion - The expected current ledger version (last turnIndex).
+ *   If the actual version doesn't match, the commit is rejected (STALE_VERSION).
+ * @returns The committed turn or null if version mismatch / duplicate.
+ */
+export async function commitSingleTurn(
+  interviewId: string,
+  turn: LedgerTurn,
+  expectedVersion: number
+): Promise<{ committed: boolean; turn?: StoredTurn; reason?: string; currentVersion?: number }> {
+  return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+    // 1. Version assertion: current ledger must match expectedVersion
+    const lastTurn = await tx.interviewTranscript.findFirst({
+      where: { interviewId },
+      orderBy: { turnIndex: "desc" },
+      select: { turnIndex: true },
+    });
+    const currentVersion = lastTurn?.turnIndex ?? -1;
+
+    if (currentVersion !== expectedVersion) {
+      return {
+        committed: false,
+        reason: "STALE_VERSION",
+        currentVersion,
+      };
+    }
+
+    // 2. Idempotent: check for duplicate turnId
+    const turnId = turn.turnId || randomUUID();
+    if (turn.turnId) {
+      const existing = await tx.interviewTranscript.findFirst({
+        where: { interviewId, turnId },
+        select: { turnIndex: true },
+      });
+      if (existing) {
+        return { committed: true, reason: "DUPLICATE_NOOP", currentVersion };
+      }
+    }
+
+    // 3. Append with monotonic index
+    const turnIndex = currentVersion + 1;
+    const contentChecksum = createHash("sha256")
+      .update(`${turn.role}:${turn.content}`)
+      .digest("hex")
+      .slice(0, 16);
+
+    const now = new Date();
+    const created = await tx.interviewTranscript.create({
+      data: {
+        interviewId,
+        role: turn.role,
+        content: turn.content,
+        turnIndex,
+        turnId,
+        causalParentTurnId: turn.causalParentTurnId || null,
+        generationMetadata: (turn.generationMetadata as any) || undefined,
+        checkpointVersion: 0,
+        timestamp: turn.timestamp ? new Date(turn.timestamp) : now,
+        serverReceivedAt: now,
+        clientTimestamp: turn.clientTimestamp ? new Date(turn.clientTimestamp) : null,
+        contentChecksum,
+        finalized: turn.finalized ?? false,
+      },
+    });
+
+    return {
+      committed: true,
+      turn: mapRow(created),
+      currentVersion: turnIndex,
+    };
   });
 }
 

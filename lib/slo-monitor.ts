@@ -133,6 +133,34 @@ export const SLO_DEFINITIONS: SLODefinition[] = [
     description: "Context preservation across reconnects (≤0.1% full resets)",
     unit: "rate",
   },
+  {
+    name: "session.turn_commit.success_rate",
+    target: 0.999,
+    windowHours: 24,
+    description: "Turn-commit protocol success rate (≥99.9%)",
+    unit: "rate",
+  },
+  {
+    name: "session.turn_commit.latency_p99",
+    target: 0.99,
+    windowHours: 24,
+    description: "Turn-commit p99 latency under 2s (≥99%)",
+    unit: "rate",
+  },
+  {
+    name: "memory.contradiction.detection_rate",
+    target: 0.995,
+    windowHours: 24,
+    description: "Semantic contradiction detection rate (≥99.5%)",
+    unit: "rate",
+  },
+  {
+    name: "memory.fidelity.recall_rate",
+    target: 0.95,
+    windowHours: 24,
+    description: "Memory fidelity recall rate (≥95%)",
+    unit: "rate",
+  },
 ];
 
 /**
