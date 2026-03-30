@@ -15,9 +15,10 @@ import {
   sloCheck,
   dataDeletionExecute,
   recordingFinalizeRetry,
+  interviewAnomalyAlert,
 } from "@/inngest/functions";
 
 export const { GET, POST, PUT } = serve({
   client: inngest,
-  functions: [reportGenerate, recordingProcess, retentionCleanup, sloCheck, dataDeletionExecute, recordingFinalizeRetry],
+  functions: [reportGenerate, recordingProcess, retentionCleanup, sloCheck, dataDeletionExecute, recordingFinalizeRetry, interviewAnomalyAlert],
 });

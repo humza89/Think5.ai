@@ -32,6 +32,10 @@ import { appendTurns, getLedgerSnapshot, diffTurns, finalizeLedger, getFullTrans
 import { classifyError } from "@/lib/error-classification";
 import { validateTranscript, repairTranscript } from "@/lib/transcript-validator";
 import { isMaintenanceMode, getMaintenanceMessage, maintenanceResponse } from "@/lib/maintenance-mode";
+import { recordEvent } from "@/lib/interview-timeline";
+import { isEnabled } from "@/lib/feature-flags";
+import { extractFactsImmediate } from "@/lib/fact-extractor";
+import { verifyGrounding } from "@/lib/grounding-gate";
 import * as Sentry from "@sentry/nextjs";
 
 // C7: Per-interview checkpoint rate limiter (max 1 per 2 seconds)
@@ -105,7 +109,7 @@ export async function POST(
   try {
     const body = await request.json();
     const { action, accessToken, transcript, moduleScores, questionCount,
-      currentDifficultyLevel, flaggedFollowUps, currentModule, candidateProfile, sessionSummary, askedQuestions } = body;
+      currentDifficultyLevel, flaggedFollowUps, currentModule, candidateProfile, askedQuestions } = body;
 
     // Validate access
     const interview = await validateAccess(id, accessToken);
@@ -242,6 +246,88 @@ export async function POST(
         }
       }
 
+      // Timeline observability: record checkpoint event
+      if (isEnabled("TIMELINE_OBSERVABILITY")) {
+        recordEvent(id, "checkpoint", {
+          ledgerVersion,
+          newTurnsAppended: newTurns.length,
+          questionCount: questionCount || 0,
+        }, ledgerVersion).catch(() => {});
+      }
+
+      // Tier 1 memory: extract and persist structured facts from new candidate turns
+      if (isEnabled("MEMORY_TIERS") && newTurns.length > 0) {
+        try {
+          const candidateTurns = newTurns
+            .filter((t: { role: string }) => t.role === "candidate" || t.role === "user")
+            .map((t: { role: string; content: string }, i: number) => ({
+              turnId: `turn-${ledgerVersion - newTurns.length + i + 1}`,
+              role: "candidate",
+              content: typeof t.content === "string" ? t.content : "",
+            }));
+          const facts = extractFactsImmediate(candidateTurns[0] || { turnId: "", role: "candidate", content: "" });
+          if (facts.length > 0 && candidateTurns.length > 0) {
+            // Batch extract across all new candidate turns
+            const allFacts = candidateTurns.flatMap((turn: { turnId: string; role: string; content: string }) => extractFactsImmediate(turn));
+            await prisma.interviewFact.createMany({
+              data: allFacts.map((f) => ({
+                interviewId: id,
+                turnId: f.turnId,
+                factType: f.factType,
+                content: f.content,
+                confidence: f.confidence,
+                extractedBy: f.extractedBy,
+              })),
+              skipDuplicates: true,
+            });
+          }
+        } catch (err) {
+          console.warn(`[${id}] Fact extraction failed (non-fatal):`, err);
+        }
+      }
+
+      // Grounding gate: verify AI responses against extracted facts
+      if (isEnabled("GROUNDING_GATE_ENABLED") && newTurns.length > 0) {
+        try {
+          const aiTurns = newTurns.filter((t: { role: string }) => t.role === "assistant" || t.role === "model");
+          if (aiTurns.length > 0) {
+            const recentFacts = await prisma.interviewFact.findMany({
+              where: { interviewId: id },
+              orderBy: { createdAt: "desc" },
+              take: 50,
+            });
+            for (const aiTurn of aiTurns) {
+              const content = typeof aiTurn.content === "string" ? aiTurn.content : "";
+              if (content.length > 0) {
+                const result = verifyGrounding(content, recentFacts.map((f: { turnId: string; factType: string; content: string; confidence: number; extractedBy: string }) => ({
+                  turnId: f.turnId,
+                  factType: f.factType as any,
+                  content: f.content,
+                  confidence: f.confidence,
+                  extractedBy: f.extractedBy,
+                })));
+                if (!result.grounded) {
+                  if (isEnabled("TIMELINE_OBSERVABILITY")) {
+                    recordEvent(id, "grounding_failure", {
+                      score: result.score,
+                      unsupportedClaims: result.unsupportedClaims,
+                      totalClaims: result.totalClaims,
+                    }, ledgerVersion).catch(() => {});
+                  }
+                  // Trigger anomaly alerting via Inngest
+                  inngest.send({
+                    name: "interview/anomaly.detected",
+                    data: { interviewId: id },
+                  }).catch(() => {});
+                }
+              }
+            }
+          }
+        } catch (err) {
+          console.warn(`[${id}] Grounding verification failed (non-fatal):`, err);
+        }
+      }
+
       // Denormalized cache on Interview record (backward compat — ledger is authoritative)
       await prisma.interview.update({
         where: { id },
@@ -260,9 +346,6 @@ export async function POST(
         }
         if (typeof currentModule === "string" && currentModule.length <= 100) {
           validatedMemory.currentModule = currentModule;
-        }
-        if (typeof sessionSummary === "string" && sessionSummary.length <= 5000) {
-          validatedMemory.sessionSummary = sessionSummary;
         }
         if (Array.isArray(flaggedFollowUps) && flaggedFollowUps.length <= 20) {
           const validFollowUps = flaggedFollowUps.filter(
@@ -332,6 +415,14 @@ export async function POST(
         userRole: "candidate",
         ipAddress: getClientIp(request.headers),
       }).catch(() => {});
+
+      // Timeline observability: record disconnect event
+      if (isEnabled("TIMELINE_OBSERVABILITY")) {
+        recordEvent(id, "disconnect", {
+          reason: "normal_end",
+          finalQuestionCount: questionCount || 0,
+        }).catch(() => {});
+      }
 
       // Validate state transition
       const currentStatus = interview.status;

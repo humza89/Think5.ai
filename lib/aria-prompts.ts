@@ -504,7 +504,6 @@ export interface ReconnectContext {
     confidenceLevel?: "low" | "moderate" | "high";
     notableObservations?: string;
   };
-  sessionSummary?: string;
   // LLM-powered semantic memory (from inngest/functions/update-aria-memory.ts)
   knowledgeGraph?: KnowledgeGraph | null;
 }
@@ -520,7 +519,7 @@ export function buildReconnectSystemPrompt(
   context: ReconnectContext
 ): string {
   const { questionCount, moduleScores, askedQuestions, currentModule,
-    currentDifficultyLevel, flaggedFollowUps, candidateProfile, sessionSummary, knowledgeGraph } = context;
+    currentDifficultyLevel, flaggedFollowUps, candidateProfile, knowledgeGraph } = context;
   const safeName = sanitizeForPrompt(context.candidateName, 100);
 
   const scoresSummary = moduleScores.length > 0
@@ -576,11 +575,6 @@ export function buildReconnectSystemPrompt(
     }
   }
 
-  // Build session summary section
-  const summarySection = sessionSummary
-    ? `\n## INTERVIEW SUMMARY (covering earlier exchanges not in transcript context)\n${sessionSummary}`
-    : "";
-
   const reconnectDirective = `
 
 ## ⚠️ RECONNECT DIRECTIVE — MANDATORY OVERRIDE
@@ -608,7 +602,6 @@ ${scoresSummary}
 ${profileSection}
 ${knowledgeGraphSection}
 ${followUpsSection}
-${summarySection}
 
 ## QUESTIONS ALREADY ASKED (DO NOT REPEAT ANY OF THESE)
 ${questionsList}

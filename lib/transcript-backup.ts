@@ -57,7 +57,6 @@ export interface TranscriptBackup {
   flaggedFollowUps?: Array<{ topic: string; reason: string; depth?: string }>;
   currentModule?: string;
   candidateProfile?: { strengths: string[]; weaknesses: string[]; communicationStyle?: string; confidenceLevel?: "low" | "moderate" | "high"; notableObservations?: string };
-  sessionSummary?: string;
 }
 
 /**
@@ -74,7 +73,6 @@ export async function backupTranscript(
     flaggedFollowUps?: TranscriptBackup["flaggedFollowUps"];
     currentModule?: string;
     candidateProfile?: TranscriptBackup["candidateProfile"];
-    sessionSummary?: string;
   }
 ): Promise<void> {
   try {

@@ -11,7 +11,7 @@
 
 import { useState, useCallback, useRef, useEffect } from "react";
 import { backupTranscript, clearTranscriptBackup, getBackedUpTranscript } from "@/lib/transcript-backup";
-import { generateConversationSummary } from "@/lib/conversation-summary";
+// R9: generateConversationSummary removed — canonical ledger is authoritative memory
 import type { CandidateProfile } from "@/lib/session-store";
 
 // ── Types ──────────────────────────────────────────────────────────────
@@ -146,14 +146,14 @@ export function useVoiceInterview(
   const reconnectTokenRef = useRef<string>(""); // HMAC-signed reconnect token from server
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null); // H1: Cancel on unmount to prevent stale closures
   const lastCheckpointDigestRef = useRef<string | null>(null); // Fix 2: Track last checkpoint digest for reconciliation
-  const introFilterActiveRef = useRef(false); // Fix 3: Suppress AI re-introductions after reconnect
+  const introDoneRef = useRef(false); // R3: Server-authoritative intro suppression (replaces regex introFilterActiveRef)
   // Enterprise memory refs — persisted across reconnects
   const difficultyLevelRef = useRef<string>("mid");
   const flaggedFollowUpsRef = useRef<Array<{ topic: string; reason: string; depth?: string }>>([]);
   const currentModuleRef = useRef<string>("");
   const candidateProfileRef = useRef<CandidateProfile | null>(null);
-  const sessionSummaryRef = useRef<string>("");
-  const lastSummaryCountRef = useRef<number>(0); // transcript length when last summary was generated
+  const ledgerVersionRef = useRef<number>(-1); // R6: Track server ledger version for Phase 2 protocol
+  const stateHashRef = useRef<string>(""); // R6: Track server state hash for Phase 2 protocol
   const interviewStartTimeRef = useRef<number>(0); // for adaptive checkpoint intervals
   const lastCheckpointTimeRef = useRef<number>(0); // debounce event-driven checkpoints
   const reconnectStartTimeRef = useRef<number>(0); // Tracks reconnect latency for SLO
@@ -404,8 +404,9 @@ export function useVoiceInterview(
           if (currentTurnTextRef.current.trim()) {
             let finalText = currentTurnTextRef.current.trim();
 
-            // Fix 3: Suppress AI re-introductions after reconnect
-            if (introFilterActiveRef.current) {
+            // R3: Server-authoritative intro suppression — if introDone is true (from checkpoint/recovery),
+            // suppress any re-introduction attempts by the AI after reconnect
+            if (introDoneRef.current && transcriptRef.current.length > 0) {
               const introPatterns = [
                 /hi,?\s+i'?m\s+aria/i,
                 /welcome\s+to/i,
@@ -415,10 +416,9 @@ export function useVoiceInterview(
                 /my\s+name\s+is/i,
               ];
               if (introPatterns.some((p) => p.test(finalText))) {
-                console.warn("[Voice] Suppressed AI re-introduction after reconnect");
+                console.warn("[Voice] Suppressed AI re-introduction (introDone=true from server state)");
                 finalText = "Let's continue where we left off.";
               }
-              introFilterActiveRef.current = false;
             }
 
             setTranscript((prev) => {
@@ -580,17 +580,19 @@ export function useVoiceInterview(
           flaggedFollowUps: flaggedFollowUpsRef.current,
           currentModule: currentModuleRef.current,
           candidateProfile: candidateProfileRef.current,
-          sessionSummary: sessionSummaryRef.current || undefined,
           askedQuestions: askedQuestionsRef.current.slice(0, 50),
         }),
       });
       if (res.ok) {
         checkpointResultsRef.current = [...checkpointResultsRef.current.slice(-4), true];
-        // Store checkpoint digest for reconciliation on reconnect
+        // Store checkpoint digest and ledger version for Phase 2 recovery protocol
         try {
           const checkpointData = await res.json();
           if (checkpointData.checkpointDigest) {
             lastCheckpointDigestRef.current = checkpointData.checkpointDigest;
+          }
+          if (typeof checkpointData.ledgerVersion === "number") {
+            ledgerVersionRef.current = checkpointData.ledgerVersion;
           }
         } catch { /* response already consumed or empty */ }
         // Clear IndexedDB backup on successful server save
@@ -614,30 +616,8 @@ export function useVoiceInterview(
           }
         } catch { /* best-effort TTL refresh */ }
 
-        // Generate running conversation summary when transcript grows significantly
-        // The summary compresses early turns so they survive token-budget trimming on reconnect
-        const transcriptLen = transcriptRef.current.length;
-        // H3/R5: Generate summary every 10 entries (was 20) for fresher reconnect context
-        if (transcriptLen - lastSummaryCountRef.current >= 10 && transcriptLen > 10) {
-          // Summarize early entries that would be trimmed by the 120K char budget
-          const TOKEN_CHAR_BUDGET = 120_000;
-          let recentChars = 0;
-          let cutoffIndex = transcriptLen;
-          for (let i = transcriptLen - 1; i >= 0; i--) {
-            recentChars += transcriptRef.current[i].content.length;
-            if (recentChars > TOKEN_CHAR_BUDGET) { cutoffIndex = i; break; }
-          }
-          if (cutoffIndex > 0) {
-            sessionSummaryRef.current = generateConversationSummary(
-              transcriptRef.current,
-              moduleScoresRef.current,
-              candidateProfileRef.current,
-              cutoffIndex
-            );
-            lastSummaryCountRef.current = transcriptLen;
-            console.log(`[Voice] Generated conversation summary (covers first ${cutoffIndex} of ${transcriptLen} entries)`);
-          }
-        }
+        // R5/R9: Summary generation removed — canonical ledger is authoritative.
+        // Reconnect context is now built from full transcript without lossy summarization.
       } else {
         throw new Error(`Checkpoint HTTP ${res.status}`);
       }
@@ -654,7 +634,6 @@ export function useVoiceInterview(
           flaggedFollowUps: flaggedFollowUpsRef.current,
           currentModule: currentModuleRef.current,
           candidateProfile: candidateProfileRef.current || undefined,
-          sessionSummary: sessionSummaryRef.current || undefined,
         }
       ).catch(() => {});
       // Warn if 3+ failures in last 5 attempts (rolling window, not consecutive)
@@ -789,7 +768,7 @@ export function useVoiceInterview(
       // Clear stale question dedup on fresh start (not reconnect)
       if (transcriptRef.current.length === 0) {
         askedQuestionsRef.current = [];
-        introFilterActiveRef.current = false; // M2: Reset intro filter on fresh start
+        introDoneRef.current = false; // M2: Reset intro state on fresh start
       }
       cleanupAudioResources();
       // Close old WebSocket if still open
@@ -856,6 +835,10 @@ export function useVoiceInterview(
         if (initRes.status === 429) {
           throw new Error("Rate limited — please wait a moment and try again.");
         }
+        if (initRes.status === 503) {
+          consecutiveSetupFailuresRef.current = 3; // Don't retry during maintenance
+          throw new Error(err.message || "System is temporarily under maintenance. Please try again in a few minutes.");
+        }
         throw new Error(err.error || `Init error: ${initRes.status}`);
       }
 
@@ -870,7 +853,6 @@ export function useVoiceInterview(
         if (enterpriseMemory.flaggedFollowUps) flaggedFollowUpsRef.current = enterpriseMemory.flaggedFollowUps;
         if (enterpriseMemory.currentModule) currentModuleRef.current = enterpriseMemory.currentModule;
         if (enterpriseMemory.candidateProfile) candidateProfileRef.current = enterpriseMemory.candidateProfile;
-        if (enterpriseMemory.sessionSummary) sessionSummaryRef.current = enterpriseMemory.sessionSummary;
         if (enterpriseMemory.moduleScores) moduleScoresRef.current = enterpriseMemory.moduleScores;
         console.log(`[Voice] Restored enterprise memory from server: difficulty=${enterpriseMemory.currentDifficultyLevel}, module=${enterpriseMemory.currentModule}, followUps=${enterpriseMemory.flaggedFollowUps?.length || 0}, moduleScores=${enterpriseMemory.moduleScores?.length || 0}`);
       }
@@ -1087,57 +1069,65 @@ export function useVoiceInterview(
                   headers: { "Content-Type": "application/json" },
                   body: JSON.stringify({
                     reconnectToken: reconnectTokenRef.current,
+                    clientLedgerVersion: ledgerVersionRef.current,
+                    clientStateHash: stateHashRef.current,
                     clientCheckpointDigest: lastCheckpointDigestRef.current,
-                    clientTranscriptLength: transcriptRef.current.length,
                     clientTurnIndex: transcriptRef.current.length - 1,
                   }),
                 });
                 if (recoveryRes.ok) {
                   const recovery = await recoveryRes.json();
                   reconnectTokenRef.current = recovery.newReconnectToken;
-                  if (recovery.checkpointDigest) {
-                    lastCheckpointDigestRef.current = recovery.checkpointDigest;
-                  }
-                  introFilterActiveRef.current = true; // Fix 3: Arm intro suppression for next AI turn
+                  // R6: Update Phase 2 protocol refs from server
+                  if (typeof recovery.ledgerVersion === "number") ledgerVersionRef.current = recovery.ledgerVersion;
+                  if (recovery.stateHash) stateHashRef.current = recovery.stateHash;
+                  // R3: Set introDone from server state (deterministic, not regex)
+                  introDoneRef.current = true;
                   if (Array.isArray(recovery.askedQuestions)) {
                     askedQuestionsRef.current = recovery.askedQuestions;
                   }
-                  // Store knowledge graph from recovery for reconnect context
                   if (recovery.knowledgeGraph) {
                     knowledgeGraphRef.current = recovery.knowledgeGraph;
                   }
 
-                  // If diverged, reconcile transcript from server (M5: only accept if server has more data)
-                  if (recovery.status === "diverged" && recovery.canonicalTranscript) {
-                    const serverLen = recovery.canonicalTranscript.length;
-                    const clientLen = transcriptRef.current.length;
-                    if (serverLen >= clientLen) {
-                      const serverTranscript = recovery.canonicalTranscript.map(
-                        (t: { role: string; content: string; timestamp: string }) => ({
-                          role: t.role === "interviewer" ? "interviewer" as const : "candidate" as const,
-                          content: t.content,
-                          timestamp: t.timestamp,
-                          finalized: true,
-                        })
-                      );
-                      setTranscript(serverTranscript);
-                    } else {
-                      console.warn(`[Voice] Server transcript shorter (${serverLen}) than client (${clientLen}) — keeping client transcript`);
+                  // Phase 2 reconciliation: handle synced/delta/full statuses
+                  if (recovery.status === "delta" && Array.isArray(recovery.missingTurns)) {
+                    // Append missing turns from server
+                    const missingEntries = recovery.missingTurns.map(
+                      (t: { role: string; content: string; timestamp: string }) => ({
+                        role: t.role === "interviewer" || t.role === "model" ? "interviewer" as const : "candidate" as const,
+                        content: t.content,
+                        timestamp: t.timestamp,
+                        finalized: true,
+                      })
+                    );
+                    setTranscript((prev) => [...prev, ...missingEntries]);
+                    console.log(`[Voice] Delta reconciliation: added ${missingEntries.length} missing turns`);
+                  } else if (recovery.status === "full" && recovery.canonicalTranscript) {
+                    // Full state replacement from canonical ledger
+                    const serverTranscript = recovery.canonicalTranscript.map(
+                      (t: { role: string; content: string; timestamp: string }) => ({
+                        role: t.role === "interviewer" || t.role === "model" ? "interviewer" as const : "candidate" as const,
+                        content: t.content,
+                        timestamp: t.timestamp,
+                        finalized: true,
+                      })
+                    );
+                    setTranscript(serverTranscript);
+                    console.log(`[Voice] Full reconciliation: replaced transcript with ${serverTranscript.length} canonical turns`);
+                  }
+                  // Restore enterprise fields from recovery
+                  if (recovery.moduleScores && Array.isArray(recovery.moduleScores)) {
+                    moduleScoresRef.current = recovery.moduleScores;
+                  }
+                  if (recovery.enterpriseMemory) {
+                    const em = recovery.enterpriseMemory;
+                    if (em.flaggedFollowUps && Array.isArray(em.flaggedFollowUps)) {
+                      flaggedFollowUpsRef.current = em.flaggedFollowUps;
                     }
-                    // H6: Restore module scores from server on diverged reconnect
-                    if (recovery.moduleScores && Array.isArray(recovery.moduleScores)) {
-                      moduleScoresRef.current = recovery.moduleScores;
-                    }
-                    // H9/R5: Restore all enterprise fields on diverged reconnect
-                    if (recovery.flaggedFollowUps && Array.isArray(recovery.flaggedFollowUps)) {
-                      flaggedFollowUpsRef.current = recovery.flaggedFollowUps;
-                    }
-                    if (recovery.candidateProfile) {
-                      candidateProfileRef.current = recovery.candidateProfile;
-                    }
-                    if (recovery.askedQuestions && Array.isArray(recovery.askedQuestions)) {
-                      askedQuestionsRef.current = recovery.askedQuestions;
-                    }
+                    if (em.candidateProfile) candidateProfileRef.current = em.candidateProfile;
+                    if (em.currentDifficultyLevel) difficultyLevelRef.current = em.currentDifficultyLevel;
+                    if (em.currentModule) currentModuleRef.current = em.currentModule;
                   }
                   setReconnectPhase("re-synced");
                 } else {
@@ -1187,39 +1177,28 @@ export function useVoiceInterview(
       // 6. Send greeting or restore FULL context on reconnect
       const existingTranscript = transcriptRef.current;
       if (existingTranscript.length > 0) {
-        // Token-aware context restoration: ~4 chars/token
-        // If knowledge graph is available, it carries semantic weight — reduce raw transcript budget
+        // R5: Send FULL transcript to Gemini without lossy TOKEN_CHAR_BUDGET trimming.
+        // Canonical ledger preserves all turns — no summarization needed.
         const hasKnowledgeGraph = knowledgeGraphRef.current && Object.keys(knowledgeGraphRef.current).length > 0;
-        const TOKEN_CHAR_BUDGET = hasKnowledgeGraph ? 80_000 : 120_000; // 20K or 30K tokens
-        const MAX_ENTRY_CHARS = 4000; // Individual entry cap (increased: knowledge graph handles summarization)
+        const MAX_ENTRY_CHARS = 4000; // Individual entry cap
 
-        let recentEntries = existingTranscript
+        const recentEntries = existingTranscript
           .filter((entry) => entry.content && typeof entry.content === "string" && entry.content.trim().length > 0);
 
-        // Estimate total chars and adaptively trim from oldest entries
-        let totalChars = recentEntries.reduce((sum, e) => sum + Math.min(e.content.length, MAX_ENTRY_CHARS), 0);
-        while (totalChars > TOKEN_CHAR_BUDGET && recentEntries.length > 10) {
-          const removed = recentEntries.shift()!;
-          totalChars -= Math.min(removed.content.length, MAX_ENTRY_CHARS);
-        }
-
-        console.log(`[Voice] Reconnecting — restoring ${recentEntries.length} of ${existingTranscript.length} entries (~${Math.round(totalChars / 4)} tokens)`);
+        const totalChars = recentEntries.reduce((sum, e) => sum + Math.min(e.content.length, MAX_ENTRY_CHARS), 0);
+        console.log(`[Voice] Reconnecting — restoring all ${recentEntries.length} entries (~${Math.round(totalChars / 4)} tokens)`);
 
         const contextTurns = recentEntries.map((entry) => ({
           role: entry.role === "interviewer" ? "model" : "user",
           parts: [{ text: entry.content.length > MAX_ENTRY_CHARS ? entry.content.slice(0, MAX_ENTRY_CHARS) + "..." : entry.content }],
         }));
 
-        // Build conversation summary for Gemini to understand interview state
+        // Build reconnect context for Gemini
         const qCount = questionCountRef.current;
         const scores = moduleScoresRef.current;
         const scoresSummary = scores.length > 0
           ? scores.map((s) => `${s.module}: ${s.score}/10`).join(", ")
           : "none yet";
-        // Include conversation summary of early turns if available (covers entries trimmed from context)
-        const sessionSummaryBlock = sessionSummaryRef.current
-          ? `\n\nEARLIER INTERVIEW CONTEXT (summarized):\n${sessionSummaryRef.current}`
-          : "";
         // Include knowledge graph if available (LLM-extracted semantic memory)
         let knowledgeGraphBlock = "";
         if (hasKnowledgeGraph && knowledgeGraphRef.current) {
@@ -1238,7 +1217,7 @@ export function useVoiceInterview(
             knowledgeGraphBlock = `\n\nCANDIDATE KNOWLEDGE GRAPH:\n${kgParts.join("\n")}`;
           }
         }
-        const summaryText = `[RECONNECT — SESSION RESUMED. Questions completed: ${qCount}. Modules scored: ${scoresSummary}. Total transcript entries: ${existingTranscript.length}. Difficulty: ${difficultyLevelRef.current}. DO NOT re-introduce yourself. DO NOT repeat any prior questions. Say "We're back, let's continue." and resume the conversation thread.${knowledgeGraphBlock}${sessionSummaryBlock}]`;
+        const summaryText = `[RECONNECT — SESSION RESUMED. Questions completed: ${qCount}. Modules scored: ${scoresSummary}. Total transcript entries: ${existingTranscript.length}. Difficulty: ${difficultyLevelRef.current}. DO NOT re-introduce yourself. DO NOT repeat any prior questions. Say "We're back, let's continue." and resume the conversation thread.${knowledgeGraphBlock}]`;
 
         ws.send(JSON.stringify({
           clientContent: {
@@ -1540,6 +1519,8 @@ export function useVoiceInterview(
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             reconnectToken: reconnectTokenRef.current,
+            clientLedgerVersion: ledgerVersionRef.current,
+            clientStateHash: stateHashRef.current,
             clientCheckpointDigest: lastCheckpointDigestRef.current,
             clientTurnIndex: transcriptRef.current.length - 1,
           }),
@@ -1547,24 +1528,35 @@ export function useVoiceInterview(
         if (recoveryRes.ok) {
           const recovery = await recoveryRes.json();
           reconnectTokenRef.current = recovery.newReconnectToken;
-          if (recovery.checkpointDigest) {
-            lastCheckpointDigestRef.current = recovery.checkpointDigest;
-          }
-          introFilterActiveRef.current = true; // Fix 3: Arm intro suppression for next AI turn
+          // R6: Update Phase 2 protocol refs
+          if (typeof recovery.ledgerVersion === "number") ledgerVersionRef.current = recovery.ledgerVersion;
+          if (recovery.stateHash) stateHashRef.current = recovery.stateHash;
+          // R3: Set introDone from server state
+          introDoneRef.current = true;
           if (Array.isArray(recovery.askedQuestions)) {
             askedQuestionsRef.current = recovery.askedQuestions;
           }
-          if (recovery.status === "diverged" && recovery.canonicalTranscript) {
+          // Phase 2 reconciliation
+          if (recovery.status === "delta" && Array.isArray(recovery.missingTurns)) {
+            const missingEntries = recovery.missingTurns.map(
+              (t: { role: string; content: string; timestamp: string }) => ({
+                role: t.role === "interviewer" || t.role === "model" ? "interviewer" as const : "candidate" as const,
+                content: t.content,
+                timestamp: t.timestamp,
+                finalized: true,
+              })
+            );
+            setTranscript((prev) => [...prev, ...missingEntries]);
+          } else if (recovery.status === "full" && recovery.canonicalTranscript) {
             const serverTranscript = recovery.canonicalTranscript.map(
               (t: { role: string; content: string; timestamp: string }) => ({
-                role: t.role === "interviewer" ? "interviewer" as const : "candidate" as const,
+                role: t.role === "interviewer" || t.role === "model" ? "interviewer" as const : "candidate" as const,
                 content: t.content,
                 timestamp: t.timestamp,
                 finalized: true,
               })
             );
             setTranscript(serverTranscript);
-            // H6: Restore module scores from server on diverged reconnect
             if (recovery.moduleScores && Array.isArray(recovery.moduleScores)) {
               moduleScoresRef.current = recovery.moduleScores;
             }
@@ -1624,7 +1616,6 @@ export function useVoiceInterview(
           flaggedFollowUps: flaggedFollowUpsRef.current,
           currentModule: currentModuleRef.current,
           candidateProfile: candidateProfileRef.current || undefined,
-          sessionSummary: sessionSummaryRef.current || undefined,
         }
       ).catch(() => {});
       // Also fire sendBeacon to server
@@ -1638,7 +1629,6 @@ export function useVoiceInterview(
         flaggedFollowUps: flaggedFollowUpsRef.current,
         currentModule: currentModuleRef.current,
         candidateProfile: candidateProfileRef.current,
-        sessionSummary: sessionSummaryRef.current || undefined,
         askedQuestions: askedQuestionsRef.current.slice(0, 50),
       });
       navigator.sendBeacon(
@@ -1690,7 +1680,7 @@ export function useVoiceInterview(
         if (backup.flaggedFollowUps) flaggedFollowUpsRef.current = backup.flaggedFollowUps;
         if (backup.currentModule) currentModuleRef.current = backup.currentModule;
         if (backup.candidateProfile) candidateProfileRef.current = backup.candidateProfile;
-        if (backup.sessionSummary) sessionSummaryRef.current = backup.sessionSummary;
+        // R9: sessionSummary removed — ledger is authoritative
       } catch {
         // IndexedDB unavailable — proceed with fresh start
       }

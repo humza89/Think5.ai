@@ -22,6 +22,8 @@ import { recordSLOEvent } from "@/lib/slo-monitor";
 import { classifyError } from "@/lib/error-classification";
 import { getFullTranscript, getLedgerSnapshot, getTurnsSince } from "@/lib/conversation-ledger";
 import { isMaintenanceMode, getMaintenanceMessage, maintenanceResponse } from "@/lib/maintenance-mode";
+import { recordEvent } from "@/lib/interview-timeline";
+import { isEnabled } from "@/lib/feature-flags";
 
 export async function POST(
   request: NextRequest,
@@ -148,6 +150,20 @@ export async function POST(
       recordSLOEvent("session.reconnect.context_loss.rate", versionsMatch),
     ]);
 
+    // Timeline observability: record reconnect event with reconciliation strategy
+    if (isEnabled("TIMELINE_OBSERVABILITY")) {
+      const reconciliationType = versionsMatch && (stateHashMatch || !clientStateHash) ? "synced"
+        : (!versionsMatch && clientVersion >= 0 && clientVersion < serverLedgerVersion) ? "delta"
+        : "full";
+      recordEvent(id, "reconnect", {
+        reconciliationType,
+        clientVersion,
+        serverLedgerVersion,
+        recoveryMs,
+        reconnectCount: updatedSession.reconnectCount,
+      }, serverLedgerVersion).catch(() => {});
+    }
+
     // Shared response fields
     const knowledgeGraph = interview.knowledgeGraph || null;
     const baseResponse = {
@@ -165,7 +181,6 @@ export async function POST(
         flaggedFollowUps: session.flaggedFollowUps,
         currentModule: session.currentModule,
         candidateProfile: session.candidateProfile,
-        sessionSummary: session.sessionSummary,
       },
     };
 

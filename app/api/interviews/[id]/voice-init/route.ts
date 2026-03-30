@@ -18,6 +18,8 @@ import { acquireSessionLock, swapSessionLock, releaseSessionLock, saveSessionSta
 import { recordSLOEvent } from "@/lib/slo-monitor";
 import { classifyError } from "@/lib/error-classification";
 import { isMaintenanceMode, getMaintenanceMessage, maintenanceResponse } from "@/lib/maintenance-mode";
+import { recordEvent } from "@/lib/interview-timeline";
+import { isEnabled } from "@/lib/feature-flags";
 import * as Sentry from "@sentry/nextjs";
 
 export async function POST(
@@ -163,7 +165,6 @@ export async function POST(
         currentDifficultyLevel: serverState?.currentDifficultyLevel,
         flaggedFollowUps: serverState?.flaggedFollowUps,
         candidateProfile: serverState?.candidateProfile,
-        sessionSummary: serverState?.sessionSummary,
         // LLM-powered semantic memory from knowledge graph pipeline
         knowledgeGraph: interviewWithGraph?.knowledgeGraph as Record<string, unknown> | null,
       });
@@ -196,6 +197,14 @@ export async function POST(
       userRole: "candidate",
       ipAddress: getClientIp(request.headers),
     }).catch(() => {});
+
+    // Timeline observability: record connect/reconnect event
+    if (isEnabled("TIMELINE_OBSERVABILITY")) {
+      recordEvent(id, reconnect ? "reconnect" : "connect", {
+        candidateId: interview.candidate.id,
+        reconnectCount: reconnect ? ((await getSessionState(id))?.reconnectCount || 0) : 0,
+      }).catch(() => {});
+    }
 
     // Initialize or preserve durable session state
     const reconnectToken = generateReconnectToken(id);
@@ -256,7 +265,6 @@ export async function POST(
           flaggedFollowUps: serverState.flaggedFollowUps,
           currentModule: serverState.currentModule,
           candidateProfile: serverState.candidateProfile,
-          sessionSummary: serverState.sessionSummary,
         };
       }
     }

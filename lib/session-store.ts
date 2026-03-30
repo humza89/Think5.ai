@@ -112,7 +112,6 @@ export interface SessionState {
   flaggedFollowUps?: Array<{ topic: string; reason: string; depth?: string }>;
   currentModule?: string;
   candidateProfile?: CandidateProfile;
-  sessionSummary?: string;
   summarizedTurnCount?: number;
   lockOwnerToken?: string;
   askedQuestions?: string[];
