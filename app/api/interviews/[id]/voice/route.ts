@@ -35,7 +35,7 @@ import { isMaintenanceMode, getMaintenanceMessage, maintenanceResponse } from "@
 import { recordEvent } from "@/lib/interview-timeline";
 import { isEnabled } from "@/lib/feature-flags";
 import { extractFactsImmediate, isContradiction } from "@/lib/fact-extractor";
-import { verifyGrounding } from "@/lib/grounding-gate";
+import { verifyGrounding, checkFollowUpGrounding } from "@/lib/grounding-gate";
 import { transitionState, deserializeState, serializeState, hashQuestion, createInitialState } from "@/lib/interviewer-state";
 import { checkOutputGateWithAction } from "@/lib/output-gate";
 import * as Sentry from "@sentry/nextjs";
@@ -227,6 +227,21 @@ export async function POST(
       }
       const incomingDigest = computeTranscriptChecksum(currentTranscript);
       const existingSession = await getSessionState(id);
+
+      // BLOCK 5: Stale memoryPacketVersion rejection
+      if (body.clientMemoryPacketVersion !== undefined && existingSession?.memoryPacketVersion !== undefined
+        && body.clientMemoryPacketVersion < existingSession.memoryPacketVersion) {
+        return Response.json({
+          error: "Stale memory packet",
+          code: "STALE_MEMORY_VERSION",
+          serverVersion: existingSession.memoryPacketVersion,
+        }, { status: 409 });
+      }
+
+      // BLOCK 5: Track per-session violation count and monotonic memoryPacketVersion
+      let violationCount = existingSession?.violationCount || 0;
+      const memoryPacketVersion = (existingSession?.memoryPacketVersion || 0) + 1;
+
       if (existingSession?.checkpointDigest === incomingDigest) {
         // Transcript identical — refresh TTL but skip DB write
         await refreshSessionTTL(id);
@@ -361,6 +376,18 @@ export async function POST(
         }
       }
 
+      // BLOCK 5: Increment violation counter and fire SESSION_INTEGRITY_ALERT
+      if (gateViolations.length > 0) {
+        violationCount += gateViolations.length;
+        if (violationCount >= 2) {
+          recordEvent(id, "anomaly", {
+            type: "SESSION_INTEGRITY_ALERT",
+            totalViolations: violationCount,
+            triggeringViolations: gateViolations.map(v => v.type),
+          }).catch(() => {});
+        }
+      }
+
       let ledgerVersion = ledgerSnapshot.latestTurnIndex;
       if (newTurns.length > 0) {
         const appended = await appendTurns(id, newTurns, ledgerSnapshot.turnCount);
@@ -458,6 +485,32 @@ export async function POST(
                     const groundedContent = cleaned.join(" ").trim() || "Let's continue with the interview.";
                     aiTurn.content = groundedContent;
                     if (!correctedAiResponse) correctedAiResponse = groundedContent;
+                  }
+                }
+
+                // BLOCK 8: UNGROUNDED_FOLLOWUP detection for AI questions
+                if (content.includes("?")) {
+                  const recentTurnsForContext = currentTranscript
+                    .slice(-20)
+                    .map((t: { role: string; content: string }, idx: number) => ({
+                      turnId: `turn-${currentTranscript.length - 20 + idx}`,
+                      content: typeof t.content === "string" ? t.content : "",
+                    }))
+                    .filter((t: { content: string }) => t.content.length > 0);
+                  const groundingCheck = checkFollowUpGrounding(
+                    content,
+                    recentTurnsForContext,
+                    recentFacts.map((f: { content: string; factType: string; turnId: string }) => ({
+                      content: f.content,
+                      factType: f.factType,
+                      turnId: f.turnId,
+                    }))
+                  );
+                  if (!groundingCheck.grounded) {
+                    recordEvent(id, "anomaly", {
+                      type: "UNGROUNDED_FOLLOWUP",
+                      contentPreview: content.slice(0, 200),
+                    }, ledgerVersion).catch(() => {});
                   }
                 }
               }
@@ -699,6 +752,8 @@ export async function POST(
           stateHash: authoritativeStateHash,
           ...(updatedInterviewerState ? { interviewerState: updatedInterviewerState } : {}),
           ...validatedMemory,
+          violationCount,
+          memoryPacketVersion,
         });
       }
       await refreshSessionTTL(id);
@@ -706,6 +761,22 @@ export async function POST(
       // Record checkpoint latency SLO
       const checkpointMs = Date.now() - checkpointStart;
       await recordSLOEvent("transcript.checkpoint.latency_p99", checkpointMs < 500, checkpointMs);
+
+      // BLOCK 6: Per-turn structured telemetry log
+      console.log(JSON.stringify({
+        event: "checkpoint_telemetry",
+        interviewId: id,
+        memoryPacketVersion,
+        ledgerVersion,
+        continuityAssertions: {
+          noRepeatedIntro: !gateViolations.some(v => v.type === "reintroduction"),
+          noRepeatedQuestion: !gateViolations.some(v => v.type === "duplicate_question"),
+          stateHashMatch: !!authoritativeStateHash,
+        },
+        violationCount,
+        durationMs: checkpointMs,
+        timestamp: new Date().toISOString(),
+      }));
 
       // Task 4: Trigger knowledge graph update every 10 transcript turns
       if (currentTranscript.length > 0 && currentTranscript.length % 10 === 0) {
@@ -719,6 +790,7 @@ export async function POST(
       return Response.json({
         ok: true, checkpointDigest: incomingDigest, ledgerVersion,
         stateHash: authoritativeStateHash,
+        memoryPacketVersion,
         ...(gateViolations.length > 0 ? { gateViolations } : {}),
         ...(correctedAiResponse ? { correctedAiResponse } : {}),
       });

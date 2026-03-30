@@ -208,7 +208,27 @@ export async function POST(
       remainingSeconds,
       ledgerVersion: serverLedgerVersion,
       stateHash: serverStateHash,
-      askedQuestions: session.askedQuestions || [],
+      askedQuestions: (() => {
+        // Server-authoritative askedQuestions: InterviewerState → session fallback
+        let resolved: string[] = [];
+        if (session.interviewerState) {
+          try {
+            const iState = deserializeState(session.interviewerState);
+            resolved = iState.askedQuestionIds || [];
+          } catch { /* fall through */ }
+        }
+        if (resolved.length === 0) {
+          resolved = session.askedQuestions || [];
+        }
+        // Partial recovery signal: questions asked but no askedQuestions available
+        if ((session.questionCount || 0) > 0 && resolved.length === 0) {
+          recordEvent(id, "anomaly", {
+            type: "missing_asked_questions_on_recovery",
+            questionCount: session.questionCount,
+          }).catch(() => {});
+        }
+        return resolved;
+      })(),
       knowledgeGraph,
       // Enterprise memory for client ref sync
       enterpriseMemory: {

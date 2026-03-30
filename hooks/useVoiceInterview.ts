@@ -13,6 +13,12 @@ import { useState, useCallback, useRef, useEffect } from "react";
 import { backupTranscript, clearTranscriptBackup, getBackedUpTranscript } from "@/lib/transcript-backup";
 // R9: generateConversationSummary removed — canonical ledger is authoritative memory
 import type { CandidateProfile } from "@/lib/session-store";
+import {
+  transitionReconnectState,
+  stateToPhase,
+  MAX_RECOVERY_ATTEMPTS,
+} from "@/lib/reconnect-state-machine";
+import type { ReconnectState, ReconnectPhase } from "@/lib/reconnect-state-machine";
 
 // ── Types ──────────────────────────────────────────────────────────────
 
@@ -90,7 +96,7 @@ export function useVoiceInterview(
   const [isReconnecting, setIsReconnecting] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [fallbackToText, setFallbackToText] = useState(false);
-  const [reconnectPhase, setReconnectPhase] = useState<"checking" | "restoring" | "verifying" | "recovering" | "re-synced" | "resume-failed" | "recovery-failed" | "recovery-rate-limited" | null>(null);
+  const [reconnectPhase, setReconnectPhase] = useState<ReconnectPhase>(null);
   const [micIsSilent, setMicIsSilent] = useState(false);
 
   // Mirror aiState in a ref so audio processor callback can read it
@@ -160,6 +166,8 @@ export function useVoiceInterview(
   const reconnectStartTimeRef = useRef<number>(0); // Tracks reconnect latency for SLO
   const poorQualityCountRef = useRef(0); // Debounce: consecutive "poor" checks before triggering
   const lastRecoveryCallRef = useRef<number>(0); // Rate-limit recovery API calls
+  const reconnectStateRef = useRef<ReconnectState>("DISCONNECTED"); // Enforced reconnect state machine
+  const memoryPacketVersionRef = useRef<number>(0); // Monotonic version for stale packet detection
 
   // ── Audio Resource Cleanup Helper ────────────────────────────────────
   // Called before reconnect and on unmount to prevent resource leaks
@@ -582,6 +590,7 @@ export function useVoiceInterview(
           currentModule: currentModuleRef.current,
           candidateProfile: candidateProfileRef.current,
           askedQuestions: askedQuestionsRef.current.slice(0, 50),
+          clientMemoryPacketVersion: memoryPacketVersionRef.current,
         }),
       });
       if (res.ok) {
@@ -597,6 +606,9 @@ export function useVoiceInterview(
           }
           if (checkpointData.stateHash) {
             stateHashRef.current = checkpointData.stateHash;
+          }
+          if (typeof checkpointData.memoryPacketVersion === "number") {
+            memoryPacketVersionRef.current = checkpointData.memoryPacketVersion;
           }
           // Output gate enforcement: replace AI content if server blocked and sanitized
           if (checkpointData.correctedAiResponse && transcriptRef.current.length > 0) {
@@ -794,11 +806,30 @@ export function useVoiceInterview(
       console.warn("[Voice] startInterview() already in progress — skipping");
       return;
     }
+
+    // HARD GATE: On reconnect, startInterview() requires RECOVERY_CONFIRMED state.
+    // Fresh starts (no transcript) bypass this check.
+    const isFirstStart = transcriptRef.current.length === 0;
+    if (!isFirstStart && reconnectStateRef.current !== "RECOVERY_CONFIRMED") {
+      console.error(`[Voice] BLOCKED: startInterview() requires RECOVERY_CONFIRMED, got ${reconnectStateRef.current}`);
+      return;
+    }
+
     isStartingRef.current = true;
 
     try {
       intentionalCloseRef.current = false;
       setInterviewState("CONNECTING");
+
+      // Transition to SOCKET_OPEN if in reconnect flow
+      if (!isFirstStart && reconnectStateRef.current === "RECOVERY_CONFIRMED") {
+        try {
+          reconnectStateRef.current = transitionReconnectState("RECOVERY_CONFIRMED", "SOCKET_OPEN");
+          setReconnectPhase(stateToPhase(reconnectStateRef.current));
+        } catch {
+          console.error("[Voice] State machine transition to SOCKET_OPEN failed");
+        }
+      }
 
       // 0. Clean up old audio resources (critical for reconnect)
       // Clear stale question dedup on fresh start (not reconnect)
@@ -1079,229 +1110,163 @@ export function useVoiceInterview(
           currentTurnTextRef.current = "";
         }
 
-        // Auto-reconnect: call recovery API first, then re-establish WebSocket
+        // Auto-reconnect with enforced state machine:
+        // DISCONNECTED → RECOVERY_PENDING → RECOVERY_CONFIRMED → SOCKET_OPEN → LIVE
         lastCloseCodeRef.current = event.code;
-        const adaptiveMax = getMaxReconnectAttempts(event.code);
-        if (reconnectAttemptsRef.current < adaptiveMax) {
-          const attempt = reconnectAttemptsRef.current;
-          const base = 1000;
-          const exp = Math.pow(2, attempt);
-          const jitter = Math.random() * base;
-          const delay = Math.min(base * exp + jitter, 10000);
-          console.log(`[Voice] Unexpected closure (code ${event.code}) — recovering in ${Math.round(delay)}ms (attempt ${attempt + 1}/${adaptiveMax})`);
-          reconnectAttemptsRef.current += 1;
-          setIsReconnecting(true);
+
+        // Check max attempts (configurable, default 3)
+        if (reconnectAttemptsRef.current >= MAX_RECOVERY_ATTEMPTS) {
+          reconnectStateRef.current = "FAILED";
+          setReconnectPhase(stateToPhase(reconnectStateRef.current));
+          setConnectionQuality("poor");
+          setIsReconnecting(false);
+          onErrorRef.current?.(`Session recovery failed after ${MAX_RECOVERY_ATTEMPTS} attempts. Please refresh the page to resume your interview.`);
+          reportSLOEvent("session.reconnect.success_rate", false);
+          return;
+        }
+
+        const attempt = reconnectAttemptsRef.current;
+        const base = 1000;
+        const exp = Math.pow(2, attempt);
+        const jitter = Math.random() * base;
+        const delay = Math.min(base * exp + jitter, 10000);
+        console.log(`[Voice] Unexpected closure (code ${event.code}) — recovering in ${Math.round(delay)}ms (attempt ${attempt + 1}/${MAX_RECOVERY_ATTEMPTS})`);
+        reconnectAttemptsRef.current += 1;
+        setIsReconnecting(true);
+        setConnectionQuality("fair");
+        reconnectStartTimeRef.current = Date.now();
+
+        // Transition: DISCONNECTED → RECOVERY_PENDING (or stay if already in LIVE → DISCONNECTED cycle)
+        try {
+          if (reconnectStateRef.current === "LIVE" || reconnectStateRef.current === "SOCKET_OPEN") {
+            reconnectStateRef.current = transitionReconnectState(reconnectStateRef.current as "LIVE", "DISCONNECTED");
+          }
+          reconnectStateRef.current = transitionReconnectState("DISCONNECTED", "RECOVERY_PENDING");
+          setReconnectPhase(stateToPhase(reconnectStateRef.current));
+        } catch {
+          reconnectStateRef.current = "RECOVERY_PENDING";
           setReconnectPhase("recovering");
-          setConnectionQuality("fair");
-          reconnectStartTimeRef.current = Date.now();
+        }
 
-          reconnectTimeoutRef.current = setTimeout(async () => {
-            try {
-              // Step 1: Call recovery API (rate-limited: skip if called within 5s)
-              const timeSinceLastRecovery = Date.now() - lastRecoveryCallRef.current;
-              if (reconnectTokenRef.current && timeSinceLastRecovery > 5000) {
-                lastRecoveryCallRef.current = Date.now();
-                const recoveryRes = await fetch(`/api/interviews/${interviewId}/voice/recover`, {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({
-                    reconnectToken: reconnectTokenRef.current,
-                    clientLedgerVersion: ledgerVersionRef.current,
-                    clientStateHash: stateHashRef.current,
-                    clientCheckpointDigest: lastCheckpointDigestRef.current,
-                    clientTurnIndex: transcriptRef.current.length - 1,
-                  }),
-                });
-                if (recoveryRes.ok) {
-                  const recovery = await recoveryRes.json();
-                  reconnectTokenRef.current = recovery.newReconnectToken;
-                  // R6: Update Phase 2 protocol refs from server
-                  if (typeof recovery.ledgerVersion === "number") ledgerVersionRef.current = recovery.ledgerVersion;
-                  if (recovery.stateHash) stateHashRef.current = recovery.stateHash;
-                  // R3: Set introDone from server state (deterministic, not regex)
-                  introDoneRef.current = true;
-                  if (Array.isArray(recovery.askedQuestions)) {
-                    askedQuestionsRef.current = recovery.askedQuestions;
-                  }
-                  if (recovery.knowledgeGraph) {
-                    knowledgeGraphRef.current = recovery.knowledgeGraph;
-                  }
-
-                  // Phase 2 reconciliation: handle synced/delta/full statuses
-                  if (recovery.status === "delta" && Array.isArray(recovery.missingTurns)) {
-                    // Append missing turns from server
-                    const missingEntries = recovery.missingTurns.map(
-                      (t: { role: string; content: string; timestamp: string }) => ({
-                        role: t.role === "interviewer" || t.role === "model" ? "interviewer" as const : "candidate" as const,
-                        content: t.content,
-                        timestamp: t.timestamp,
-                        finalized: true,
-                      })
-                    );
-                    setTranscript((prev) => [...prev, ...missingEntries]);
-                    console.log(`[Voice] Delta reconciliation: added ${missingEntries.length} missing turns`);
-                  } else if (recovery.status === "full" && recovery.canonicalTranscript) {
-                    // Full state replacement from canonical ledger
-                    const serverTranscript = recovery.canonicalTranscript.map(
-                      (t: { role: string; content: string; timestamp: string }) => ({
-                        role: t.role === "interviewer" || t.role === "model" ? "interviewer" as const : "candidate" as const,
-                        content: t.content,
-                        timestamp: t.timestamp,
-                        finalized: true,
-                      })
-                    );
-                    setTranscript(serverTranscript);
-                    console.log(`[Voice] Full reconciliation: replaced transcript with ${serverTranscript.length} canonical turns`);
-                  }
-                  // Restore enterprise fields from recovery
-                  if (recovery.moduleScores && Array.isArray(recovery.moduleScores)) {
-                    moduleScoresRef.current = recovery.moduleScores;
-                  }
-                  if (recovery.enterpriseMemory) {
-                    const em = recovery.enterpriseMemory;
-                    if (em.flaggedFollowUps && Array.isArray(em.flaggedFollowUps)) {
-                      flaggedFollowUpsRef.current = em.flaggedFollowUps;
-                    }
-                    if (em.candidateProfile) candidateProfileRef.current = em.candidateProfile;
-                    if (em.currentDifficultyLevel) difficultyLevelRef.current = em.currentDifficultyLevel;
-                    if (em.currentModule) currentModuleRef.current = em.currentModule;
-                    if (em.interviewerState) interviewerStateRef.current = em.interviewerState;
-                  }
-                  setReconnectPhase("re-synced");
-                } else {
-                  // Fail-closed: do NOT proceed with WebSocket reconnect if recovery failed
-                  console.error("[Voice] Recovery API failed — blocking reconnect (fail-closed)");
-                  setReconnectPhase("recovery-failed");
-                  setConnectionQuality("poor");
-                  onErrorRef.current?.("Unable to verify interview state. Please refresh the page to continue.");
-                  setIsReconnecting(false);
-                  return;
+        reconnectTimeoutRef.current = setTimeout(async () => {
+          try {
+            // Step 1: ALWAYS call recovery API when reconnectToken exists
+            if (reconnectTokenRef.current) {
+              lastRecoveryCallRef.current = Date.now();
+              const recoveryRes = await fetch(`/api/interviews/${interviewId}/voice/recover`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  reconnectToken: reconnectTokenRef.current,
+                  clientLedgerVersion: ledgerVersionRef.current,
+                  clientStateHash: stateHashRef.current,
+                  clientCheckpointDigest: lastCheckpointDigestRef.current,
+                  clientTurnIndex: transcriptRef.current.length - 1,
+                }),
+              });
+              if (recoveryRes.ok) {
+                const recovery = await recoveryRes.json();
+                reconnectTokenRef.current = recovery.newReconnectToken;
+                if (typeof recovery.ledgerVersion === "number") ledgerVersionRef.current = recovery.ledgerVersion;
+                if (recovery.stateHash) stateHashRef.current = recovery.stateHash;
+                introDoneRef.current = true;
+                if (Array.isArray(recovery.askedQuestions)) {
+                  askedQuestionsRef.current = recovery.askedQuestions;
                 }
-              } else if (reconnectTokenRef.current && timeSinceLastRecovery <= 5000) {
-                // CRITICAL: Recovery is needed but rate-limited — block reconnect entirely.
-                // Never call startInterview() without authoritative state sync.
-                const retryDelay = Math.max(1000, 5500 - timeSinceLastRecovery);
-                console.warn(`[Voice] Recovery rate-limited (${timeSinceLastRecovery}ms ago) — deferring reconnect by ${retryDelay}ms`);
-                setReconnectPhase("recovery-rate-limited");
-                reportSLOEvent("session.reconnect.deferred_rate_limit", true);
-                reconnectAttemptsRef.current = Math.max(0, reconnectAttemptsRef.current - 1); // Don't count rate-limited attempt
-                setIsReconnecting(false);
-                reconnectTimeoutRef.current = setTimeout(async () => {
-                  // Rate limit window has passed — re-invoke recovery
-                  reconnectAttemptsRef.current += 1;
-                  setIsReconnecting(true);
-                  setReconnectPhase("recovering");
-                  try {
-                    lastRecoveryCallRef.current = Date.now();
-                    const recoveryRes = await fetch(`/api/interviews/${interviewId}/voice/recover`, {
-                      method: "POST",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({
-                        reconnectToken: reconnectTokenRef.current,
-                        clientLedgerVersion: ledgerVersionRef.current,
-                        clientStateHash: stateHashRef.current,
-                        clientCheckpointDigest: lastCheckpointDigestRef.current,
-                        clientTurnIndex: transcriptRef.current.length - 1,
-                      }),
-                    });
-                    if (recoveryRes.ok) {
-                      const recovery = await recoveryRes.json();
-                      reconnectTokenRef.current = recovery.newReconnectToken;
-                      if (typeof recovery.ledgerVersion === "number") ledgerVersionRef.current = recovery.ledgerVersion;
-                      if (recovery.stateHash) stateHashRef.current = recovery.stateHash;
-                      introDoneRef.current = true;
-                      if (Array.isArray(recovery.askedQuestions)) askedQuestionsRef.current = recovery.askedQuestions;
-                      if (recovery.knowledgeGraph) knowledgeGraphRef.current = recovery.knowledgeGraph;
-                      if (recovery.status === "delta" && Array.isArray(recovery.missingTurns)) {
-                        const missingEntries = recovery.missingTurns.map(
-                          (t: { role: string; content: string; timestamp: string }) => ({
-                            role: t.role === "interviewer" || t.role === "model" ? "interviewer" as const : "candidate" as const,
-                            content: t.content, timestamp: t.timestamp, finalized: true,
-                          })
-                        );
-                        setTranscript((prev) => [...prev, ...missingEntries]);
-                      } else if (recovery.status === "full" && recovery.canonicalTranscript) {
-                        const serverTranscript = recovery.canonicalTranscript.map(
-                          (t: { role: string; content: string; timestamp: string }) => ({
-                            role: t.role === "interviewer" || t.role === "model" ? "interviewer" as const : "candidate" as const,
-                            content: t.content, timestamp: t.timestamp, finalized: true,
-                          })
-                        );
-                        setTranscript(serverTranscript);
-                      }
-                      if (recovery.enterpriseMemory) {
-                        const em = recovery.enterpriseMemory;
-                        if (em.flaggedFollowUps && Array.isArray(em.flaggedFollowUps)) flaggedFollowUpsRef.current = em.flaggedFollowUps;
-                        if (em.candidateProfile) candidateProfileRef.current = em.candidateProfile;
-                        if (em.currentDifficultyLevel) difficultyLevelRef.current = em.currentDifficultyLevel;
-                        if (em.currentModule) currentModuleRef.current = em.currentModule;
-                        if (em.interviewerState) interviewerStateRef.current = em.interviewerState;
-                      }
-                      setReconnectPhase("restoring");
-                      await startInterview();
-                      reconnectAttemptsRef.current = 0;
-                      setIsReconnecting(false);
-                      setReconnectPhase(null);
-                      setConnectionQuality("good");
-                      reportSLOEvent("session.reconnect.success_rate", true);
-                    } else {
-                      console.error("[Voice] Deferred recovery API failed — blocking reconnect");
-                      setReconnectPhase("recovery-failed");
-                      setConnectionQuality("poor");
-                      onErrorRef.current?.("Unable to verify interview state. Please refresh the page to continue.");
-                      setIsReconnecting(false);
-                    }
-                  } catch {
-                    setIsReconnecting(false);
-                    setReconnectPhase("recovery-failed");
-                    setConnectionQuality("poor");
-                    onErrorRef.current?.("Recovery failed. Please refresh the page.");
-                    reportSLOEvent("session.reconnect.success_rate", false);
-                  }
-                }, retryDelay);
-                return; // CRITICAL: prevents fall-through to startInterview() with stale state
-              }
-              // No reconnectToken means fresh session or token not yet issued — safe to proceed
+                if (recovery.knowledgeGraph) {
+                  knowledgeGraphRef.current = recovery.knowledgeGraph;
+                }
 
-              // Step 2: Re-establish WebSocket
-              setReconnectPhase("restoring");
-              await startInterview();
-              reconnectAttemptsRef.current = 0;
-              setIsReconnecting(false);
-              setReconnectPhase(null);
-              setConnectionQuality("good");
-              reportSLOEvent("session.reconnect.success_rate", true);
-              reportSLOEvent("session.reconnect.context_loss.rate", true);
-              // Record reconnect latency
-              if (reconnectStartTimeRef.current > 0) {
-                const latencyMs = Date.now() - reconnectStartTimeRef.current;
-                console.log(`[Voice] Reconnect succeeded in ${latencyMs}ms`);
-              }
-            } catch {
-              setIsReconnecting(false);
-              setReconnectPhase(null);
-              if (reconnectAttemptsRef.current >= getMaxReconnectAttempts(lastCloseCodeRef.current)) {
+                // Phase 2 reconciliation: handle synced/delta/full statuses
+                if (recovery.status === "delta" && Array.isArray(recovery.missingTurns)) {
+                  const missingEntries = recovery.missingTurns.map(
+                    (t: { role: string; content: string; timestamp: string }) => ({
+                      role: t.role === "interviewer" || t.role === "model" ? "interviewer" as const : "candidate" as const,
+                      content: t.content,
+                      timestamp: t.timestamp,
+                      finalized: true,
+                    })
+                  );
+                  setTranscript((prev) => [...prev, ...missingEntries]);
+                  console.log(`[Voice] Delta reconciliation: added ${missingEntries.length} missing turns`);
+                } else if (recovery.status === "full" && recovery.canonicalTranscript) {
+                  const serverTranscript = recovery.canonicalTranscript.map(
+                    (t: { role: string; content: string; timestamp: string }) => ({
+                      role: t.role === "interviewer" || t.role === "model" ? "interviewer" as const : "candidate" as const,
+                      content: t.content,
+                      timestamp: t.timestamp,
+                      finalized: true,
+                    })
+                  );
+                  setTranscript(serverTranscript);
+                  console.log(`[Voice] Full reconciliation: replaced transcript with ${serverTranscript.length} canonical turns`);
+                }
+                // Restore enterprise fields from recovery
+                if (recovery.moduleScores && Array.isArray(recovery.moduleScores)) {
+                  moduleScoresRef.current = recovery.moduleScores;
+                }
+                if (recovery.enterpriseMemory) {
+                  const em = recovery.enterpriseMemory;
+                  if (em.flaggedFollowUps && Array.isArray(em.flaggedFollowUps)) {
+                    flaggedFollowUpsRef.current = em.flaggedFollowUps;
+                  }
+                  if (em.candidateProfile) candidateProfileRef.current = em.candidateProfile;
+                  if (em.currentDifficultyLevel) difficultyLevelRef.current = em.currentDifficultyLevel;
+                  if (em.currentModule) currentModuleRef.current = em.currentModule;
+                  if (em.interviewerState) interviewerStateRef.current = em.interviewerState;
+                }
+
+                // Transition: RECOVERY_PENDING → RECOVERY_CONFIRMED
+                reconnectStateRef.current = transitionReconnectState("RECOVERY_PENDING", "RECOVERY_CONFIRMED");
+                setReconnectPhase(stateToPhase(reconnectStateRef.current));
+              } else {
+                // Recovery API returned non-OK — BLOCK reconnect
+                console.error("[Voice] Recovery API failed — blocking reconnect (fail-closed)");
+                reconnectStateRef.current = "FAILED";
+                setReconnectPhase(stateToPhase(reconnectStateRef.current));
                 setConnectionQuality("poor");
-                // Force final checkpoint before modality switch to preserve continuity
-                try { await checkpointTranscriptRef.current?.(); } catch { /* best-effort */ }
-                setFallbackToText(true);
-                setReconnectPhase("resume-failed");
-                onErrorRef.current?.("Connection lost. You can switch to text mode.");
-                reportSLOEvent("session.reconnect.success_rate", false);
-                reportSLOEvent("session.hard_stop.rate", false);
+                onErrorRef.current?.("Unable to verify interview state. Please refresh the page to continue.");
+                setIsReconnecting(false);
+                return;
               }
             }
-          }, delay);
-        } else {
-          setConnectionQuality("poor");
-          // Force final checkpoint before modality switch to preserve continuity
-          try { checkpointTranscriptRef.current?.(); } catch { /* best-effort */ }
-          setFallbackToText(true);
-          setReconnectPhase("resume-failed");
-          onErrorRef.current?.("Connection lost after multiple attempts. Switch to text mode.");
-          reportSLOEvent("session.reconnect.success_rate", false);
-          reportSLOEvent("session.hard_stop.rate", false);
-        }
+            // No reconnectToken means fresh session — RECOVERY_CONFIRMED is granted implicitly
+            if (!reconnectTokenRef.current) {
+              reconnectStateRef.current = "RECOVERY_CONFIRMED";
+            }
+
+            // Step 2: Re-establish WebSocket (startInterview will check RECOVERY_CONFIRMED gate)
+            await startInterview();
+            // Transition: SOCKET_OPEN → LIVE (startInterview succeeded)
+            try {
+              reconnectStateRef.current = transitionReconnectState(reconnectStateRef.current, "LIVE");
+            } catch {
+              reconnectStateRef.current = "LIVE";
+            }
+            reconnectAttemptsRef.current = 0;
+            setIsReconnecting(false);
+            setReconnectPhase(null);
+            setConnectionQuality("good");
+            reportSLOEvent("session.reconnect.success_rate", true);
+            reportSLOEvent("session.reconnect.context_loss.rate", true);
+            // Record reconnect latency
+            if (reconnectStartTimeRef.current > 0) {
+              const latencyMs = Date.now() - reconnectStartTimeRef.current;
+              console.log(`[Voice] Reconnect succeeded in ${latencyMs}ms`);
+            }
+          } catch {
+            // Reconnect attempt failed — transition to FAILED
+            reconnectStateRef.current = "FAILED";
+            setReconnectPhase(stateToPhase(reconnectStateRef.current));
+            setIsReconnecting(false);
+            setConnectionQuality("poor");
+            try { await checkpointTranscriptRef.current?.(); } catch { /* best-effort */ }
+            setFallbackToText(true);
+            onErrorRef.current?.("Connection lost. You can switch to text mode.");
+            reportSLOEvent("session.reconnect.success_rate", false);
+            reportSLOEvent("session.hard_stop.rate", false);
+          }
+        }, delay);
       };
 
       // 6. Send greeting or restore FULL context on reconnect
@@ -1642,9 +1607,21 @@ export function useVoiceInterview(
 
   const reconnect = useCallback(async () => {
     setIsReconnecting(true);
-    setReconnectPhase("recovering");
     reconnectAttemptsRef.current = 0;
     reconnectStartTimeRef.current = Date.now();
+
+    // Transition: → DISCONNECTED → RECOVERY_PENDING
+    try {
+      if (reconnectStateRef.current === "LIVE" || reconnectStateRef.current === "SOCKET_OPEN") {
+        reconnectStateRef.current = transitionReconnectState(reconnectStateRef.current as "LIVE", "DISCONNECTED");
+      }
+      reconnectStateRef.current = transitionReconnectState("DISCONNECTED", "RECOVERY_PENDING");
+      setReconnectPhase(stateToPhase(reconnectStateRef.current));
+    } catch {
+      reconnectStateRef.current = "RECOVERY_PENDING";
+      setReconnectPhase("recovering");
+    }
+
     try {
       // Call recovery API first for authoritative reconciliation
       if (reconnectTokenRef.current) {
@@ -1662,10 +1639,8 @@ export function useVoiceInterview(
         if (recoveryRes.ok) {
           const recovery = await recoveryRes.json();
           reconnectTokenRef.current = recovery.newReconnectToken;
-          // R6: Update Phase 2 protocol refs
           if (typeof recovery.ledgerVersion === "number") ledgerVersionRef.current = recovery.ledgerVersion;
           if (recovery.stateHash) stateHashRef.current = recovery.stateHash;
-          // R3: Set introDone from server state
           introDoneRef.current = true;
           if (Array.isArray(recovery.askedQuestions)) {
             askedQuestionsRef.current = recovery.askedQuestions;
@@ -1695,16 +1670,39 @@ export function useVoiceInterview(
               moduleScoresRef.current = recovery.moduleScores;
             }
           }
-          setReconnectPhase("re-synced");
+          // Transition: RECOVERY_PENDING → RECOVERY_CONFIRMED
+          reconnectStateRef.current = transitionReconnectState("RECOVERY_PENDING", "RECOVERY_CONFIRMED");
+          setReconnectPhase(stateToPhase(reconnectStateRef.current));
+        } else {
+          // Recovery API failed — block reconnect (fail-closed)
+          reconnectStateRef.current = "FAILED";
+          setReconnectPhase(stateToPhase(reconnectStateRef.current));
+          setIsReconnecting(false);
+          setFallbackToText(true);
+          onError?.("Unable to verify interview state. Please refresh the page.");
+          return;
         }
+      } else {
+        // No reconnect token — fresh session, grant RECOVERY_CONFIRMED implicitly
+        reconnectStateRef.current = "RECOVERY_CONFIRMED";
       }
+
+      // Step 2: Re-establish WebSocket
       setReconnectPhase("restoring");
       await startInterview();
+
+      // Transition: SOCKET_OPEN → LIVE
+      try {
+        reconnectStateRef.current = transitionReconnectState(reconnectStateRef.current, "LIVE");
+      } catch {
+        reconnectStateRef.current = "LIVE";
+      }
       setIsReconnecting(false);
       setReconnectPhase(null);
     } catch {
+      reconnectStateRef.current = "FAILED";
+      setReconnectPhase(stateToPhase(reconnectStateRef.current));
       setIsReconnecting(false);
-      setReconnectPhase("resume-failed");
       setFallbackToText(true);
       onError?.("Failed to reconnect. You can switch to text mode.");
     }
@@ -1718,8 +1716,45 @@ export function useVoiceInterview(
     setFallbackToText(false);
     setIsReconnecting(true);
     setReconnectPhase("checking");
+
     try {
+      // Gate: if we have a reconnect token, call recovery API first (fail-closed)
+      const isReconnect = transcriptRef.current.length > 0;
+      if (isReconnect && reconnectTokenRef.current) {
+        reconnectStateRef.current = "RECOVERY_PENDING";
+        const recoveryRes = await fetch(`/api/interviews/${interviewId}/voice/recover`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            reconnectToken: reconnectTokenRef.current,
+            clientLedgerVersion: ledgerVersionRef.current,
+            clientStateHash: stateHashRef.current,
+            clientCheckpointDigest: lastCheckpointDigestRef.current,
+            clientTurnIndex: transcriptRef.current.length - 1,
+          }),
+        });
+        if (recoveryRes.ok) {
+          const recovery = await recoveryRes.json();
+          reconnectTokenRef.current = recovery.newReconnectToken;
+          if (typeof recovery.ledgerVersion === "number") ledgerVersionRef.current = recovery.ledgerVersion;
+          if (recovery.stateHash) stateHashRef.current = recovery.stateHash;
+          introDoneRef.current = true;
+          reconnectStateRef.current = "RECOVERY_CONFIRMED";
+        } else {
+          reconnectStateRef.current = "FAILED";
+          setReconnectPhase(stateToPhase(reconnectStateRef.current));
+          setIsReconnecting(false);
+          setFallbackToText(true);
+          onError?.("Unable to verify interview state for retry. Please refresh the page.");
+          return;
+        }
+      } else if (isReconnect) {
+        // No token but transcript exists — grant RECOVERY_CONFIRMED implicitly
+        reconnectStateRef.current = "RECOVERY_CONFIRMED";
+      }
+
       await startInterview();
+      reconnectStateRef.current = "LIVE";
       setIsReconnecting(false);
       setReconnectPhase(null);
     } catch {
@@ -1730,7 +1765,7 @@ export function useVoiceInterview(
       setFallbackToText(true);
       onError?.("Voice retry failed. Staying in text mode.");
     }
-  }, [startInterview, onError]);
+  }, [startInterview, interviewId, onError]);
 
   // ── Emergency Transcript Save on Page Unload ─────────────────────
   // Prevents data loss if browser crashes or tab is closed between checkpoints.

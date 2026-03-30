@@ -15,7 +15,7 @@ import type { ExtractedFact } from "./fact-extractor";
 
 export interface ClaimProvenance {
   claim: string;
-  groundedBy: { factContent: string; factType: string; similarity: number } | null;
+  groundedBy: { factContent: string; factType: string; similarity: number; turnId?: string } | null;
 }
 
 export interface GroundingResult {
@@ -220,4 +220,52 @@ function tokenize(text: string): string[] {
 function extractNumbers(text: string): number[] {
   const matches = text.match(/\d+(?:\.\d+)?/g);
   return matches ? matches.map(Number) : [];
+}
+
+// ── Follow-Up Grounding Check ──────────────────────────────────────
+
+export interface FollowUpGroundingResult {
+  grounded: boolean;
+  groundingRef: string | null;
+  flag: "UNGROUNDED_FOLLOWUP" | null;
+}
+
+/**
+ * Check if a follow-up question/statement is grounded in recent conversation turns or facts.
+ * Returns UNGROUNDED_FOLLOWUP flag if the follow-up references content not found
+ * in any recent turn or fact.
+ */
+export function checkFollowUpGrounding(
+  followUpText: string,
+  recentTurns: Array<{ turnId: string; content: string }>,
+  facts: Array<{ content: string; factType: string; turnId?: string }>
+): FollowUpGroundingResult {
+  const assertions = extractAssertions(followUpText);
+
+  // No assertions to check — trivially grounded
+  if (assertions.length === 0) {
+    return { grounded: true, groundingRef: null, flag: null };
+  }
+
+  // Check against recent turns
+  for (const assertion of assertions) {
+    for (const turn of recentTurns) {
+      const sim = computeSimilarity(assertion, turn.content);
+      if (sim > 0.3) {
+        return { grounded: true, groundingRef: turn.turnId, flag: null };
+      }
+    }
+  }
+
+  // Check against facts with turnId
+  for (const assertion of assertions) {
+    for (const fact of facts) {
+      if (isClaimSupported(assertion, fact.content)) {
+        return { grounded: true, groundingRef: fact.turnId || null, flag: null };
+      }
+    }
+  }
+
+  // Not grounded in any source
+  return { grounded: false, groundingRef: null, flag: "UNGROUNDED_FOLLOWUP" };
 }

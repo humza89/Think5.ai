@@ -100,11 +100,15 @@ describe("Memory Orchestrator — Confidence Scoring", () => {
       lastTurnIndex: 1,
     } as any);
 
-    expect(packet.memoryConfidence).toBeCloseTo(1.0);
+    // All 3 sources succeed (3/3 = 1.0) minus 0.1 context penalty (no turns in test) = 0.9
+    expect(packet.memoryConfidence).toBeCloseTo(0.9);
     expect(packet.retrievalStatus.factsOk).toBe(true);
     expect(packet.retrievalStatus.knowledgeGraphOk).toBe(true);
     expect(packet.retrievalStatus.recentTurnsOk).toBe(true);
     expect(packet.retrievalStatus.errors).toHaveLength(0);
+    // Manifest should be present
+    expect(packet.manifest).toBeDefined();
+    expect(packet.manifest.budgetTotal).toBeGreaterThan(0);
   });
 
   it("returns confidence ~0.67 when one source fails", async () => {
@@ -117,7 +121,8 @@ describe("Memory Orchestrator — Confidence Scoring", () => {
       lastTurnIndex: 1,
     } as any);
 
-    expect(packet.memoryConfidence).toBeCloseTo(2 / 3);
+    // 2/3 sources succeed (0.667) minus 0.1 context penalty = 0.567
+    expect(packet.memoryConfidence).toBeCloseTo(2 / 3 - 0.1);
     expect(packet.retrievalStatus.factsOk).toBe(false);
     expect(packet.retrievalStatus.knowledgeGraphOk).toBe(true);
     expect(packet.retrievalStatus.recentTurnsOk).toBe(true);

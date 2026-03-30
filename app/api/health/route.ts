@@ -19,15 +19,18 @@ export async function GET() {
     checks.database = "unhealthy";
   }
 
-  // Redis check
+  // Redis check — full write/read round-trip verification
   try {
     const url = process.env.UPSTASH_REDIS_REST_URL;
     const token = process.env.UPSTASH_REDIS_REST_TOKEN;
     if (url && token) {
       const { Redis } = await import("@upstash/redis");
       const redis = new Redis({ url, token });
-      await redis.ping();
-      checks.redis = "healthy";
+      const testKey = `health-check:${Date.now()}`;
+      await redis.set(testKey, "ok", { ex: 10 });
+      const val = await redis.get(testKey);
+      await redis.del(testKey);
+      checks.redis = val === "ok" ? "healthy" : "degraded";
     } else {
       checks.redis = "not_configured";
     }

@@ -58,6 +58,20 @@ export interface MemoryPacket {
   // Memory confidence scoring
   memoryConfidence: number; // 0.0–1.0 based on retrieval source success
   retrievalStatus: MemoryRetrievalStatus;
+  // Context retrieval manifest
+  manifest: ContextRetrievalManifest;
+}
+
+export interface ContextRetrievalManifest {
+  turns: Array<{
+    turnIndex: number;
+    turnId: string;
+    source: "milestone" | "unresolved" | "recent";
+    tokenEstimate: number;
+  }>;
+  totalTokens: number;
+  budgetUsed: number; // 0-1 fraction
+  budgetTotal: number;
 }
 
 // ── Compose ──────────────────────────────────────────────────────────
@@ -148,7 +162,15 @@ export async function composeMemoryPacket(
   //    Tier B: Unresolved contradiction/follow-up turns from InterviewerState
   //    Tier C: Recent chronological window fills remaining budget
   let recentTurns: RecentTurn[] = [];
-  const TOTAL_CHAR_BUDGET = 32000;
+  const CHARS_PER_TOKEN = 4;
+  const MODEL_CONTEXT_TOKENS = parseInt(process.env.MEMORY_MODEL_CONTEXT_TOKENS || "1048576", 10);
+  const MEMORY_BUDGET_RATIO = parseFloat(process.env.MEMORY_BUDGET_RATIO || "0.8");
+  const TOKEN_BUDGET = Math.floor(MODEL_CONTEXT_TOKENS * MEMORY_BUDGET_RATIO);
+  const MIN_TOKEN_THRESHOLD = parseInt(process.env.MEMORY_MIN_TOKEN_THRESHOLD || "2000", 10);
+  const TOTAL_CHAR_BUDGET = TOKEN_BUDGET * CHARS_PER_TOKEN;
+
+  // Manifest tracking
+  const manifestTurns: ContextRetrievalManifest["turns"] = [];
   try {
     const { getLedgerWindow } = await import("@/lib/conversation-ledger");
     const { prisma } = await import("@/lib/prisma");
@@ -213,6 +235,13 @@ export async function composeMemoryPacket(
               turnIndex: t.turnIndex,
               turnId: t.turnId,
             });
+            const source: "milestone" | "unresolved" = milestoneTurnIndices.has(t.turnIndex) ? "milestone" : "unresolved";
+            manifestTurns.push({
+              turnIndex: t.turnIndex,
+              turnId: t.turnId,
+              source,
+              tokenEstimate: Math.ceil(charLen / CHARS_PER_TOKEN),
+            });
             usedCharBudget += charLen;
             includedTurnIndices.add(t.turnIndex);
           }
@@ -235,6 +264,12 @@ export async function composeMemoryPacket(
             turnIndex: t.turnIndex,
             turnId: t.turnId,
           });
+          manifestTurns.push({
+            turnIndex: t.turnIndex,
+            turnId: t.turnId,
+            source: "recent",
+            tokenEstimate: Math.ceil((t.content || "").length / CHARS_PER_TOKEN),
+          });
           includedTurnIndices.add(t.turnIndex);
         }
       }
@@ -255,11 +290,34 @@ export async function composeMemoryPacket(
     }
   }
 
-  // 5. Compute memory confidence score (0.0–1.0)
-  const sourcesSucceeded = [retrievalStatus.factsOk, retrievalStatus.knowledgeGraphOk, retrievalStatus.recentTurnsOk].filter(Boolean).length;
-  const memoryConfidence = sourcesSucceeded / 3;
+  // 5. Build context retrieval manifest
+  const manifestTotalTokens = manifestTurns.reduce((sum, t) => sum + t.tokenEstimate, 0);
+  const manifest: ContextRetrievalManifest = {
+    turns: manifestTurns,
+    totalTokens: manifestTotalTokens,
+    budgetUsed: TOKEN_BUDGET > 0 ? manifestTotalTokens / TOKEN_BUDGET : 0,
+    budgetTotal: TOKEN_BUDGET,
+  };
 
-  // 6. Compose unified packet
+  // LOW_CONTEXT_WARNING: fire when retrieved context is below minimum threshold
+  if (manifestTotalTokens < MIN_TOKEN_THRESHOLD) {
+    try {
+      const { recordEvent } = await import("@/lib/interview-timeline");
+      recordEvent(interviewId, "anomaly", {
+        type: "LOW_CONTEXT_WARNING",
+        totalTokens: manifestTotalTokens,
+        threshold: MIN_TOKEN_THRESHOLD,
+      }).catch(() => {});
+    } catch { /* non-fatal */ }
+  }
+
+  // 6. Compute memory confidence score (0.0–1.0)
+  const sourcesSucceeded = [retrievalStatus.factsOk, retrievalStatus.knowledgeGraphOk, retrievalStatus.recentTurnsOk].filter(Boolean).length;
+  const baseConfidence = sourcesSucceeded / 3;
+  const contextBonus = manifestTotalTokens >= MIN_TOKEN_THRESHOLD ? 0 : -0.1;
+  const memoryConfidence = Math.max(0, Math.min(1, baseConfidence + contextBonus));
+
+  // 7. Compose unified packet
   return {
     // InterviewerState
     currentStep: interviewerState.currentStep,
@@ -286,5 +344,7 @@ export async function composeMemoryPacket(
     // Memory confidence scoring
     memoryConfidence,
     retrievalStatus,
+    // Context retrieval manifest
+    manifest,
   };
 }

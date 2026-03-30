@@ -7,7 +7,6 @@
  */
 
 import { randomUUID, createHmac, createHash, timingSafeEqual } from "crypto";
-import { isEnabled } from "@/lib/feature-flags";
 import { recordSLOEvent } from "@/lib/slo-monitor";
 
 // HMAC secret for signing reconnect tokens — required in production
@@ -29,7 +28,9 @@ function getHmacSecret(): string {
 let redisClient: any = null;
 let redisAvailable = false;
 
-const isProduction = process.env.NODE_ENV === "production" && !process.env.NEXT_PHASE;
+function isProduction(): boolean {
+  return process.env.NODE_ENV === "production" && !process.env.NEXT_PHASE;
+}
 
 async function getRedis() {
   if (redisClient) return redisClient;
@@ -38,7 +39,7 @@ async function getRedis() {
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
 
   if (!url || !token) {
-    if (isProduction) {
+    if (isProduction()) {
       throw new Error("Redis unavailable in production — UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN must be set");
     }
     console.warn("Upstash Redis not configured. Using in-memory session fallback (dev/test only).");
@@ -51,7 +52,7 @@ async function getRedis() {
     redisAvailable = true;
     return redisClient;
   } catch (err) {
-    if (isProduction) {
+    if (isProduction()) {
       throw new Error(`Redis initialization failed in production: ${err}`);
     }
     console.warn("Failed to initialize Redis client. Using in-memory fallback (dev/test only).");
@@ -118,6 +119,8 @@ export interface SessionState {
   lockOwnerToken?: string;
   askedQuestions?: string[];
   interviewerState?: string; // Serialized InterviewerState JSON for deterministic continuity
+  violationCount?: number;
+  memoryPacketVersion?: number;
 }
 
 function sessionKey(interviewId: string): string {
@@ -143,27 +146,50 @@ export async function saveSessionState(
 
   const redis = await getRedis();
   if (redis) {
-    try {
-      await redis.set(key, serialized, { ex: SESSION_TTL_SECONDS });
-    } catch (err) {
-      // Retry once after 500ms on Redis failure
-      console.warn(`[${interviewId}] Session save failed, retrying in 500ms:`, err);
-      await new Promise((r) => setTimeout(r, 500));
+    const maxRetries = parseInt(process.env.SESSION_RETRY_COUNT || "3", 10);
+    const retryBaseMs = parseInt(process.env.SESSION_RETRY_BASE_MS || "100", 10);
+    let lastErr: unknown = null;
+
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
       try {
         await redis.set(key, serialized, { ex: SESSION_TTL_SECONDS });
-      } catch (retryErr) {
-        if (isEnabled("FAIL_CLOSED_PRODUCTION")) {
-          console.error(`[${interviewId}] ALARM: Session save failed after retry — fail-closed, no in-memory fallback`);
-          recordSLOEvent("session.save.failure_rate", false).catch(() => {});
-          throw new Error(`Session save failed for ${interviewId} — Redis write failure after retry`);
+        return; // Success — exit early
+      } catch (err) {
+        lastErr = err;
+        if (attempt < maxRetries) {
+          const delay = retryBaseMs * Math.pow(3, attempt); // 100, 300, 900ms
+          console.warn(`[${interviewId}] Session save attempt ${attempt + 1}/${maxRetries + 1} failed, retrying in ${delay}ms:`, err);
+          await new Promise((r) => setTimeout(r, delay));
         }
-        console.error(`[${interviewId}] Session save retry failed, falling back to memory:`, retryErr);
-        memoryStore.set(key, serialized);
-        memoryExpiry.set(key, Date.now() + SESSION_TTL_SECONDS * 1000);
       }
     }
+
+    // All retries exhausted
+    if (isProduction()) {
+      console.error(JSON.stringify({
+        event: "SESSION_PERSIST_FAILURE",
+        interviewId,
+        attempts: maxRetries + 1,
+        severity: "critical",
+        error: (lastErr as Error)?.message || "unknown",
+        timestamp: new Date().toISOString(),
+      }));
+      recordSLOEvent("session.save.failure_rate", false).catch(() => {});
+      throw new Error(`Session save failed for ${interviewId} — Redis write failure after ${maxRetries + 1} attempts`);
+    }
+    console.error(`[${interviewId}] Session save failed after ${maxRetries + 1} attempts, falling back to memory:`, lastErr);
+    memoryStore.set(key, serialized);
+    memoryExpiry.set(key, Date.now() + SESSION_TTL_SECONDS * 1000);
   } else {
-    if (isEnabled("FAIL_CLOSED_PRODUCTION")) {
+    if (isProduction()) {
+      console.error(JSON.stringify({
+        event: "SESSION_PERSIST_FAILURE",
+        interviewId,
+        attempts: 0,
+        severity: "critical",
+        error: "no durable store available",
+        timestamp: new Date().toISOString(),
+      }));
       throw new Error(`Session save failed for ${interviewId} — no durable store available`);
     }
     memoryStore.set(key, serialized);
@@ -181,9 +207,30 @@ export async function getSessionState(
 
   const redis = await getRedis();
   if (redis) {
-    const data = await redis.get(key);
-    if (!data) return null;
-    return typeof data === "string" ? JSON.parse(data) : data as SessionState;
+    const maxRetries = parseInt(process.env.SESSION_RETRY_COUNT || "3", 10);
+    const retryBaseMs = parseInt(process.env.SESSION_RETRY_BASE_MS || "100", 10);
+    let lastErr: unknown = null;
+
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        const data = await redis.get(key);
+        if (!data) return null;
+        return typeof data === "string" ? JSON.parse(data) : data as SessionState;
+      } catch (err) {
+        lastErr = err;
+        if (attempt < maxRetries) {
+          const delay = retryBaseMs * Math.pow(3, attempt);
+          console.warn(`[${interviewId}] Session read attempt ${attempt + 1}/${maxRetries + 1} failed, retrying in ${delay}ms:`, err);
+          await new Promise((r) => setTimeout(r, delay));
+        }
+      }
+    }
+
+    // All read retries exhausted — log but don't throw (read path falls through to memory)
+    console.error(`[${interviewId}] Session read failed after ${maxRetries + 1} attempts:`, lastErr);
+    if (isProduction()) {
+      recordSLOEvent("session.read.failure_rate", false).catch(() => {});
+    }
   }
 
   const data = memoryStore.get(key);
@@ -577,12 +624,12 @@ export async function reconstructSessionFromLedger(
       const stateSnapshot = await prisma.interviewerStateSnapshot.findFirst({
         where: { interviewId },
         orderBy: { turnIndex: "desc" },
-        select: { state: true },
+        select: { stateJson: true },
       });
-      if (stateSnapshot?.state) {
-        const parsed = typeof stateSnapshot.state === "string"
-          ? stateSnapshot.state
-          : JSON.stringify(stateSnapshot.state);
+      if (stateSnapshot?.stateJson) {
+        const parsed = typeof stateSnapshot.stateJson === "string"
+          ? stateSnapshot.stateJson
+          : JSON.stringify(stateSnapshot.stateJson);
         const iState = deserializeState(parsed);
         interviewerStateJson = serializeState(iState);
         stateHash = computeStateHash(iState);

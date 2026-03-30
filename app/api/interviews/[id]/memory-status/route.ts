@@ -35,10 +35,21 @@ export async function GET(
   try {
     const packet = await composeMemoryPacket(id, session);
 
+    // 4-factor memoryConfidenceScore
+    const healthyCount = [packet.retrievalStatus.factsOk, packet.retrievalStatus.knowledgeGraphOk, packet.retrievalStatus.recentTurnsOk].filter(Boolean).length;
+    const violations = session.violationCount || 0;
+    const memoryConfidenceScore = Math.min(1.0,
+      (healthyCount / 3) * 0.4 +
+      (violations === 0 ? 0.3 : Math.max(0, 0.3 - violations * 0.1)) +
+      0.2 + // Redis persistence confirmed (we loaded session)
+      ((session.reconnectCount || 0) === 0 || session.stateHash ? 0.1 : 0.05)
+    );
+
     return Response.json({
-      memoryPacketVersion: session.ledgerVersion ?? null,
+      memoryPacketVersion: session.memoryPacketVersion ?? session.ledgerVersion ?? null,
       stateHash: packet.stateHash,
       memoryConfidence: packet.memoryConfidence,
+      memoryConfidenceScore,
       retrievalStatus: packet.retrievalStatus,
       sourceSummary: {
         verifiedFactsCount: packet.verifiedFacts.length,
@@ -53,6 +64,9 @@ export async function GET(
         currentStep: packet.currentStep,
         currentTopic: packet.currentTopic,
       },
+      violationHistory: { totalViolations: violations },
+      recoveryCycleCount: session.reconnectCount || 0,
+      redisPersistenceStatus: "confirmed",
     });
   } catch (err) {
     console.error(`[memory-status] [${id}] Failed to compose memory packet:`, err);

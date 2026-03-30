@@ -163,19 +163,36 @@ export async function POST(
         : null;
 
       // Server-authoritative askedQuestions resolution:
-      // Priority: (1) InterviewerState.askedQuestionIds → (2) session.askedQuestions → (3) client (last resort)
+      // Priority: (1) InterviewerState.askedQuestionIds → (2) session.askedQuestions
+      // Client fallback REMOVED — server is sole authority (fail-closed)
       let resolvedAskedQuestions: string[] = [];
       if (reconnectInterviewerState?.askedQuestionIds?.length) {
         resolvedAskedQuestions = reconnectInterviewerState.askedQuestionIds;
       } else if (serverState?.askedQuestions?.length) {
         resolvedAskedQuestions = serverState.askedQuestions;
-      } else if (reconnectContext.askedQuestions?.length) {
-        resolvedAskedQuestions = reconnectContext.askedQuestions;
-        console.warn(`[voice-init] [${id}] askedQuestions sourced from CLIENT — server state empty`);
-        if (isEnabled("TIMELINE_OBSERVABILITY")) {
+      }
+      // else: both server sources empty → empty array is the truth
+
+      // Dedup gate: remove duplicate askedQuestions
+      const deduped = [...new Set(resolvedAskedQuestions)];
+      if (deduped.length !== resolvedAskedQuestions.length) {
+        recordEvent(id, "anomaly", {
+          type: "askedQuestions_duplicate_hash",
+          duplicateCount: resolvedAskedQuestions.length - deduped.length,
+        }).catch(() => {});
+      }
+      resolvedAskedQuestions = deduped;
+
+      // DEDUP_AUTHORITY_BREACH: log when client and server askedQuestions diverge
+      if (reconnectContext.askedQuestions?.length) {
+        const clientSet = new Set(reconnectContext.askedQuestions as string[]);
+        const serverSet = new Set(resolvedAskedQuestions);
+        const clientMatchesServer = [...clientSet].every((q: string) => serverSet.has(q)) && [...serverSet].every((q: string) => clientSet.has(q));
+        if (!clientMatchesServer) {
           recordEvent(id, "anomaly", {
-            type: "client_fallback_asked_questions",
-            clientCount: reconnectContext.askedQuestions.length,
+            type: "DEDUP_AUTHORITY_BREACH",
+            clientCount: clientSet.size,
+            serverCount: serverSet.size,
           }).catch(() => {});
         }
       }

@@ -197,6 +197,14 @@ export async function generateReportInBackground(
       if (session) {
         const { composeMemoryPacket } = await import("@/lib/memory-orchestrator");
         const packet = await composeMemoryPacket(interviewId, session);
+        const integrityGrade = (() => {
+          const c = packet.memoryConfidence;
+          const v = session.violationCount || 0;
+          if (c >= 0.9 && v === 0) return "A";
+          if (c >= 0.7 && v <= 1) return "B";
+          if (c >= 0.5) return "C";
+          return "D";
+        })();
         memoryMetadata = {
           memoryConfidence: packet.memoryConfidence,
           retrievalStatus: packet.retrievalStatus,
@@ -204,6 +212,34 @@ export async function generateReportInBackground(
           recentTurnsCount: packet.recentTurns.length,
           hasKnowledgeGraph: packet.knowledgeGraph !== null,
           askedQuestionsCount: packet.askedQuestionIds.length,
+          violationCount: session.violationCount || 0,
+          reconnectCount: session.reconnectCount || 0,
+          integrityGrade,
+          hallucinationRisk: await (async () => {
+            try {
+              const events = await prisma.interviewEvent.findMany({
+                where: {
+                  interviewId,
+                  eventType: "anomaly",
+                  eventData: { path: ["type"], string_contains: "UNGROUNDED" },
+                },
+              });
+              const contradictionEvents = await prisma.interviewEvent.findMany({
+                where: {
+                  interviewId,
+                  eventType: "anomaly",
+                  eventData: { path: ["type"], string_contains: "CONTRADICTION" },
+                },
+              });
+              const ungroundedCount = events.length;
+              const contradictionCount = contradictionEvents.length;
+              const riskLevel = ungroundedCount + contradictionCount === 0 ? "low"
+                : ungroundedCount + contradictionCount <= 2 ? "medium" : "high";
+              return { ungroundedFollowUpCount: ungroundedCount, contradictionCount, riskLevel };
+            } catch {
+              return { ungroundedFollowUpCount: 0, contradictionCount: 0, riskLevel: "low" };
+            }
+          })(),
         };
       }
     } catch {
