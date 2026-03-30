@@ -177,8 +177,9 @@ export function isClaimSupported(claim: string, factContent: string): boolean {
       factNumbers.some((fn) => Math.abs(cn - fn) / Math.max(cn, fn, 1) < 0.05)
     );
 
-  // Thresholds: Jaccard ≥ 0.4 OR (Jaccard ≥ 0.25 AND numbers match)
-  return jaccard >= 0.4 || (jaccard >= 0.25 && numberMatch);
+  // Thresholds: Jaccard ≥ 0.5 OR (Jaccard ≥ 0.3 AND numbers match)
+  // Raised from 0.4/0.25 to reduce false-positive grounding on wrong entities
+  return jaccard >= 0.5 || (jaccard >= 0.3 && numberMatch);
 }
 
 /**

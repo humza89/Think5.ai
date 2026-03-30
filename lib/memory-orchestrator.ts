@@ -80,11 +80,16 @@ export async function composeMemoryPacket(
       take: 100,
       select: { factType: true, content: true, confidence: true },
     });
-    verifiedFacts = facts.map((f: { factType: string; content: string; confidence: number }) => ({
-      factType: f.factType,
-      content: f.content,
-      confidence: f.confidence,
-    }));
+    // Deduplicate facts by content (case-insensitive key, keep highest confidence)
+    const factMap = new Map<string, { factType: string; content: string; confidence: number }>();
+    for (const f of facts) {
+      const key = `${f.factType}:${f.content.toLowerCase().trim()}`;
+      const existing = factMap.get(key);
+      if (!existing || f.confidence > existing.confidence) {
+        factMap.set(key, { factType: f.factType, content: f.content, confidence: f.confidence });
+      }
+    }
+    verifiedFacts = Array.from(factMap.values());
   } catch {
     // Non-fatal: continue without facts
   }

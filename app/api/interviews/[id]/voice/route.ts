@@ -28,7 +28,7 @@ import {
   computeTranscriptChecksum,
 } from "@/lib/session-store";
 import { recordSLOEvent } from "@/lib/slo-monitor";
-import { appendTurns, getLedgerSnapshot, diffTurns, finalizeLedger, getFullTranscript } from "@/lib/conversation-ledger";
+import { appendTurns, getLedgerSnapshot, diffTurns, finalizeLedger, getFullTranscript, verifyContentIntegrity } from "@/lib/conversation-ledger";
 import { classifyError } from "@/lib/error-classification";
 import { validateTranscript, repairTranscript } from "@/lib/transcript-validator";
 import { isMaintenanceMode, getMaintenanceMessage, maintenanceResponse } from "@/lib/maintenance-mode";
@@ -267,7 +267,7 @@ export async function POST(
                 (t.role === "assistant" || t.role === "model") && typeof t.content === "string" && t.content.includes("?")
               )
               .map((t: { content: string }) => t.content)
-              .slice(-50); // Last 50 AI turns for efficiency
+              .slice(-200); // Last 200 AI turns for comprehensive semantic dedup
 
             const aiTurns = newTurns.filter((t: { role: string }) => t.role === "assistant" || t.role === "model");
             for (const aiTurn of aiTurns) {
@@ -302,6 +302,13 @@ export async function POST(
 
                   await recordSLOEvent("transcript.anomaly.rate", false);
 
+                  // Per-violation-type SLO metrics for granular monitoring
+                  for (const v of gateAction.violations) {
+                    if (v.type === "reintroduction") recordSLOEvent("gate.repeated_intro.rate", false).catch(() => {});
+                    if (v.type === "duplicate_question") recordSLOEvent("gate.duplicate_question.rate", false).catch(() => {});
+                    if (v.type === "unsupported_claim") recordSLOEvent("gate.unsupported_claim.rate", false).catch(() => {});
+                  }
+
                   // Replace AI turn content in-place with sanitized version BEFORE ledger write
                   if (gateAction.action === "block" && gateAction.sanitizedResponse) {
                     aiTurn.content = gateAction.sanitizedResponse;
@@ -324,6 +331,13 @@ export async function POST(
             }
           }
         } catch (err) {
+          if (isEnabled("FAIL_CLOSED_PRODUCTION")) {
+            console.error(`[${id}] Pre-write output gate check failed (fail-closed):`, err);
+            return Response.json(
+              { error: "Output gate validation failed", code: "GATE_ERROR", recoverable: true },
+              { status: 503 }
+            );
+          }
           console.warn(`[${id}] Pre-write output gate check failed (non-fatal):`, err);
         }
       }
@@ -336,13 +350,15 @@ export async function POST(
         }
       }
 
-      // Timeline observability: record checkpoint event
+      // Timeline observability: record checkpoint event with causal link to prior checkpoint
+      const priorCheckpointId = existingSession?.checkpointDigest
+        ? `checkpoint-${existingSession.ledgerVersion}` : undefined;
       if (isEnabled("TIMELINE_OBSERVABILITY")) {
         recordEvent(id, "checkpoint", {
           ledgerVersion,
           newTurnsAppended: newTurns.length,
           questionCount: questionCount || 0,
-        }, ledgerVersion).catch(() => {});
+        }, ledgerVersion, priorCheckpointId).catch(() => {});
       }
 
       // Tier 1 memory: extract and persist structured facts from new candidate turns
@@ -372,7 +388,8 @@ export async function POST(
             });
           }
         } catch (err) {
-          console.warn(`[${id}] Fact extraction failed (non-fatal):`, err);
+          // Fact extraction is non-blocking — degraded memory is acceptable
+          console.warn(`[${id}] Fact extraction failed (degraded memory):`, err);
         }
       }
 
@@ -409,12 +426,31 @@ export async function POST(
                     name: "interview/anomaly.detected",
                     data: { interviewId: id },
                   }).catch(() => {});
+
+                  // Block critically ungrounded responses (score < 0.5 = majority claims unsupported)
+                  if (result.score < 0.5 && isEnabled("OUTPUT_GATE_BLOCKING") && result.totalClaims > 0) {
+                    // Strip unsupported claims from the AI turn content
+                    const sentences = content.split(/(?<=[.!?])\s+/);
+                    const cleaned = sentences.filter((s: string) =>
+                      !result.unsupportedClaims.some((claim: string) =>
+                        s.toLowerCase().includes(claim.toLowerCase().slice(0, 50))
+                      )
+                    );
+                    const groundedContent = cleaned.join(" ").trim() || "Let's continue with the interview.";
+                    aiTurn.content = groundedContent;
+                    if (!correctedAiResponse) correctedAiResponse = groundedContent;
+                  }
                 }
               }
             }
           }
         } catch (err) {
-          console.warn(`[${id}] Grounding verification failed (non-fatal):`, err);
+          if (isEnabled("FAIL_CLOSED_PRODUCTION")) {
+            console.error(`[${id}] Grounding verification failed (fail-closed):`, err);
+            // Don't block checkpoint for grounding infra failures — log and continue
+            // Grounding gate errors are different from gate violations
+          }
+          console.warn(`[${id}] Grounding verification failed:`, err);
         }
       }
 
@@ -490,6 +526,13 @@ export async function POST(
                 }
               }
             } catch (err) {
+              if (isEnabled("FAIL_CLOSED_PRODUCTION")) {
+                console.error(`[${id}] Contradiction detection failed (fail-closed):`, err);
+                return Response.json(
+                  { error: "Contradiction detection failed", code: "CONTRADICTION_ERROR", recoverable: true },
+                  { status: 503 }
+                );
+              }
               console.warn(`[${id}] Contradiction detection failed (non-fatal):`, err);
             }
           }
@@ -548,8 +591,26 @@ export async function POST(
           }
 
           updatedInterviewerState = serializeState(state);
+
+          // Record state transition in timeline with causal link
+          if (isEnabled("TIMELINE_OBSERVABILITY")) {
+            recordEvent(id, "state_transition", {
+              currentStep: state.currentStep,
+              introDone: state.introDone,
+              askedQuestionCount: state.askedQuestionIds.length,
+              commitmentCount: state.commitments.length,
+              stateHash: state.stateHash,
+            }, ledgerVersion, priorCheckpointId).catch(() => {});
+          }
         } catch (err) {
-          console.warn(`[${id}] InterviewerState transition failed (non-fatal):`, err);
+          if (isEnabled("FAIL_CLOSED_PRODUCTION")) {
+            console.error(`[${id}] InterviewerState transition failed (fail-closed):`, err);
+            return Response.json(
+              { error: "State machine transition failed", code: "STATE_ERROR", recoverable: true },
+              { status: 503 }
+            );
+          }
+          console.warn(`[${id}] InterviewerState transition failed:`, err);
         }
       }
 
@@ -651,12 +712,16 @@ export async function POST(
         ipAddress: getClientIp(request.headers),
       }).catch(() => {});
 
-      // Timeline observability: record disconnect event
+      // Timeline observability: record disconnect event with causal link to last checkpoint
       if (isEnabled("TIMELINE_OBSERVABILITY")) {
+        const disconnectSession = await getSessionState(id);
+        const disconnectCausalId = disconnectSession?.ledgerVersion !== undefined
+          ? `checkpoint-${disconnectSession.ledgerVersion}` : undefined;
         recordEvent(id, "disconnect", {
           reason: "normal_end",
           finalQuestionCount: questionCount || 0,
-        }).catch(() => {});
+          ledgerVersion: disconnectSession?.ledgerVersion,
+        }, disconnectSession?.ledgerVersion, disconnectCausalId).catch(() => {});
       }
 
       // Validate state transition
@@ -699,6 +764,19 @@ export async function POST(
       // Finalize all ledger turns (marks as immutable — no further appends allowed)
       const finalizedCount = await finalizeLedger(id);
       console.log(`[${id}] Ledger finalized: ${finalizedCount} turns marked immutable`);
+
+      // Verify content integrity of finalized ledger
+      const integrityMismatches = await verifyContentIntegrity(id);
+      if (integrityMismatches.length > 0) {
+        console.error(`[${id}] Content integrity check failed: ${integrityMismatches.length} mismatches`);
+        if (isEnabled("TIMELINE_OBSERVABILITY")) {
+          recordEvent(id, "anomaly", {
+            type: "content_integrity_failure",
+            mismatchCount: integrityMismatches.length,
+            mismatches: integrityMismatches.slice(0, 5).map(m => ({ turnIndex: m.turnIndex, turnId: m.turnId })),
+          }, endLedgerSnapshot.latestTurnIndex).catch(() => {});
+        }
+      }
 
       // Build denormalized transcript from canonical ledger for backward compatibility
       const canonicalTurns = await getFullTranscript(id);

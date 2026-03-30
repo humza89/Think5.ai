@@ -54,6 +54,10 @@ const INTRO_PATTERNS = [
   /let\s+me\s+introduce/i,
   /i'll\s+be\s+conducting/i,
   /my\s+name\s+is/i,
+  /i'?m\s+your\s+interviewer/i,
+  /i\s+am\s+the\s+interviewer/i,
+  /let\s+me\s+start\s+by\s+introducing/i,
+  /nice\s+to\s+meet\s+you/i,
 ];
 
 // ── Question Extraction ──────────────────────────────────────────────
@@ -110,16 +114,36 @@ export function sanitizeResponse(
   violations: GateViolation[]
 ): string {
   let sanitized = aiResponse;
-  const sentences = sanitized.split(/(?<=[.!?])\s+/);
 
-  for (const violation of violations) {
+  // Process violations in priority order: reintroduction → unsupported claims → duplicates
+  // This prevents order-dependent fragmentation
+  const ordered = [...violations].sort((a, b) => {
+    const priority: Record<string, number> = { reintroduction: 0, unsupported_claim: 1, duplicate_question: 2 };
+    return (priority[a.type] ?? 3) - (priority[b.type] ?? 3);
+  });
+
+  for (const violation of ordered) {
     switch (violation.type) {
       case "reintroduction": {
         // Remove sentences matching intro patterns
+        const sentences = sanitized.split(/(?<=[.!?])\s+/);
         const filtered = sentences.filter((sentence) =>
           !INTRO_PATTERNS.some((p) => p.test(sentence))
         );
         sanitized = filtered.join(" ").trim();
+        break;
+      }
+      case "unsupported_claim": {
+        // Strip the unsupported assertion clause
+        const claimMatch = violation.detail.match(/Unsupported claim: "(.+?)"/);
+        if (claimMatch) {
+          const claim = claimMatch[1];
+          const claimSentences = sanitized.split(/(?<=[.!?])\s+/);
+          const cleanedSentences = claimSentences.filter(
+            (s) => !s.toLowerCase().includes(claim.toLowerCase().slice(0, 50))
+          );
+          sanitized = cleanedSentences.join(" ").trim();
+        }
         break;
       }
       case "duplicate_question": {
@@ -127,21 +151,6 @@ export function sanitizeResponse(
         const question = extractQuestion(sanitized);
         if (question) {
           sanitized = sanitized.replace(question, "Let me move on to the next topic.");
-        }
-        break;
-      }
-      case "unsupported_claim": {
-        // Strip the unsupported assertion clause
-        // Extract the specific claim text from the violation detail
-        const claimMatch = violation.detail.match(/Unsupported claim: "(.+?)"/);
-        if (claimMatch) {
-          const claim = claimMatch[1];
-          // Remove the sentence containing the claim
-          const claimSentences = sanitized.split(/(?<=[.!?])\s+/);
-          const cleanedSentences = claimSentences.filter(
-            (s) => !s.toLowerCase().includes(claim.toLowerCase().slice(0, 50))
-          );
-          sanitized = cleanedSentences.join(" ").trim();
         }
         break;
       }

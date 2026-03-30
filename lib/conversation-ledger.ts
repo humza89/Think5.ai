@@ -124,6 +124,38 @@ export async function appendTurns(
 }
 
 /**
+ * Verify content integrity by recomputing checksums against stored values.
+ * Returns turns with mismatched checksums (empty array = all valid).
+ */
+export async function verifyContentIntegrity(
+  interviewId: string
+): Promise<Array<{ turnIndex: number; turnId: string; expected: string; actual: string }>> {
+  const rows = await prisma.interviewTranscript.findMany({
+    where: { interviewId },
+    orderBy: { turnIndex: "asc" },
+    select: { turnIndex: true, turnId: true, role: true, content: true, contentChecksum: true },
+  });
+
+  const mismatches: Array<{ turnIndex: number; turnId: string; expected: string; actual: string }> = [];
+  for (const row of rows) {
+    if (!row.contentChecksum) continue;
+    const computed = createHash("sha256")
+      .update(`${row.role}:${row.content}`)
+      .digest("hex")
+      .slice(0, 16);
+    if (computed !== row.contentChecksum) {
+      mismatches.push({
+        turnIndex: row.turnIndex,
+        turnId: row.turnId,
+        expected: row.contentChecksum,
+        actual: computed,
+      });
+    }
+  }
+  return mismatches;
+}
+
+/**
  * Retrieve turns added after a given turnIndex (for delta sync on reconnect).
  */
 export async function getTurnsSince(

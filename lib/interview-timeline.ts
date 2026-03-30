@@ -80,6 +80,7 @@ export async function recordEvents(
     eventType: EventType;
     payload?: Record<string, unknown>;
     turnIndex?: number;
+    causalEventId?: string;
   }>
 ): Promise<void> {
   if (events.length === 0) return;
@@ -93,6 +94,7 @@ export async function recordEvents(
         eventType: e.eventType,
         payload: e.payload || undefined,
         turnIndex: e.turnIndex ?? null,
+        causalEventId: e.causalEventId ?? null,
       })),
     });
   } catch (err) {

@@ -21,7 +21,7 @@ import {
 } from "@/lib/session-store";
 import { recordSLOEvent } from "@/lib/slo-monitor";
 import { classifyError } from "@/lib/error-classification";
-import { getFullTranscript, getLedgerSnapshot, getTurnsSince } from "@/lib/conversation-ledger";
+import { getFullTranscript, getLedgerSnapshot, getTurnsSince, verifyContentIntegrity } from "@/lib/conversation-ledger";
 import { isMaintenanceMode, getMaintenanceMessage, maintenanceResponse } from "@/lib/maintenance-mode";
 import { recordEvent } from "@/lib/interview-timeline";
 import { isEnabled } from "@/lib/feature-flags";
@@ -173,14 +173,31 @@ export async function POST(
       const reconciliationType = versionsMatch && (stateHashMatch || !clientStateHash) ? "synced"
         : (!versionsMatch && clientVersion >= 0 && clientVersion < serverLedgerVersion) ? "delta"
         : "full";
+      // Link reconnect event to prior checkpoint for causal tracing
+      const priorCheckpointCausalId = session.ledgerVersion !== undefined
+        ? `checkpoint-${session.ledgerVersion}` : undefined;
       recordEvent(id, "reconnect", {
         reconciliationType,
         clientVersion,
         serverLedgerVersion,
         recoveryMs,
         reconnectCount: updatedSession.reconnectCount,
-      }, serverLedgerVersion).catch(() => {});
+      }, serverLedgerVersion, priorCheckpointCausalId).catch(() => {});
     }
+
+    // Non-blocking content integrity verification on recovery read path
+    verifyContentIntegrity(id).then(mismatches => {
+      if (mismatches.length > 0) {
+        console.error(`[${id}] Recovery integrity check: ${mismatches.length} mismatches`);
+        if (isEnabled("TIMELINE_OBSERVABILITY")) {
+          recordEvent(id, "anomaly", {
+            type: "content_integrity_failure",
+            mismatchCount: mismatches.length,
+            context: "recovery",
+          }, serverLedgerVersion).catch(() => {});
+        }
+      }
+    }).catch(() => {});
 
     // Shared response fields
     const knowledgeGraph = interview.knowledgeGraph || null;

@@ -417,7 +417,7 @@ export async function isSessionAlive(interviewId: string): Promise<boolean> {
 
 // ── Session Lock (Owner-Token Based) ────────────────────────────────
 
-const LOCK_TTL_SECONDS = 120; // 4x heartbeat interval (30s) for safety
+const LOCK_TTL_SECONDS = 90; // 3x heartbeat interval (30s) — tighter to reduce stale session risk
 
 // In-memory lock owner tracking (fallback when Redis unavailable)
 const memoryLocks = new Map<string, string>();
@@ -425,7 +425,7 @@ const memoryLocks = new Map<string, string>();
 /**
  * Acquire an exclusive session lock to prevent duplicate sessions.
  * Stores a unique owner token so only the lock holder can release/swap.
- * TTL: 120s, refreshed every 20s via heartbeat.
+ * TTL: 90s (3x heartbeat interval), refreshed every 30s via heartbeat.
  */
 export async function acquireSessionLock(
   interviewId: string,

@@ -188,8 +188,11 @@ describe("Interviewer State — Resilience", () => {
     });
 
     it("handles deserialize of missing required fields", () => {
+      // With full field validation, missing fields are caught by the first
+      // type check that fails — introDone is checked first and is undefined
+      // (not boolean) when the object lacks it.
       expect(() => deserializeState('{"foo": "bar"}')).toThrow(
-        "Invalid interviewer state: missing required fields"
+        "Invalid interviewer state:"
       );
     });
 
@@ -203,6 +206,103 @@ describe("Interviewer State — Resilience", () => {
 
       expect(restored.introDone).toBe(true);
       expect(restored.currentTopic).toBe("systems");
+      expect(restored.stateHash).toBe(state.stateHash);
+    });
+  });
+
+  describe("full deserialization validation (Gap 3)", () => {
+    /**
+     * Helper: build a valid serialized state, then override a single field
+     * to inject the invalid value under test.
+     */
+    function validStateWith(override: Record<string, unknown>): string {
+      const state = createInitialState();
+      const raw = JSON.parse(serializeState(state));
+      return JSON.stringify({ ...raw, ...override });
+    }
+
+    it("deserializeState rejects non-boolean introDone", () => {
+      expect(() => deserializeState(validStateWith({ introDone: "yes" }))).toThrow(
+        "introDone must be boolean"
+      );
+      expect(() => deserializeState(validStateWith({ introDone: 1 }))).toThrow(
+        "introDone must be boolean"
+      );
+    });
+
+    it("deserializeState rejects invalid currentStep value", () => {
+      expect(() => deserializeState(validStateWith({ currentStep: "warmup" }))).toThrow(
+        'currentStep "warmup" is not a valid step'
+      );
+      expect(() => deserializeState(validStateWith({ currentStep: 42 }))).toThrow(
+        "is not a valid step"
+      );
+    });
+
+    it("deserializeState rejects non-array askedQuestionIds", () => {
+      expect(() => deserializeState(validStateWith({ askedQuestionIds: "q1" }))).toThrow(
+        "askedQuestionIds must be string[]"
+      );
+      expect(() => deserializeState(validStateWith({ askedQuestionIds: [1, 2] }))).toThrow(
+        "askedQuestionIds must be string[]"
+      );
+    });
+
+    it("deserializeState rejects non-object topicDepthCounters", () => {
+      expect(() => deserializeState(validStateWith({ topicDepthCounters: null }))).toThrow(
+        "topicDepthCounters must be object"
+      );
+      expect(() => deserializeState(validStateWith({ topicDepthCounters: [1, 2] }))).toThrow(
+        "topicDepthCounters must be object"
+      );
+      expect(() => deserializeState(validStateWith({ topicDepthCounters: "bad" }))).toThrow(
+        "topicDepthCounters must be object"
+      );
+    });
+
+    it("deserializeState rejects non-array commitments", () => {
+      expect(() => deserializeState(validStateWith({ commitments: "none" }))).toThrow(
+        "commitments must be array"
+      );
+      expect(() => deserializeState(validStateWith({ commitments: {} }))).toThrow(
+        "commitments must be array"
+      );
+    });
+
+    it("deserializeState rejects non-array revisitAllowList", () => {
+      expect(() => deserializeState(validStateWith({ revisitAllowList: "q1" }))).toThrow(
+        "revisitAllowList must be array"
+      );
+      expect(() => deserializeState(validStateWith({ revisitAllowList: null }))).toThrow(
+        "revisitAllowList must be array"
+      );
+    });
+
+    it("deserializeState accepts valid complete state", () => {
+      let state = createInitialState();
+      state = transitionState(state, { type: "INTRO_COMPLETED" });
+      state = transitionState(state, { type: "SET_TOPIC", topic: "systems" });
+      state = transitionState(state, { type: "QUESTION_ASKED", questionHash: "q1" });
+      state = transitionState(state, { type: "TOPIC_DEPTH_INCREMENT", topic: "systems" });
+      state = transitionState(state, {
+        type: "COMMITMENT_MADE",
+        commitment: { id: "c1", description: "Follow up on scaling", turnId: "t5" },
+      });
+      state = transitionState(state, {
+        type: "REVISIT_QUESTION",
+        questionHash: "q_revisit",
+      });
+
+      const json = serializeState(state);
+      const restored = deserializeState(json);
+
+      expect(restored.introDone).toBe(true);
+      expect(restored.currentStep).toBe("candidate_intro");
+      expect(restored.currentTopic).toBe("systems");
+      expect(restored.askedQuestionIds).toEqual(["q1"]);
+      expect(restored.topicDepthCounters).toEqual({ systems: 1 });
+      expect(restored.commitments).toHaveLength(1);
+      expect(restored.revisitAllowList).toEqual(["q_revisit"]);
       expect(restored.stateHash).toBe(state.stateHash);
     });
   });

@@ -6,6 +6,7 @@
  * This endpoint is stateless — no WebSocket is created server-side.
  */
 
+import { createHash } from "crypto";
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { buildAriaVoicePrompt, buildReconnectSystemPrompt } from "@/lib/aria-prompts";
@@ -215,14 +216,25 @@ export async function POST(
 
     // Timeline observability: record connect/reconnect event
     if (isEnabled("TIMELINE_OBSERVABILITY")) {
+      // For reconnects, link to prior checkpoint as causal parent
+      const priorSession = reconnect ? await getSessionState(id) : null;
+      const causalId = priorSession?.ledgerVersion !== undefined
+        ? `checkpoint-${priorSession.ledgerVersion}` : undefined;
+      const promptHash = createHash("sha256").update(fullPrompt).digest("hex").slice(0, 16);
       recordEvent(id, reconnect ? "reconnect" : "connect", {
         candidateId: interview.candidate.id,
-        reconnectCount: reconnect ? ((await getSessionState(id))?.reconnectCount || 0) : 0,
-      }).catch(() => {});
+        reconnectCount: priorSession?.reconnectCount || 0,
+        promptHash,
+        promptLength: fullPrompt.length,
+      }, undefined, causalId).catch(() => {});
     }
 
     // Initialize or preserve durable session state
-    const reconnectToken = generateReconnectToken(id);
+    // Include ledger version 0 for fresh sessions, or existing version for reconnect
+    const existingSessionForToken = reconnect ? await getSessionState(id) : null;
+    const tokenLedgerVersion = existingSessionForToken?.ledgerVersion ?? 0;
+    const tokenStateHash = existingSessionForToken?.stateHash ?? "";
+    const reconnectToken = generateReconnectToken(id, tokenLedgerVersion, tokenStateHash);
     if (reconnect) {
       // RECONNECT: Preserve existing session state, only update token and timestamp
       const existingReconnectState = await getSessionState(id);

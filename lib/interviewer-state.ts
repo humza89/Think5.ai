@@ -244,13 +244,46 @@ export function serializeState(state: InterviewerState): string {
 
 /**
  * Deserialize JSON string back to InterviewerState.
+ * Validates all fields to prevent corrupted state from propagating.
  */
 export function deserializeState(json: string): InterviewerState {
   const parsed = JSON.parse(json);
-  // Validate required fields
-  if (typeof parsed.introDone !== "boolean" || typeof parsed.currentStep !== "string") {
-    throw new Error("Invalid interviewer state: missing required fields");
+
+  // Validate all required fields with strict type checks
+  if (typeof parsed.introDone !== "boolean") {
+    throw new Error("Invalid interviewer state: introDone must be boolean");
   }
+  if (typeof parsed.currentStep !== "string" || !STEP_ORDER.includes(parsed.currentStep as InterviewStep)) {
+    throw new Error(`Invalid interviewer state: currentStep "${parsed.currentStep}" is not a valid step`);
+  }
+  if (typeof parsed.currentTopic !== "string") {
+    throw new Error("Invalid interviewer state: currentTopic must be string");
+  }
+  if (!Array.isArray(parsed.askedQuestionIds) || !parsed.askedQuestionIds.every((id: unknown) => typeof id === "string")) {
+    throw new Error("Invalid interviewer state: askedQuestionIds must be string[]");
+  }
+  if (!Array.isArray(parsed.followupQueue)) {
+    throw new Error("Invalid interviewer state: followupQueue must be array");
+  }
+  if (!Array.isArray(parsed.contradictionMap)) {
+    throw new Error("Invalid interviewer state: contradictionMap must be array");
+  }
+  if (!Array.isArray(parsed.pendingClarifications)) {
+    throw new Error("Invalid interviewer state: pendingClarifications must be array");
+  }
+  if (typeof parsed.topicDepthCounters !== "object" || parsed.topicDepthCounters === null || Array.isArray(parsed.topicDepthCounters)) {
+    throw new Error("Invalid interviewer state: topicDepthCounters must be object");
+  }
+  if (!Array.isArray(parsed.commitments)) {
+    throw new Error("Invalid interviewer state: commitments must be array");
+  }
+  if (!Array.isArray(parsed.revisitAllowList)) {
+    throw new Error("Invalid interviewer state: revisitAllowList must be array");
+  }
+  if (typeof parsed.stateHash !== "string") {
+    throw new Error("Invalid interviewer state: stateHash must be string");
+  }
+
   return parsed as InterviewerState;
 }
 
