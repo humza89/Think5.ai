@@ -810,11 +810,15 @@ export function useVoiceInterview(
       return;
     }
 
-    // HARD GATE: On reconnect, startInterview() requires RECOVERY_CONFIRMED state.
+    // HARD GATE: On reconnect, startInterview() requires server verification.
+    // RECOVERY_CONFIRMED = verified via recovery API (has token).
+    // RECOVERY_PENDING = will be verified via voice-init (no token, transcript exists).
     // Fresh starts (no transcript) bypass this check.
     const isFirstStart = transcriptRef.current.length === 0;
-    if (!isFirstStart && reconnectStateRef.current !== "RECOVERY_CONFIRMED") {
-      console.error(`[Voice] BLOCKED: startInterview() requires RECOVERY_CONFIRMED, got ${reconnectStateRef.current}`);
+    if (!isFirstStart
+        && reconnectStateRef.current !== "RECOVERY_CONFIRMED"
+        && reconnectStateRef.current !== "RECOVERY_PENDING") {
+      console.error(`[Voice] BLOCKED: startInterview() requires RECOVERY_CONFIRMED or RECOVERY_PENDING, got ${reconnectStateRef.current}`);
       return;
     }
 
@@ -927,6 +931,21 @@ export function useVoiceInterview(
         if (enterpriseMemory.moduleScores) moduleScoresRef.current = enterpriseMemory.moduleScores;
         if (enterpriseMemory.interviewerState) interviewerStateRef.current = enterpriseMemory.interviewerState;
         console.log(`[Voice] Restored enterprise memory from server: difficulty=${enterpriseMemory.currentDifficultyLevel}, module=${enterpriseMemory.currentModule}, followUps=${enterpriseMemory.flaggedFollowUps?.length || 0}, moduleScores=${enterpriseMemory.moduleScores?.length || 0}`);
+      }
+
+      // Fix 1: Complete server verification for tokenless reconnects.
+      // voice-init with reconnect=true provides server-authoritative state
+      // (reconnectToken, lockOwnerToken, enterpriseMemory) — this serves as verification.
+      // Transition: RECOVERY_PENDING → RECOVERY_CONFIRMED → SOCKET_OPEN
+      if (reconnectStateRef.current === "RECOVERY_PENDING") {
+        try {
+          reconnectStateRef.current = transitionReconnectState("RECOVERY_PENDING", "RECOVERY_CONFIRMED");
+          reconnectStateRef.current = transitionReconnectState("RECOVERY_CONFIRMED", "SOCKET_OPEN");
+          setReconnectPhase(stateToPhase(reconnectStateRef.current));
+        } catch {
+          reconnectStateRef.current = "SOCKET_OPEN";
+          setReconnectPhase(stateToPhase(reconnectStateRef.current));
+        }
       }
 
       // 2. Set up audio context for playback
@@ -1259,9 +1278,10 @@ export function useVoiceInterview(
                 return;
               }
             }
-            // No reconnectToken means fresh session — RECOVERY_CONFIRMED is granted implicitly
+            // No reconnectToken — require server verification via voice-init
             if (!reconnectTokenRef.current) {
-              reconnectStateRef.current = "RECOVERY_CONFIRMED";
+              reconnectStateRef.current = "RECOVERY_PENDING";
+              setReconnectPhase(stateToPhase(reconnectStateRef.current));
             }
 
             // Step 2: Re-establish WebSocket (startInterview will check RECOVERY_CONFIRMED gate)
@@ -1320,10 +1340,26 @@ export function useVoiceInterview(
         const totalChars = recentEntries.reduce((sum, e) => sum + Math.min(e.content.length, MAX_ENTRY_CHARS), 0);
         console.log(`[Voice] Reconnecting — restoring all ${recentEntries.length} entries (~${Math.round(totalChars / 4)} tokens)`);
 
-        const contextTurns = recentEntries.map((entry) => ({
-          role: entry.role === "interviewer" ? "model" : "user",
-          parts: [{ text: entry.content.length > MAX_ENTRY_CHARS ? entry.content.slice(0, MAX_ENTRY_CHARS) + "..." : entry.content }],
-        }));
+        // Head+tail truncation: preserve question (start) and conclusion (end) — middle is lowest signal
+        let truncatedCount = 0;
+        const contextTurns = recentEntries.map((entry) => {
+          let text = entry.content;
+          if (text.length > MAX_ENTRY_CHARS) {
+            truncatedCount++;
+            const headChars = Math.floor(MAX_ENTRY_CHARS * 0.7);
+            const tailChars = MAX_ENTRY_CHARS - headChars - 50;
+            text = text.slice(0, headChars)
+              + "\n[...truncated " + (text.length - MAX_ENTRY_CHARS) + " chars...]\n"
+              + text.slice(-tailChars);
+          }
+          return {
+            role: entry.role === "interviewer" ? "model" : "user",
+            parts: [{ text }],
+          };
+        });
+        if (truncatedCount > 0) {
+          console.warn(`[Voice] Reconnect: ${truncatedCount} turns truncated at ${MAX_ENTRY_CHARS} chars`);
+        }
 
         // Build reconnect context for Gemini
         const qCount = questionCountRef.current;
@@ -1479,10 +1515,10 @@ export function useVoiceInterview(
       interviewStartTimeRef.current = interviewStartTimeRef.current || Date.now();
       const getCheckpointInterval = () => {
         const elapsed = Date.now() - interviewStartTimeRef.current;
-        // Degraded-network mode: reduce checkpoint frequency on poor connections
+        // Poor networks need MORE frequent checkpoints (smaller loss window), not less.
         const quality = connectionQuality;
-        if (quality === "poor") return 45_000;
-        if (quality === "fair") return 30_000;
+        if (quality === "poor") return 10_000;   // 10s — minimize turn-loss window
+        if (quality === "fair") return 15_000;   // 15s — same as early-session good
         return elapsed < 5 * 60 * 1000 ? 15_000 : CHECKPOINT_INTERVAL_MS;
       };
       const runAdaptiveCheckpoint = () => {
@@ -1746,8 +1782,9 @@ export function useVoiceInterview(
           return;
         }
       } else {
-        // No reconnect token — fresh session, grant RECOVERY_CONFIRMED implicitly
-        reconnectStateRef.current = "RECOVERY_CONFIRMED";
+        // No reconnect token — require server verification via voice-init
+        reconnectStateRef.current = "RECOVERY_PENDING";
+        setReconnectPhase(stateToPhase(reconnectStateRef.current));
       }
 
       // Step 2: Re-establish WebSocket
@@ -1838,8 +1875,9 @@ export function useVoiceInterview(
           return;
         }
       } else if (isReconnect) {
-        // No token but transcript exists — grant RECOVERY_CONFIRMED implicitly
-        reconnectStateRef.current = "RECOVERY_CONFIRMED";
+        // No token but transcript exists — require server verification via voice-init
+        reconnectStateRef.current = "RECOVERY_PENDING";
+        setReconnectPhase(stateToPhase(reconnectStateRef.current));
       }
 
       await startInterview();

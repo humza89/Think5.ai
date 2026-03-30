@@ -177,6 +177,7 @@ export async function POST(
       recordSLOEvent("session.reconnect.success_rate", true),
       recordSLOEvent("session.reconnect.latency_p95", recoveryMs <= 15000, recoveryMs),
       recordSLOEvent("session.reconnect.context_loss.rate", versionsMatch),
+      recordSLOEvent("session.context_reset.rate", reconciliationType !== "full"),
     ]);
 
     // Timeline observability: record reconnect event with reconciliation strategy
@@ -190,6 +191,19 @@ export async function POST(
         serverLedgerVersion,
         recoveryMs,
         reconnectCount: updatedSession.reconnectCount,
+        // Enriched diagnostics for replay-grade reconnect traces
+        preStateHash: clientStateHash || null,
+        postStateHash: serverStateHash,
+        stateHashMatch: clientStateHash === serverStateHash,
+        tokenLineage: {
+          oldTokenPrefix: reconnectToken.slice(0, 8) + "...",
+          newTokenPrefix: newReconnectToken.slice(0, 8) + "...",
+        },
+        modelInputManifest: {
+          askedQuestionsCount: (session.askedQuestions || []).length,
+          hasKnowledgeGraph: !!interview.knowledgeGraph,
+          hasInterviewerState: !!session.interviewerState,
+        },
       }, serverLedgerVersion, priorCheckpointCausalId).catch(() => {});
     }
 

@@ -112,6 +112,27 @@ export const SLO_DEFINITIONS: SLODefinition[] = [
     description: "Session heartbeat success rate (≥99.9%)",
     unit: "rate",
   },
+  {
+    name: "gate.repeated_intro.rate",
+    target: 0.999,
+    windowHours: 24,
+    description: "AI re-introduction suppression rate (≤0.1% repeat intros)",
+    unit: "rate",
+  },
+  {
+    name: "gate.unsupported_claim.rate",
+    target: 0.995,
+    windowHours: 24,
+    description: "AI hallucinated reference prevention rate (≤0.5% unsupported claims)",
+    unit: "rate",
+  },
+  {
+    name: "session.context_reset.rate",
+    target: 0.999,
+    windowHours: 24,
+    description: "Context preservation across reconnects (≤0.1% full resets)",
+    unit: "rate",
+  },
 ];
 
 /**

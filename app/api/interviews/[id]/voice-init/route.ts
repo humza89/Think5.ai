@@ -222,6 +222,22 @@ export async function POST(
           topicDepthCounters: reconnectInterviewerState.topicDepthCounters,
         } : undefined,
       });
+
+      // Memory confidence gate: warn model when memory is degraded on reconnect
+      if (serverState) {
+        try {
+          const { composeMemoryPacket } = await import("@/lib/memory-orchestrator");
+          const memPacket = await composeMemoryPacket(id, serverState);
+          if (memPacket.memoryConfidence < 0.3) {
+            recordEvent(id, "anomaly", {
+              type: "LOW_MEMORY_CONFIDENCE_ON_RECONNECT",
+              confidence: memPacket.memoryConfidence,
+              retrievalErrors: memPacket.retrievalStatus.errors,
+            }).catch(() => {});
+            fullPrompt += "\n\n[SYSTEM: Memory confidence is low. DO NOT reference specific prior statements unless certain. Ask for clarification rather than assuming.]";
+          }
+        } catch { /* non-fatal: memory check failed, proceed without gate */ }
+      }
     }
 
     // Get tool definitions
@@ -350,7 +366,7 @@ export async function POST(
       ...(enterpriseMemory ? { enterpriseMemory } : {}),
       // Degraded-network configuration for adaptive checkpoint intervals
       degradedNetworkConfig: {
-        checkpointIntervalMs: { good: 15000, fair: 30000, poor: 45000 },
+        checkpointIntervalMs: { good: 15000, fair: 15000, poor: 10000 },
         maxReconnectAttempts: { good: 5, fair: 8, poor: 10 },
       },
     }, {
