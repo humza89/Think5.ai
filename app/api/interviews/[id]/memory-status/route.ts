@@ -8,7 +8,7 @@
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSessionState } from "@/lib/session-store";
-import { composeMemoryPacket } from "@/lib/memory-orchestrator";
+import { composeMemoryPacket, compute4FactorConfidence } from "@/lib/memory-orchestrator";
 
 export async function GET(
   request: NextRequest,
@@ -35,14 +35,14 @@ export async function GET(
   try {
     const packet = await composeMemoryPacket(id, session);
 
-    // 4-factor memoryConfidenceScore
-    const healthyCount = [packet.retrievalStatus.factsOk, packet.retrievalStatus.knowledgeGraphOk, packet.retrievalStatus.recentTurnsOk].filter(Boolean).length;
-    const violations = session.violationCount || 0;
-    const memoryConfidenceScore = Math.min(1.0,
-      (healthyCount / 3) * 0.4 +
-      (violations === 0 ? 0.3 : Math.max(0, 0.3 - violations * 0.1)) +
-      0.2 + // Redis persistence confirmed (we loaded session)
-      ((session.reconnectCount || 0) === 0 || session.stateHash ? 0.1 : 0.05)
+    // Unified 4-factor memoryConfidenceScore (shared with composeMemoryPacket)
+    const memoryConfidenceScore = compute4FactorConfidence(
+      packet.retrievalStatus,
+      packet.manifest.totalTokens,
+      parseInt(process.env.MEMORY_MIN_TOKEN_THRESHOLD || "2000", 10),
+      session.violationCount || 0,
+      session.reconnectCount || 0,
+      !!packet.stateHash,
     );
 
     return Response.json({
@@ -64,12 +64,18 @@ export async function GET(
         currentStep: packet.currentStep,
         currentTopic: packet.currentTopic,
       },
-      violationHistory: { totalViolations: violations },
+      violationHistory: { totalViolations: session.violationCount || 0 },
       recoveryCycleCount: session.reconnectCount || 0,
       redisPersistenceStatus: "confirmed",
     });
   } catch (err) {
-    console.error(`[memory-status] [${id}] Failed to compose memory packet:`, err);
+    console.error(JSON.stringify({
+      event: "memory_status_failure",
+      interviewId: id,
+      error: (err as Error).message,
+      severity: "error",
+      timestamp: new Date().toISOString(),
+    }));
     return Response.json(
       { error: "Failed to compose memory packet" },
       { status: 500 }

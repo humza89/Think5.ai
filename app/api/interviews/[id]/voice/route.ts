@@ -260,6 +260,11 @@ export async function POST(
       // Uses pre-existing state (not post-transition) so gate runs before state machine
       let gateViolations: Array<{ type: string; detail: string; severity: string }> = [];
       let correctedAiResponse: string | undefined;
+      // Telemetry tracking for retrieval source matrix
+      let telemetryFactsOk = false;
+      let telemetryGroundingOk = false;
+      let telemetryStateOk = false;
+      let telemetryTokenEstimate = 0;
       if (isEnabled("OUTPUT_GATE_BLOCKING") && newTurns.length > 0) {
         try {
           const preState = existingSession?.interviewerState
@@ -352,7 +357,7 @@ export async function POST(
                 (v: { type: string }) => v.type === "reintroduction" || v.type === "duplicate_question"
               );
               if (hasHardBlock) {
-                console.error(`[${id}] Hard-blocking checkpoint: intro/question violation detected`);
+                console.error(JSON.stringify({ event: "checkpoint_hard_block", interviewId: id, reason: "intro_or_question_violation", severity: "critical", timestamp: new Date().toISOString() }));
                 return Response.json({
                   error: "Output policy violation",
                   code: "GATE_HARD_BLOCK",
@@ -366,13 +371,13 @@ export async function POST(
           }
         } catch (err) {
           if (isEnabled("FAIL_CLOSED_PRODUCTION")) {
-            console.error(`[${id}] Pre-write output gate check failed (fail-closed):`, err);
+            console.error(JSON.stringify({ event: "output_gate_failure", interviewId: id, error: (err as Error).message, severity: "critical", failClosed: true, timestamp: new Date().toISOString() }));
             return Response.json(
               { error: "Output gate validation failed", code: "GATE_ERROR", recoverable: true },
               { status: 503 }
             );
           }
-          console.warn(`[${id}] Pre-write output gate check failed (non-fatal):`, err);
+          console.warn(JSON.stringify({ event: "output_gate_failure", interviewId: id, error: (err as Error).message, severity: "warning", failClosed: false, timestamp: new Date().toISOString() }));
         }
       }
 
@@ -433,9 +438,10 @@ export async function POST(
               skipDuplicates: true,
             });
           }
+          telemetryFactsOk = true;
         } catch (err) {
           // Fact extraction is non-blocking — degraded memory is acceptable
-          console.warn(`[${id}] Fact extraction failed (degraded memory):`, err);
+          console.warn(JSON.stringify({ event: "fact_extraction_failure", interviewId: id, error: (err as Error).message, severity: "warning", timestamp: new Date().toISOString() }));
         }
       }
 
@@ -511,18 +517,26 @@ export async function POST(
                       type: "UNGROUNDED_FOLLOWUP",
                       contentPreview: content.slice(0, 200),
                     }, ledgerVersion).catch(() => {});
+                    // Suppress ungrounded follow-up: strip question sentences
+                    const sentences = content.split(/(?<=[.!?])\s+/);
+                    const withoutQuestions = sentences.filter((s: string) => !s.trim().endsWith("?"));
+                    if (withoutQuestions.length > 0) {
+                      aiTurn.content = withoutQuestions.join(" ").trim();
+                      if (!correctedAiResponse) correctedAiResponse = aiTurn.content;
+                    }
                   }
                 }
               }
             }
           }
+          telemetryGroundingOk = true;
         } catch (err) {
           if (isEnabled("FAIL_CLOSED_PRODUCTION")) {
-            console.error(`[${id}] Grounding verification failed (fail-closed):`, err);
+            console.error(JSON.stringify({ event: "grounding_verification_failure", interviewId: id, error: (err as Error).message, severity: "critical", failClosed: true, timestamp: new Date().toISOString() }));
             // Don't block checkpoint for grounding infra failures — log and continue
             // Grounding gate errors are different from gate violations
           }
-          console.warn(`[${id}] Grounding verification failed:`, err);
+          console.warn(JSON.stringify({ event: "grounding_verification_failure", interviewId: id, error: (err as Error).message, severity: "warning", timestamp: new Date().toISOString() }));
         }
       }
 
@@ -599,13 +613,13 @@ export async function POST(
               }
             } catch (err) {
               if (isEnabled("FAIL_CLOSED_PRODUCTION")) {
-                console.error(`[${id}] Contradiction detection failed (fail-closed):`, err);
+                console.error(JSON.stringify({ event: "contradiction_detection_failure", interviewId: id, error: (err as Error).message, severity: "critical", failClosed: true, timestamp: new Date().toISOString() }));
                 return Response.json(
                   { error: "Contradiction detection failed", code: "CONTRADICTION_ERROR", recoverable: true },
                   { status: 503 }
                 );
               }
-              console.warn(`[${id}] Contradiction detection failed (non-fatal):`, err);
+              console.warn(JSON.stringify({ event: "contradiction_detection_failure", interviewId: id, error: (err as Error).message, severity: "warning", timestamp: new Date().toISOString() }));
             }
           }
 
@@ -663,6 +677,11 @@ export async function POST(
           }
 
           updatedInterviewerState = serializeState(state);
+          telemetryStateOk = true;
+          telemetryTokenEstimate = Math.ceil(
+            currentTranscript.reduce((sum: number, t: { content?: string }) =>
+              sum + (typeof t.content === "string" ? t.content.length : 0), 0) / 4
+          );
 
           // Record state transition in timeline with causal link
           if (isEnabled("TIMELINE_OBSERVABILITY")) {
@@ -676,13 +695,13 @@ export async function POST(
           }
         } catch (err) {
           if (isEnabled("FAIL_CLOSED_PRODUCTION")) {
-            console.error(`[${id}] InterviewerState transition failed (fail-closed):`, err);
+            console.error(JSON.stringify({ event: "state_transition_failure", interviewId: id, error: (err as Error).message, severity: "critical", failClosed: true, timestamp: new Date().toISOString() }));
             return Response.json(
               { error: "State machine transition failed", code: "STATE_ERROR", recoverable: true },
               { status: 503 }
             );
           }
-          console.warn(`[${id}] InterviewerState transition failed:`, err);
+          console.warn(JSON.stringify({ event: "state_transition_failure", interviewId: id, error: (err as Error).message, severity: "warning", timestamp: new Date().toISOString() }));
         }
       }
 
@@ -741,6 +760,60 @@ export async function POST(
           ? (() => { try { return deserializeState(updatedInterviewerState!).stateHash; } catch { return existingSession.stateHash || ""; } })()
           : existingSession.stateHash || "";
 
+        // BLOCK 5.3: Full state reconciliation when violation threshold exceeded
+        if (violationCount >= 2 && updatedInterviewerState) {
+          try {
+            const fullTranscript = await getFullTranscript(id);
+            const currentState = deserializeState(updatedInterviewerState);
+
+            // Re-derive askedQuestionIds from canonical ledger
+            const ledgerQuestionIds = new Set<string>();
+            for (const turn of fullTranscript) {
+              if (turn.role === "assistant" && turn.content?.includes("?")) {
+                ledgerQuestionIds.add(hashQuestion(turn.content));
+              }
+            }
+
+            const stateQuestionSet = new Set(currentState.askedQuestionIds);
+            const hasQuestionDrift =
+              ledgerQuestionIds.size !== stateQuestionSet.size ||
+              ![...ledgerQuestionIds].every(h => stateQuestionSet.has(h));
+
+            // Force introDone = true if transcript has turns (intro already happened)
+            const introShouldBeDone = fullTranscript.length > 2;
+            const hasIntroDrift = introShouldBeDone && !currentState.introDone;
+
+            if (hasQuestionDrift || hasIntroDrift) {
+              recordEvent(id, "anomaly", {
+                type: "STATE_RECONCILIATION_DRIFT",
+                questionDrift: hasQuestionDrift,
+                introDrift: hasIntroDrift,
+                originalAskedCount: stateQuestionSet.size,
+                reconciledAskedCount: ledgerQuestionIds.size,
+                totalViolations: violationCount,
+              }).catch(() => {});
+
+              // Apply corrections
+              if (hasQuestionDrift) {
+                currentState.askedQuestionIds = [...ledgerQuestionIds];
+              }
+              if (hasIntroDrift) {
+                currentState.introDone = true;
+              }
+              updatedInterviewerState = serializeState(currentState);
+              authoritativeStateHash = currentState.stateHash;
+            }
+          } catch (reconcileErr) {
+            console.error(JSON.stringify({
+              event: "state_reconciliation_failure",
+              interviewId: id,
+              error: (reconcileErr as Error).message,
+              severity: "warning",
+              timestamp: new Date().toISOString(),
+            }));
+          }
+        }
+
         await saveSessionState(id, {
           ...existingSession,
           moduleScores: validatedScores,
@@ -768,6 +841,12 @@ export async function POST(
         interviewId: id,
         memoryPacketVersion,
         ledgerVersion,
+        retrievalSourceMatrix: {
+          factsOk: telemetryFactsOk,
+          groundingOk: telemetryGroundingOk,
+          stateOk: telemetryStateOk,
+        },
+        retrievalTokenCount: telemetryTokenEstimate,
         continuityAssertions: {
           noRepeatedIntro: !gateViolations.some(v => v.type === "reintroduction"),
           noRepeatedQuestion: !gateViolations.some(v => v.type === "duplicate_question"),
@@ -822,7 +901,7 @@ export async function POST(
       // Validate state transition
       const currentStatus = interview.status;
       if (!isValidTransition(currentStatus, "COMPLETED")) {
-        console.warn(`[${id}] Invalid voice end transition: ${currentStatus} → COMPLETED`);
+        console.warn(JSON.stringify({ event: "invalid_end_transition", interviewId: id, from: currentStatus, to: "COMPLETED", severity: "warning", timestamp: new Date().toISOString() }));
       }
 
       // C2: Validate and auto-repair transcript BEFORE database write
@@ -834,7 +913,7 @@ export async function POST(
         await recordSLOEvent("transcript.anomaly.rate", validation.valid);
 
         if (!validation.valid || validation.issues.length > 0) {
-          console.warn(`[${id}] Transcript quality issues:`, validation.issues);
+          console.warn(JSON.stringify({ event: "transcript_quality_issues", interviewId: id, issues: validation.issues, severity: "warning", timestamp: new Date().toISOString() }));
           Sentry.addBreadcrumb({
             category: "transcript_qa",
             message: `${validation.issues.length} issue(s): ${validation.issues.map(i => i.type).join(", ")}`,
@@ -863,7 +942,7 @@ export async function POST(
       // Verify content integrity of finalized ledger
       const integrityMismatches = await verifyContentIntegrity(id);
       if (integrityMismatches.length > 0) {
-        console.error(`[${id}] Content integrity check failed: ${integrityMismatches.length} mismatches`);
+        console.error(JSON.stringify({ event: "content_integrity_failure", interviewId: id, mismatchCount: integrityMismatches.length, severity: "critical", timestamp: new Date().toISOString() }));
         if (isEnabled("TIMELINE_OBSERVABILITY")) {
           recordEvent(id, "anomaly", {
             type: "content_integrity_failure",

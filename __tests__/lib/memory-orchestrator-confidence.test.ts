@@ -121,8 +121,8 @@ describe("Memory Orchestrator — Confidence Scoring", () => {
       lastTurnIndex: 1,
     } as any);
 
-    // 2/3 sources succeed (0.667) minus 0.1 context penalty = 0.567
-    expect(packet.memoryConfidence).toBeCloseTo(2 / 3 - 0.1);
+    // 4-factor: (2/3)*0.4 + 0.3 + 0.2 + 0.1 - 0.1 (context penalty) ≈ 0.767
+    expect(packet.memoryConfidence).toBeCloseTo((2 / 3) * 0.4 + 0.3 + 0.2 + 0.1 - 0.1);
     expect(packet.retrievalStatus.factsOk).toBe(false);
     expect(packet.retrievalStatus.knowledgeGraphOk).toBe(true);
     expect(packet.retrievalStatus.recentTurnsOk).toBe(true);
@@ -144,7 +144,8 @@ describe("Memory Orchestrator — Confidence Scoring", () => {
       lastTurnIndex: 1,
     } as any);
 
-    expect(packet.memoryConfidence).toBe(0);
+    // 4-factor: (0/3)*0.4 + 0.3 + 0.2 + 0.1 - 0.1 (context penalty) = 0.5
+    expect(packet.memoryConfidence).toBeCloseTo(0.5);
     expect(packet.retrievalStatus.factsOk).toBe(false);
     expect(packet.retrievalStatus.knowledgeGraphOk).toBe(false);
     expect(packet.retrievalStatus.recentTurnsOk).toBe(false);

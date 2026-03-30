@@ -141,7 +141,7 @@ export async function saveSessionState(
   // Session no longer stores transcript — canonical ledger in Postgres is authoritative.
   // Redis payload should stay well under 50KB (only pointers, scores, and enterprise memory).
   if (sizeBytes > 100_000) {
-    console.warn(`[${interviewId}] Session state unexpectedly large (${Math.round(sizeBytes / 1024)}KB) — investigate payload contents`);
+    console.warn(JSON.stringify({ event: "session_state_oversized", interviewId, sizeKB: Math.round(sizeBytes / 1024), severity: "warning", timestamp: new Date().toISOString() }));
   }
 
   const redis = await getRedis();
@@ -158,7 +158,7 @@ export async function saveSessionState(
         lastErr = err;
         if (attempt < maxRetries) {
           const delay = retryBaseMs * Math.pow(3, attempt); // 100, 300, 900ms
-          console.warn(`[${interviewId}] Session save attempt ${attempt + 1}/${maxRetries + 1} failed, retrying in ${delay}ms:`, err);
+          console.warn(JSON.stringify({ event: "session_save_retry", interviewId, attempt: attempt + 1, maxAttempts: maxRetries + 1, delayMs: delay, error: (err as Error)?.message, severity: "warning", timestamp: new Date().toISOString() }));
           await new Promise((r) => setTimeout(r, delay));
         }
       }
@@ -177,7 +177,7 @@ export async function saveSessionState(
       recordSLOEvent("session.save.failure_rate", false).catch(() => {});
       throw new Error(`Session save failed for ${interviewId} — Redis write failure after ${maxRetries + 1} attempts`);
     }
-    console.error(`[${interviewId}] Session save failed after ${maxRetries + 1} attempts, falling back to memory:`, lastErr);
+    console.error(JSON.stringify({ event: "session_save_fallback", interviewId, attempts: maxRetries + 1, error: (lastErr as Error)?.message, severity: "error", timestamp: new Date().toISOString() }));
     memoryStore.set(key, serialized);
     memoryExpiry.set(key, Date.now() + SESSION_TTL_SECONDS * 1000);
   } else {
@@ -220,14 +220,14 @@ export async function getSessionState(
         lastErr = err;
         if (attempt < maxRetries) {
           const delay = retryBaseMs * Math.pow(3, attempt);
-          console.warn(`[${interviewId}] Session read attempt ${attempt + 1}/${maxRetries + 1} failed, retrying in ${delay}ms:`, err);
+          console.warn(JSON.stringify({ event: "session_read_retry", interviewId, attempt: attempt + 1, maxAttempts: maxRetries + 1, delayMs: delay, error: (err as Error)?.message, severity: "warning", timestamp: new Date().toISOString() }));
           await new Promise((r) => setTimeout(r, delay));
         }
       }
     }
 
     // All read retries exhausted — log but don't throw (read path falls through to memory)
-    console.error(`[${interviewId}] Session read failed after ${maxRetries + 1} attempts:`, lastErr);
+    console.error(JSON.stringify({ event: "session_read_failure", interviewId, attempts: maxRetries + 1, error: (lastErr as Error)?.message, severity: "error", timestamp: new Date().toISOString() }));
     if (isProduction()) {
       recordSLOEvent("session.read.failure_rate", false).catch(() => {});
     }
@@ -240,7 +240,7 @@ export async function getSessionState(
   if (expiresAt && Date.now() > expiresAt) {
     memoryStore.delete(key);
     memoryExpiry.delete(key);
-    console.log(`[${interviewId}] In-memory session expired (TTL enforced on read)`);
+    console.log(JSON.stringify({ event: "session_memory_expired", interviewId, severity: "info", timestamp: new Date().toISOString() }));
     return null;
   }
   return JSON.parse(data);
@@ -376,7 +376,7 @@ export async function refreshSessionTTL(interviewId: string): Promise<void> {
     try {
       await redis.expire(key, SESSION_TTL_SECONDS);
     } catch (err) {
-      console.warn(`[${interviewId}] Failed to refresh session TTL:`, err);
+      console.warn(JSON.stringify({ event: "session_ttl_refresh_failure", interviewId, error: (err as Error)?.message, severity: "warning", timestamp: new Date().toISOString() }));
     }
   }
   // Refresh in-memory TTL
@@ -438,10 +438,10 @@ export async function tryRestoreSession(
     const data = await redis.get(key);
     if (!data) return null;
     const state = typeof data === "string" ? JSON.parse(data) : data as SessionState;
-    console.log(`[${interviewId}] Session restored from Redis (last active: ${state.lastActiveAt})`);
+    console.log(JSON.stringify({ event: "session_restored", interviewId, lastActiveAt: state.lastActiveAt, severity: "info", timestamp: new Date().toISOString() }));
     return state;
   } catch (err) {
-    console.warn(`[${interviewId}] Failed to restore session from Redis:`, err);
+    console.warn(JSON.stringify({ event: "session_restore_failure", interviewId, error: (err as Error)?.message, severity: "warning", timestamp: new Date().toISOString() }));
     return null;
   }
 }
@@ -457,7 +457,7 @@ export async function recordHeartbeat(interviewId: string): Promise<void> {
       await redis.set(`voice-heartbeat:${interviewId}`, Date.now().toString(), { ex: 30 });
     } catch (err) {
       // H6/R5: Don't let heartbeat failures crash the request — log and continue
-      console.warn(`[${interviewId}] Heartbeat record failed:`, err);
+      console.warn(JSON.stringify({ event: "heartbeat_record_failure", interviewId, error: (err as Error)?.message, severity: "warning", timestamp: new Date().toISOString() }));
     }
   }
 }
@@ -545,7 +545,7 @@ export async function swapSessionLock(
     const acquired = result === 1;
     return { acquired, ownerToken: acquired ? token : "" };
   } catch (err) {
-    console.warn(`[${interviewId}] Lock swap failed, falling back to release+acquire:`, err);
+    console.warn(JSON.stringify({ event: "lock_swap_failure", interviewId, error: (err as Error)?.message, severity: "warning", timestamp: new Date().toISOString() }));
     // Fallback: try release then acquire (less safe but functional)
     await releaseSessionLock(interviewId, oldOwnerToken);
     return acquireSessionLock(interviewId, token);
@@ -683,10 +683,10 @@ export async function reconstructSessionFromLedger(
       interviewerState: interviewerStateJson,
     };
 
-    console.log(`[${interviewId}] Session reconstructed from ledger: ${snapshot.turnCount} turns, ${questionCount} questions`);
+    console.log(JSON.stringify({ event: "session_reconstructed", interviewId, turnCount: snapshot.turnCount, questionCount, severity: "info", timestamp: new Date().toISOString() }));
     return reconstructed;
   } catch (err) {
-    console.error(`[${interviewId}] Session reconstruction failed:`, err);
+    console.error(JSON.stringify({ event: "session_reconstruction_failure", interviewId, error: (err as Error)?.message, severity: "error", timestamp: new Date().toISOString() }));
     return null;
   }
 }

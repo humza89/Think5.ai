@@ -1120,7 +1120,7 @@ export function useVoiceInterview(
           setReconnectPhase(stateToPhase(reconnectStateRef.current));
           setConnectionQuality("poor");
           setIsReconnecting(false);
-          onErrorRef.current?.(`Session recovery failed after ${MAX_RECOVERY_ATTEMPTS} attempts. Please refresh the page to resume your interview.`);
+          onErrorRef.current?.(`Session recovery failed after ${MAX_RECOVERY_ATTEMPTS} attempts. Please use this link to resume: /interview/${interviewId}?resume=true`);
           reportSLOEvent("session.reconnect.success_rate", false);
           return;
         }

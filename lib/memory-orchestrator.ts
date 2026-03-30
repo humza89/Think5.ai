@@ -77,6 +77,34 @@ export interface ContextRetrievalManifest {
 // ── Compose ──────────────────────────────────────────────────────────
 
 /**
+ * Unified 4-factor memory confidence score (0.0–1.0).
+ * Used by both composeMemoryPacket and memory-status endpoint.
+ *
+ * Factors:
+ *   1. Retrieval source health (+0.4)
+ *   2. Session violation count (+0.3, decreasing with violations)
+ *   3. Redis persistence confirmed (+0.2)
+ *   4. Recovery quality (+0.1)
+ *   Context penalty: -0.1 if below minimum token threshold
+ */
+export function compute4FactorConfidence(
+  retrievalStatus: { factsOk: boolean; knowledgeGraphOk: boolean; recentTurnsOk: boolean },
+  manifestTotalTokens: number,
+  minTokenThreshold: number,
+  violationCount: number,
+  reconnectCount: number,
+  hasStateHash: boolean,
+): number {
+  const healthyCount = [retrievalStatus.factsOk, retrievalStatus.knowledgeGraphOk, retrievalStatus.recentTurnsOk].filter(Boolean).length;
+  let score = (healthyCount / 3) * 0.4;
+  score += violationCount === 0 ? 0.3 : Math.max(0, 0.3 - violationCount * 0.1);
+  score += 0.2; // Redis persistence confirmed (session was loaded)
+  score += (reconnectCount === 0 || hasStateHash) ? 0.1 : 0.05;
+  if (manifestTotalTokens < minTokenThreshold) score -= 0.1;
+  return Math.max(0, Math.min(1, score));
+}
+
+/**
  * Compose a complete memory packet from all subsystems.
  * This is the single source of truth for what the interviewer "remembers."
  */
@@ -311,11 +339,15 @@ export async function composeMemoryPacket(
     } catch { /* non-fatal */ }
   }
 
-  // 6. Compute memory confidence score (0.0–1.0)
-  const sourcesSucceeded = [retrievalStatus.factsOk, retrievalStatus.knowledgeGraphOk, retrievalStatus.recentTurnsOk].filter(Boolean).length;
-  const baseConfidence = sourcesSucceeded / 3;
-  const contextBonus = manifestTotalTokens >= MIN_TOKEN_THRESHOLD ? 0 : -0.1;
-  const memoryConfidence = Math.max(0, Math.min(1, baseConfidence + contextBonus));
+  // 6. Compute memory confidence score (0.0–1.0) using unified 4-factor model
+  const memoryConfidence = compute4FactorConfidence(
+    retrievalStatus,
+    manifestTotalTokens,
+    MIN_TOKEN_THRESHOLD,
+    session.violationCount || 0,
+    session.reconnectCount || 0,
+    !!interviewerState.stateHash,
+  );
 
   // 7. Compose unified packet
   return {
