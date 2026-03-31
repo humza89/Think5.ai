@@ -173,13 +173,15 @@ export async function composeMemoryPacket(
       select: { knowledgeGraph: true, knowledgeGraphUpdatedAt: true },
     });
     knowledgeGraph = (interview?.knowledgeGraph as Record<string, unknown>) || null;
-    // Gap 4: Check KG staleness — if >3 min since last update, mark as not OK
+    // Check KG staleness — if >3 min since last update, mark as stale
     const kgUpdatedAt = interview?.knowledgeGraphUpdatedAt;
     if (knowledgeGraph && kgUpdatedAt) {
       const staleness = Date.now() - new Date(kgUpdatedAt).getTime();
       if (staleness > KG_STALENESS_THRESHOLD_MS) {
         retrievalStatus.knowledgeGraphOk = false;
         retrievalStatus.errors.push(`knowledgeGraph: stale by ${Math.round(staleness / 1000)}s (threshold: ${KG_STALENESS_THRESHOLD_MS / 1000}s)`);
+        // Mark KG with staleness warning so downstream consumers can detect it
+        knowledgeGraph = { ...knowledgeGraph, _stale: true, _staleSince: Math.round(staleness / 1000) };
       } else {
         retrievalStatus.knowledgeGraphOk = true;
       }
@@ -335,8 +337,22 @@ export async function composeMemoryPacket(
     }
   }
 
-  // 5. Build context retrieval manifest
+  // 5. Build context retrieval manifest with per-tier budget logging
   const manifestTotalTokens = manifestTurns.reduce((sum, t) => sum + t.tokenEstimate, 0);
+  const milestoneTokens = manifestTurns.filter(t => t.source === "milestone").reduce((sum, t) => sum + t.tokenEstimate, 0);
+  const unresolvedTokens = manifestTurns.filter(t => t.source === "unresolved").reduce((sum, t) => sum + t.tokenEstimate, 0);
+  const recentTokens = manifestTurns.filter(t => t.source === "recent").reduce((sum, t) => sum + t.tokenEstimate, 0);
+  console.log(JSON.stringify({
+    event: "memory_budget_allocation",
+    interviewId,
+    tierA_milestone: { turns: manifestTurns.filter(t => t.source === "milestone").length, tokens: milestoneTokens },
+    tierB_unresolved: { turns: manifestTurns.filter(t => t.source === "unresolved").length, tokens: unresolvedTokens },
+    tierC_recent: { turns: manifestTurns.filter(t => t.source === "recent").length, tokens: recentTokens },
+    totalTokens: manifestTotalTokens,
+    budgetTotal: TOKEN_BUDGET,
+    budgetUsedPct: TOKEN_BUDGET > 0 ? ((manifestTotalTokens / TOKEN_BUDGET) * 100).toFixed(1) : "0",
+    timestamp: new Date().toISOString(),
+  }));
   const manifest: ContextRetrievalManifest = {
     turns: manifestTurns,
     totalTokens: manifestTotalTokens,

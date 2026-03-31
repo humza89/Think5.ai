@@ -555,9 +555,8 @@ export async function swapSessionLock(
     return { acquired, ownerToken: acquired ? token : "" };
   } catch (err) {
     console.warn(JSON.stringify({ event: "lock_swap_failure", interviewId, error: (err as Error)?.message, severity: "warning", timestamp: new Date().toISOString() }));
-    // Fallback: try release then acquire (less safe but functional)
-    await releaseSessionLock(interviewId, oldOwnerToken);
-    return acquireSessionLock(interviewId, token);
+    // Hard failure: no non-atomic fallback to prevent race conditions
+    return { acquired: false, ownerToken: "" };
   }
 }
 

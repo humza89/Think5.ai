@@ -831,6 +831,19 @@ export async function POST(
           ...(telemetryFactsOk ? { lastFactRefreshAt: new Date().toISOString() } : {}),
         });
       }
+
+      // Fix 4: Persist InterviewerState snapshot to Postgres on every checkpoint
+      // Prevents askedQuestionIds reset when Redis TTL expires and session is reconstructed
+      if (updatedInterviewerState && isEnabled("STATEFUL_INTERVIEWER")) {
+        prisma.interviewerStateSnapshot.upsert({
+          where: { interviewId_turnIndex: { interviewId: id, turnIndex: ledgerVersion } },
+          update: { stateJson: updatedInterviewerState, stateHash: authoritativeStateHash || "" },
+          create: { interviewId: id, turnIndex: ledgerVersion, stateJson: updatedInterviewerState, stateHash: authoritativeStateHash || "" },
+        }).catch((err: Error) => {
+          console.warn(`[${id}] InterviewerState snapshot save failed (non-fatal):`, err.message);
+        });
+      }
+
       await refreshSessionTTL(id);
 
       // Record checkpoint latency SLO

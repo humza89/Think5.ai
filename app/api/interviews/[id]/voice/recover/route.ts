@@ -84,6 +84,36 @@ export async function POST(
       );
     }
 
+    // Verify InterviewerState against latest Postgres snapshot
+    if (session.interviewerState && isEnabled("STATEFUL_INTERVIEWER")) {
+      try {
+        const latestSnapshot = await prisma.interviewerStateSnapshot.findFirst({
+          where: { interviewId: id },
+          orderBy: { turnIndex: "desc" },
+          select: { stateJson: true, turnIndex: true },
+        });
+        if (latestSnapshot?.stateJson) {
+          const snapshotState = deserializeState(
+            typeof latestSnapshot.stateJson === "string" ? latestSnapshot.stateJson : JSON.stringify(latestSnapshot.stateJson)
+          );
+          const sessionState = deserializeState(session.interviewerState);
+          if (snapshotState.stateHash !== sessionState.stateHash &&
+              latestSnapshot.turnIndex >= (session.lastTurnIndex ?? 0)) {
+            session = {
+              ...session,
+              interviewerState: typeof latestSnapshot.stateJson === "string"
+                ? latestSnapshot.stateJson : JSON.stringify(latestSnapshot.stateJson),
+              stateHash: snapshotState.stateHash,
+            };
+            await saveSessionState(id, session);
+            console.log(`[${id}] InterviewerState reconciled from Postgres snapshot (turnIndex: ${latestSnapshot.turnIndex})`);
+          }
+        }
+      } catch (err) {
+        console.warn(`[${id}] InterviewerState snapshot verification failed (non-fatal):`, err);
+      }
+    }
+
     // 3. Verify lock ownership (prevents session hijacking with stolen reconnect token)
     if (session.lockOwnerToken && (!clientOwnerToken || clientOwnerToken !== session.lockOwnerToken)) {
       return Response.json(

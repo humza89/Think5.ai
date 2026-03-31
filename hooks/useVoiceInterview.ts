@@ -471,7 +471,29 @@ export function useVoiceInterview(
                   }
                   if (commitData.memorySlotWarnings?.length > 0) {
                     console.warn(`[Voice] Memory warnings: ${commitData.memorySlotWarnings.length} warning(s)`);
+                    // Fix 2: Log memory confidence warnings — server-side gates enforce caution
+                    // Note: Cannot inject mid-session system instructions via Gemini Live WebSocket
+                    // (clientContent with role:"user" would be treated as candidate speech).
+                    // Server-side output gate + grounding gate enforce safe behavior instead.
+                    for (const w of commitData.memorySlotWarnings) {
+                      if (w.includes("LOW_MEMORY_CONFIDENCE")) {
+                        console.warn("[Voice] LOW_MEMORY_CONFIDENCE — server gates will enforce cautious output");
+                      }
+                      if (w.includes("STALE_FACTS")) {
+                        console.warn("[Voice] STALE_FACTS — server grounding gate will filter unverified claims");
+                      }
+                    }
                   }
+                } else if (
+                  (commitData.reason === "OUTPUT_GATE_BLOCKED" || commitData.reason === "GROUNDING_GATE_BLOCKED") &&
+                  commitData.corrections
+                ) {
+                  // Server blocked the turn — use sanitized response instead
+                  finalText = commitData.corrections;
+                  contextChecksumRef.current = commitData.contextChecksum;
+                } else if (commitData.reason === "GROUNDING_GATE_BLOCKED" && !commitData.corrections) {
+                  // Grounding gate blocked without corrections — use safe fallback
+                  finalText = "Let's continue with the interview.";
                 }
               } catch { /* Non-fatal: fall back to checkpoint-based persistence */ }
             }
@@ -717,19 +739,30 @@ export function useVoiceInterview(
       }
     } catch {
       checkpointResultsRef.current = [...checkpointResultsRef.current.slice(-4), false];
-      // Fallback: save transcript to IndexedDB when server is unreachable
-      backupTranscript(
-        interviewId,
-        transcriptRef.current,
-        moduleScoresRef.current,
-        questionCountRef.current,
-        {
-          currentDifficultyLevel: difficultyLevelRef.current,
-          flaggedFollowUps: flaggedFollowUpsRef.current,
-          currentModule: currentModuleRef.current,
-          candidateProfile: candidateProfileRef.current || undefined,
+      // Fallback: save transcript to IndexedDB with 3-retry exponential backoff
+      let backupOk = false;
+      for (let attempt = 0; attempt < 3 && !backupOk; attempt++) {
+        try {
+          await backupTranscript(
+            interviewId,
+            transcriptRef.current,
+            moduleScoresRef.current,
+            questionCountRef.current,
+            {
+              currentDifficultyLevel: difficultyLevelRef.current,
+              flaggedFollowUps: flaggedFollowUpsRef.current,
+              currentModule: currentModuleRef.current,
+              candidateProfile: candidateProfileRef.current || undefined,
+            }
+          );
+          backupOk = true;
+        } catch {
+          if (attempt < 2) await new Promise(r => setTimeout(r, 100 * Math.pow(2, attempt)));
         }
-      ).catch(() => {});
+      }
+      if (!backupOk) {
+        console.error("[Voice] CRITICAL: Both checkpoint and IndexedDB backup failed after 3 attempts");
+      }
       // Warn if 3+ failures in last 5 attempts (rolling window, not consecutive)
       const recentFailures = checkpointResultsRef.current.filter((r) => !r).length;
       if (recentFailures >= 3) {

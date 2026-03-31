@@ -592,6 +592,8 @@ export function buildReconnectSystemPrompt(
   let knowledgeGraphSection = "";
   if (knowledgeGraph && typeof knowledgeGraph === "object") {
     const kg = knowledgeGraph;
+    // Check for stale KG marker from memory-orchestrator
+    const isStaleKG = (kg as Record<string, unknown>)._stale === true;
     const parts: string[] = [];
     if (kg.verified_claims?.length) {
       parts.push(`Verified Claims:\n${kg.verified_claims.map(c => `- ${sanitizeForPrompt(c, 300)}`).join("\n")}`);
@@ -609,7 +611,8 @@ export function buildReconnectSystemPrompt(
       parts.push(`Notable Quotes:\n${kg.notable_quotes.map(q => `- "${sanitizeForPrompt(q, 300)}"`).join("\n")}`);
     }
     if (parts.length > 0) {
-      knowledgeGraphSection = `\n## CANDIDATE KNOWLEDGE GRAPH (semantic memory from prior analysis)\nUse these facts to personalize questions, verify consistency, and avoid redundant probing.\n${parts.join("\n\n")}`;
+      const staleWarning = isStaleKG ? "⚠️ WARNING: This knowledge graph is STALE (>3 min old). Treat facts below as approximate — verify before referencing.\n\n" : "";
+      knowledgeGraphSection = `\n## CANDIDATE KNOWLEDGE GRAPH (semantic memory from prior analysis)\n${staleWarning}Use these facts to personalize questions, verify consistency, and avoid redundant probing.\n${parts.join("\n\n")}`;
     }
   }
 

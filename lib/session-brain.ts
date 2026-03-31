@@ -17,7 +17,7 @@ import type { InterviewerState } from "./interviewer-state";
 import { transitionState, computeStateHash, deserializeState, serializeState, createInitialState } from "./interviewer-state";
 import { commitSingleTurn } from "./conversation-ledger";
 import type { LedgerTurn } from "./conversation-ledger";
-import { checkOutputGate } from "./output-gate";
+import { checkOutputGateWithAction } from "./output-gate";
 import type { GateViolation } from "./output-gate";
 import { checkFollowUpGrounding } from "./grounding-gate";
 import { isEnabled } from "./feature-flags";
@@ -127,19 +127,31 @@ export async function commitTurn(
     }
   }
 
-  // 3. Run output gate for AI turns
+  // 3. Run output gate for AI turns (blocking when FF_OUTPUT_GATE_BLOCKING enabled)
   const isAITurn = request.role === "model" || request.role === "interviewer";
   if (isAITurn) {
-    const gateResult = checkOutputGate(request.content, {
+    const blockingEnabled = isEnabled("OUTPUT_GATE_BLOCKING");
+    const gateAction = checkOutputGateWithAction(request.content, {
       introDone: interviewerState.introDone,
       askedQuestionIds: interviewerState.askedQuestionIds,
       verifiedFacts: sessionState.verifiedFacts || [],
       personaLocked: interviewerState.personaLocked,
       currentStep: interviewerState.currentStep,
-    });
+    }, blockingEnabled);
 
-    if (!gateResult.passed) {
-      violations.push(...gateResult.violations);
+    if (gateAction.action === "block") {
+      return {
+        committed: false,
+        stateHash: interviewerState.stateHash,
+        contextChecksum: sessionState.contextChecksum || "",
+        violations: gateAction.violations,
+        corrections: gateAction.sanitizedResponse,
+        reason: "OUTPUT_GATE_BLOCKED",
+      };
+    }
+
+    if (gateAction.violations.length > 0) {
+      violations.push(...gateAction.violations);
     }
 
     // 4. Run grounding gate for AI turns that reference candidate statements
@@ -153,23 +165,41 @@ export async function commitTurn(
         }))
       );
       if (!groundingResult.grounded && groundingResult.flag) {
+        const groundingSeverity = blockingEnabled ? "block" : "warn";
         violations.push({
           type: "unsupported_claim",
           detail: `Ungrounded follow-up: ${groundingResult.flag}`,
-          severity: "warn",
+          severity: groundingSeverity,
         });
+        // When blocking is enabled, reject the turn for ungrounded claims
+        if (blockingEnabled) {
+          return {
+            committed: false,
+            stateHash: interviewerState.stateHash,
+            contextChecksum: sessionState.contextChecksum || "",
+            violations,
+            reason: "GROUNDING_GATE_BLOCKED",
+          };
+        }
       }
     }
   }
 
   // 4b. Contradiction gate: detect contradictions between new content and verified facts
   if (isAITurn && isEnabled("SEMANTIC_CONTRADICTION_DETECTOR") && sessionState.verifiedFacts?.length) {
+    const contradictionStart = Date.now();
     try {
+      const CONTRADICTION_TIMEOUT_MS = 500;
       const newFact = { turnId: request.turnId, content: request.content, factType: "CLAIM" as const, confidence: 0.8, extractedBy: "session-brain" };
       const existingFacts = sessionState.verifiedFacts.map((f) => ({
         turnId: "prior", content: f.content, factType: f.factType as any, confidence: f.confidence, extractedBy: "checkpoint",
       }));
       const contradictions = detectContradictions(newFact, existingFacts);
+      const contradictionMs = Date.now() - contradictionStart;
+      if (contradictionMs > CONTRADICTION_TIMEOUT_MS) {
+        console.warn(`[SessionBrain] Contradiction detection slow: ${contradictionMs}ms (threshold: ${CONTRADICTION_TIMEOUT_MS}ms)`);
+      }
+      recordSLOEvent("memory.contradiction.detection_rate", true).catch(() => {});
       for (const c of contradictions) {
         violations.push({
           type: "unsupported_claim",
@@ -177,7 +207,11 @@ export async function commitTurn(
           severity: "warn",
         });
       }
-    } catch { /* Non-fatal: contradiction detection failure shouldn't block the turn */ }
+    } catch (err) {
+      const contradictionMs = Date.now() - contradictionStart;
+      console.warn(`[SessionBrain] Contradiction detection failed after ${contradictionMs}ms:`, err);
+      recordSLOEvent("memory.contradiction.detection_rate", false).catch(() => {});
+    }
   }
 
   // 4c. Memory confidence gate: warn when confidence is critically low

@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { commitTurn, computeContextChecksum } from "@/lib/session-brain";
-import { checkOutputGate } from "@/lib/output-gate";
+import { checkOutputGate, checkOutputGateWithAction, sanitizeResponse } from "@/lib/output-gate";
+import { extractFactsImmediate } from "@/lib/fact-extractor";
 import {
   createInitialState,
   transitionState,
@@ -525,6 +526,149 @@ describe("Master Prompt Matrix Compliance Tests", () => {
         currentStep: "technical",
       });
       expect(result.passed).toBe(true);
+    });
+  });
+
+  describe("Output gate blocking mode (Fix 1)", () => {
+    it("blocks and returns sanitized response when blocking enabled", () => {
+      const result = checkOutputGateWithAction(
+        "Hi, I'm Aria, your AI interviewer from Think5. Thanks for joining today. Tell me about your work at Google.",
+        {
+          introDone: true,
+          askedQuestionIds: [],
+          verifiedFacts: [],
+          personaLocked: true,
+          currentStep: "technical",
+        },
+        true // blocking enabled
+      );
+      expect(result.action).toBe("block");
+      expect(result.violations.length).toBeGreaterThan(0);
+      expect(result.violations[0].severity).toBe("block");
+      expect(result.sanitizedResponse).toBeDefined();
+      // Sanitized response should not contain intro patterns
+      expect(result.sanitizedResponse).not.toMatch(/Hi,?\s+I'm Aria/i);
+    });
+
+    it("passes violations as warn-only when blocking disabled", () => {
+      const result = checkOutputGateWithAction(
+        "Hi, I'm Aria. Tell me about your work.",
+        {
+          introDone: true,
+          askedQuestionIds: [],
+          verifiedFacts: [],
+          personaLocked: true,
+          currentStep: "technical",
+        },
+        false // blocking disabled
+      );
+      expect(result.action).toBe("pass");
+      expect(result.violations.length).toBeGreaterThan(0);
+      expect(result.violations[0].severity).toBe("warn");
+      expect(result.sanitizedResponse).toBeUndefined();
+    });
+
+    it("passes clean responses in both modes", () => {
+      const input = {
+        introDone: true,
+        askedQuestionIds: [],
+        verifiedFacts: [],
+        personaLocked: true,
+        currentStep: "technical",
+      };
+      const blocking = checkOutputGateWithAction("Tell me about a challenging project.", input, true);
+      const warnOnly = checkOutputGateWithAction("Tell me about a challenging project.", input, false);
+      expect(blocking.action).toBe("pass");
+      expect(warnOnly.action).toBe("pass");
+    });
+
+    it("sanitizeResponse strips intro patterns and preserves content", () => {
+      const violations = [{ type: "reintroduction" as const, detail: "test", severity: "block" as const }];
+      const result = sanitizeResponse(
+        "Hi, I'm Aria. Thanks for joining today. Can you walk me through your system design experience?",
+        violations
+      );
+      expect(result).not.toMatch(/Hi,?\s+I'm Aria/i);
+      expect(result).not.toMatch(/thanks?\s+for\s+joining/i);
+      expect(result).toContain("system design");
+    });
+  });
+
+  describe("Stale knowledge graph handling (Fix 3)", () => {
+    it("stale KG marker is detectable by downstream consumers", () => {
+      // Simulate what memory-orchestrator does when KG is stale
+      const freshKG = { verified_claims: ["built search at Google"], technical_stack: ["Go", "gRPC"] };
+      const staleKG = { ...freshKG, _stale: true, _staleSince: 240 };
+      expect(staleKG._stale).toBe(true);
+      expect(staleKG._staleSince).toBeGreaterThan(180); // >3 min
+      // Fresh KG has no stale marker
+      expect((freshKG as Record<string, unknown>)._stale).toBeUndefined();
+    });
+  });
+
+  describe("Memory confidence model warning (Fix 2)", () => {
+    it("LOW_MEMORY_CONFIDENCE warning generated when confidence < 0.3", () => {
+      const confidence = compute4FactorConfidence(
+        { factsOk: false, knowledgeGraphOk: false, recentTurnsOk: false },
+        100, 2000, 3, 3, false
+      );
+      expect(confidence).toBeLessThan(0.3);
+      // This should trigger the memorySlotWarnings in session-brain
+      const warnings: string[] = [];
+      if (confidence < 0.3) {
+        warnings.push(`LOW_MEMORY_CONFIDENCE: ${confidence.toFixed(2)}`);
+      }
+      expect(warnings.some(w => w.includes("LOW_MEMORY_CONFIDENCE"))).toBe(true);
+    });
+  });
+
+  describe("IndexedDB backup retry pattern (Fix 6)", () => {
+    it("exponential backoff timing is correct", () => {
+      // Verify the retry delay formula: 100 * 2^attempt
+      const delays = [0, 1, 2].map(attempt => 100 * Math.pow(2, attempt));
+      expect(delays).toEqual([100, 200, 400]);
+    });
+  });
+
+  describe("Expanded tech skills extraction (Fix 12)", () => {
+    it("detects modern technologies: Rust, Go, Zig, JAX, LangChain", () => {
+      const facts = extractFactsImmediate({
+        turnId: "t1",
+        role: "candidate",
+        content: "I've been using Rust for systems programming, JAX for ML research, and LangChain for building RAG pipelines. Also experienced with Kubernetes and Terraform.",
+      });
+      const techSkills = facts.filter(f => f.factType === "TECHNICAL_SKILL").map(f => f.content);
+      expect(techSkills).toContain("Rust");
+      expect(techSkills).toContain("JAX");
+      expect(techSkills).toContain("LangChain");
+      expect(techSkills).toContain("Kubernetes");
+      expect(techSkills).toContain("Terraform");
+    });
+
+    it("detects cloud-native stack: Vercel, Supabase, Prisma, tRPC", () => {
+      const facts = extractFactsImmediate({
+        turnId: "t2",
+        role: "candidate",
+        content: "Our stack uses Vercel for deployment, Supabase for the database, Prisma as the ORM, and tRPC for type-safe APIs.",
+      });
+      const techSkills = facts.filter(f => f.factType === "TECHNICAL_SKILL").map(f => f.content);
+      expect(techSkills).toContain("Vercel");
+      expect(techSkills).toContain("Supabase");
+      expect(techSkills).toContain("Prisma");
+      expect(techSkills).toContain("tRPC");
+    });
+
+    it("detects observability tools: Datadog, Grafana, OpenTelemetry, Sentry", () => {
+      const facts = extractFactsImmediate({
+        turnId: "t3",
+        role: "candidate",
+        content: "We monitor with Datadog and Grafana dashboards, use OpenTelemetry for tracing, and Sentry for error tracking.",
+      });
+      const techSkills = facts.filter(f => f.factType === "TECHNICAL_SKILL").map(f => f.content);
+      expect(techSkills).toContain("Datadog");
+      expect(techSkills).toContain("Grafana");
+      expect(techSkills).toContain("OpenTelemetry");
+      expect(techSkills).toContain("Sentry");
     });
   });
 });

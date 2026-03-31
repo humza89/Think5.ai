@@ -118,15 +118,37 @@ export function extractFactsImmediate(turn: {
 
   // Technical skills: programming languages, frameworks, tools
   const techTerms = new Set([
+    // Languages
     "React", "Next.js", "TypeScript", "JavaScript", "Python", "Go", "Rust",
     "Java", "Kotlin", "Swift", "Ruby", "PHP", "C++", "C#", "Scala",
+    "Zig", "Elixir", "Erlang", "Haskell", "Clojure", "Dart", "Lua",
+    "R", "Julia", "Perl", "OCaml", "F#",
+    // Frameworks & runtimes
     "Node.js", "Django", "Flask", "FastAPI", "Spring", "Rails",
+    "Vue.js", "Angular", "Svelte", "Remix", "Nuxt", "Astro",
+    "Express", "NestJS", "Deno", "Bun",
+    "Spring Boot", ".NET", "Laravel", "Flutter", "React Native",
+    // Databases & storage
     "PostgreSQL", "MySQL", "MongoDB", "Redis", "Elasticsearch",
+    "DynamoDB", "Cassandra", "CockroachDB", "Neo4j", "ClickHouse",
+    "SQLite", "Supabase", "PlanetScale", "Prisma",
+    // Infrastructure & DevOps
     "Kubernetes", "Docker", "AWS", "GCP", "Azure", "Terraform",
+    "Pulumi", "Ansible", "Helm", "ArgoCD", "Vercel", "Cloudflare",
+    // APIs & messaging
     "GraphQL", "REST", "gRPC", "Kafka", "RabbitMQ",
+    "tRPC", "WebSocket", "NATS", "SQS",
+    // AI/ML
     "TensorFlow", "PyTorch", "Spark", "Hadoop", "Flink",
+    "JAX", "LangChain", "LlamaIndex", "OpenAI", "Hugging Face",
+    "scikit-learn", "XGBoost", "MLflow", "CUDA", "Ray",
+    // CI/CD & observability
     "CI/CD", "Jenkins", "GitHub Actions", "CircleCI",
+    "GitLab CI", "Datadog", "Grafana", "Prometheus", "Sentry",
+    "OpenTelemetry",
+    // Concepts
     "machine learning", "deep learning", "NLP", "computer vision",
+    "microservices", "serverless",
   ]);
 
   const words = text.split(/[\s,;.()]+/);
