@@ -121,6 +121,8 @@ export interface SessionState {
   interviewerState?: string; // Serialized InterviewerState JSON for deterministic continuity
   violationCount?: number;
   memoryPacketVersion?: number;
+  lastFactRefreshAt?: string; // ISO timestamp of last fact extraction — used for freshness SLA
+  turnCommitChecksum?: string; // Context checksum for turn-commit protocol (separate from checkpointDigest)
   reconnectHistory?: Array<{
     timestamp: string;
     ledgerVersion: number;

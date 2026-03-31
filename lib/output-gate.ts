@@ -28,6 +28,8 @@ export interface OutputGateInput {
   personaLocked?: boolean;
   /** Current interview step from state machine — used for state-driven gating */
   currentStep?: string;
+  /** Recent contradictions detected by semantic contradiction detector */
+  recentContradictions?: Array<{ description: string; type: string }>;
 }
 
 export interface GateViolation {
@@ -252,6 +254,17 @@ export function checkOutputGate(
           severity: "warn",
         });
       }
+    }
+  }
+
+  // Check 4: No contradictions with prior verified facts
+  if (input.recentContradictions?.length) {
+    for (const contradiction of input.recentContradictions) {
+      violations.push({
+        type: "unsupported_claim",
+        detail: `Contradiction detected (${contradiction.type}): ${contradiction.description}`,
+        severity: "warn",
+      });
     }
   }
 

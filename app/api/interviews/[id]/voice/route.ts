@@ -827,6 +827,8 @@ export async function POST(
           ...validatedMemory,
           violationCount,
           memoryPacketVersion,
+          // Memory freshness SLA: track when facts were last extracted
+          ...(telemetryFactsOk ? { lastFactRefreshAt: new Date().toISOString() } : {}),
         });
       }
       await refreshSessionTTL(id);

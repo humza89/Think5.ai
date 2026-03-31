@@ -21,6 +21,9 @@ import { checkOutputGate } from "./output-gate";
 import type { GateViolation } from "./output-gate";
 import { checkFollowUpGrounding } from "./grounding-gate";
 import { isEnabled } from "./feature-flags";
+import { detectContradictions } from "./semantic-contradiction-detector";
+import { compute4FactorConfidence } from "./memory-orchestrator";
+import { recordSLOEvent } from "./slo-monitor";
 
 // ── Types ────────────────────────────────────────────────────────────
 
@@ -91,6 +94,7 @@ export async function commitTurn(
     recentTurns?: Array<{ turnId: string; content: string }>;
     contextChecksum?: string;
     factCount?: number;
+    lastFactRefreshAt?: string;
   }
 ): Promise<TurnCommitResult> {
   const violations: GateViolation[] = [];
@@ -155,6 +159,62 @@ export async function commitTurn(
           severity: "warn",
         });
       }
+    }
+  }
+
+  // 4b. Contradiction gate: detect contradictions between new content and verified facts
+  if (isAITurn && isEnabled("SEMANTIC_CONTRADICTION_DETECTOR") && sessionState.verifiedFacts?.length) {
+    try {
+      const newFact = { turnId: request.turnId, content: request.content, factType: "CLAIM" as const, confidence: 0.8, extractedBy: "session-brain" };
+      const existingFacts = sessionState.verifiedFacts.map((f) => ({
+        turnId: "prior", content: f.content, factType: f.factType as any, confidence: f.confidence, extractedBy: "checkpoint",
+      }));
+      const contradictions = detectContradictions(newFact, existingFacts);
+      for (const c of contradictions) {
+        violations.push({
+          type: "unsupported_claim",
+          detail: `Contradiction detected (${c.type}): ${c.description}`,
+          severity: "warn",
+        });
+      }
+    } catch { /* Non-fatal: contradiction detection failure shouldn't block the turn */ }
+  }
+
+  // 4c. Memory confidence gate: warn when confidence is critically low
+  if (isAITurn && isEnabled("TURN_COMMIT_PROTOCOL")) {
+    try {
+      // Estimate token count from actual content length (chars / 4 approximation)
+      const estimatedTokens = sessionState.recentTurns?.reduce(
+        (sum, t) => sum + Math.ceil(t.content.length / 4), 0
+      ) ?? 0;
+      const confidence = compute4FactorConfidence(
+        {
+          factsOk: (sessionState.verifiedFacts?.length ?? 0) > 0,
+          knowledgeGraphOk: false, // Conservative: unknown KG state at commit time
+          recentTurnsOk: (sessionState.recentTurns?.length ?? 0) > 0,
+        },
+        estimatedTokens,
+        parseInt(process.env.MEMORY_MIN_TOKEN_THRESHOLD || "2000", 10),
+        0, 0, !!interviewerState.stateHash
+      );
+      if (confidence < 0.3) {
+        memorySlotWarnings.push(`LOW_MEMORY_CONFIDENCE: ${confidence.toFixed(2)} — asking for clarification instead`);
+        recordSLOEvent("memory.confidence.adequate_rate", false).catch(() => {});
+      } else {
+        recordSLOEvent("memory.confidence.adequate_rate", true).catch(() => {});
+      }
+    } catch { /* Non-fatal */ }
+  }
+
+  // 4d. Memory freshness SLA: warn when facts are stale
+  if (isAITurn && sessionState.lastFactRefreshAt) {
+    const FACT_FRESHNESS_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes
+    const staleness = Date.now() - new Date(sessionState.lastFactRefreshAt).getTime();
+    if (staleness > FACT_FRESHNESS_THRESHOLD_MS) {
+      memorySlotWarnings.push(`STALE_FACTS: Facts last refreshed ${Math.round(staleness / 1000)}s ago`);
+      recordSLOEvent("memory.facts.freshness_rate", false).catch(() => {});
+    } else {
+      recordSLOEvent("memory.facts.freshness_rate", true).catch(() => {});
     }
   }
 

@@ -107,7 +107,7 @@ export async function POST(
     lastTurnIndex: session.lastTurnIndex ?? -1,
     verifiedFacts,
     recentTurns,
-    contextChecksum: session.checkpointDigest,
+    contextChecksum: session.turnCommitChecksum,
     factCount: verifiedFacts.length,
   });
 
@@ -118,7 +118,7 @@ export async function POST(
     session.lastTurnIndex = result.turnIndex;
     session.ledgerVersion = result.turnIndex;
     session.stateHash = result.stateHash;
-    session.checkpointDigest = result.contextChecksum;
+    session.turnCommitChecksum = result.contextChecksum;
     session.lastActiveAt = new Date().toISOString();
     await saveSessionState(id, session);
   }

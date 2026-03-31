@@ -161,6 +161,20 @@ export const SLO_DEFINITIONS: SLODefinition[] = [
     description: "Memory fidelity recall rate (≥95%)",
     unit: "rate",
   },
+  {
+    name: "memory.confidence.adequate_rate",
+    target: 0.99,
+    windowHours: 24,
+    description: "Memory confidence above 0.3 threshold rate (≥99%)",
+    unit: "rate",
+  },
+  {
+    name: "memory.facts.freshness_rate",
+    target: 0.995,
+    windowHours: 24,
+    description: "Fact freshness SLA compliance rate — facts under 5 min old (≥99.5%)",
+    unit: "rate",
+  },
 ];
 
 /**

@@ -162,6 +162,8 @@ export function useVoiceInterview(
   const interviewerStateRef = useRef<string | null>(null); // Serialized InterviewerState for deterministic continuity
   const ledgerVersionRef = useRef<number>(-1); // R6: Track server ledger version for Phase 2 protocol
   const stateHashRef = useRef<string>(""); // R6: Track server state hash for Phase 2 protocol
+  const contextChecksumRef = useRef<string>(""); // Turn-commit continuity contract checksum
+  const turnCommitEnabledRef = useRef(false); // Set from voice-init response
   const interviewStartTimeRef = useRef<number>(0); // for adaptive checkpoint intervals
   const lastCheckpointTimeRef = useRef<number>(0); // debounce event-driven checkpoints
   const reconnectStartTimeRef = useRef<number>(0); // Tracks reconnect latency for SLO
@@ -359,6 +361,30 @@ export function useVoiceInterview(
           // Finalize any pending candidate text when the model starts responding
           if (currentCandidateTextRef.current.trim()) {
             const candidateText = currentCandidateTextRef.current.trim();
+
+            // Turn-commit protocol: commit candidate turn to server
+            if (turnCommitEnabledRef.current) {
+              try {
+                const commitRes = await fetch(`/api/interviews/${interviewId}/voice/turn-commit`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
+                  body: JSON.stringify({
+                    turnId: crypto.randomUUID(),
+                    role: "user",
+                    content: candidateText,
+                    contextChecksum: contextChecksumRef.current,
+                    clientTimestamp: new Date().toISOString(),
+                  }),
+                });
+                if (commitRes.ok) {
+                  const commitData = await commitRes.json();
+                  if (commitData.committed) {
+                    contextChecksumRef.current = commitData.contextChecksum;
+                  }
+                }
+              } catch { /* Non-fatal: fall back to checkpoint */ }
+            }
+
             setTranscript((prev) => {
               const last = prev[prev.length - 1];
               if (last && last.role === "candidate") {
@@ -415,21 +441,39 @@ export function useVoiceInterview(
           if (currentTurnTextRef.current.trim()) {
             let finalText = currentTurnTextRef.current.trim();
 
-            // R3: Server-authoritative intro suppression — if introDone is true (from checkpoint/recovery),
-            // suppress any re-introduction attempts by the AI after reconnect
-            if (introDoneRef.current && transcriptRef.current.length > 0) {
-              const introPatterns = [
-                /hi,?\s+i'?m\s+aria/i,
-                /welcome\s+to/i,
-                /thanks?\s+for\s+joining/i,
-                /let\s+me\s+introduce/i,
-                /i'll\s+be\s+conducting/i,
-                /my\s+name\s+is/i,
-              ];
-              if (introPatterns.some((p) => p.test(finalText))) {
-                console.warn("[Voice] Suppressed AI re-introduction (introDone=true from server state)");
-                finalText = "Let's continue where we left off.";
-              }
+            // Turn-commit protocol: commit AI turn to server for validation
+            // Server handles intro suppression, contradiction gates, and memory confidence checks
+            if (turnCommitEnabledRef.current) {
+              try {
+                const commitRes = await fetch(`/api/interviews/${interviewId}/voice/turn-commit`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
+                  body: JSON.stringify({
+                    turnId: crypto.randomUUID(),
+                    role: "model",
+                    content: finalText,
+                    contextChecksum: contextChecksumRef.current,
+                    clientTimestamp: new Date().toISOString(),
+                  }),
+                });
+                if (!commitRes.ok) throw new Error(`Turn-commit failed: ${commitRes.status}`);
+                const commitData = await commitRes.json();
+                if (commitData.committed) {
+                  contextChecksumRef.current = commitData.contextChecksum;
+                  // Apply server corrections if any (e.g., re-introduction stripped by output gate)
+                  if (commitData.violations?.length > 0) {
+                    console.warn(`[Voice] Turn-commit: ${commitData.violations.length} violation(s)`);
+                    // If server returned a sanitized response, use it
+                    const reintroViolation = commitData.violations.find((v: { type: string }) => v.type === "reintroduction");
+                    if (reintroViolation) {
+                      finalText = "Let's continue where we left off.";
+                    }
+                  }
+                  if (commitData.memorySlotWarnings?.length > 0) {
+                    console.warn(`[Voice] Memory warnings: ${commitData.memorySlotWarnings.length} warning(s)`);
+                  }
+                }
+              } catch { /* Non-fatal: fall back to checkpoint-based persistence */ }
             }
 
             setTranscript((prev) => {
@@ -931,6 +975,18 @@ export function useVoiceInterview(
         if (enterpriseMemory.moduleScores) moduleScoresRef.current = enterpriseMemory.moduleScores;
         if (enterpriseMemory.interviewerState) interviewerStateRef.current = enterpriseMemory.interviewerState;
         console.log(`[Voice] Restored enterprise memory from server: difficulty=${enterpriseMemory.currentDifficultyLevel}, module=${enterpriseMemory.currentModule}, followUps=${enterpriseMemory.flaggedFollowUps?.length || 0}, moduleScores=${enterpriseMemory.moduleScores?.length || 0}`);
+      }
+
+      // Reset turn-commit refs before reading server state (server is authoritative)
+      turnCommitEnabledRef.current = false;
+      contextChecksumRef.current = "";
+
+      // Enable turn-commit protocol if server indicates support
+      if (initData.turnCommitEnabled) {
+        turnCommitEnabledRef.current = true;
+        if (initData.contextChecksum) {
+          contextChecksumRef.current = initData.contextChecksum;
+        }
       }
 
       // Fix 1: Complete server verification for tokenless reconnects.

@@ -353,6 +353,24 @@ export async function POST(
       }
     }
 
+    // Compute initial context checksum for turn-commit protocol
+    const turnCommitEnabled = isEnabled("TURN_COMMIT_PROTOCOL");
+    let contextChecksum: string | undefined;
+    if (turnCommitEnabled) {
+      const { computeContextChecksum } = await import("@/lib/session-brain");
+      const sessionForChecksum = await getSessionState(id);
+      contextChecksum = computeContextChecksum(
+        sessionForChecksum?.stateHash || "",
+        sessionForChecksum?.ledgerVersion ?? -1,
+        0 // initial fact count
+      );
+      // Persist initial checksum in dedicated field (separate from checkpointDigest)
+      if (sessionForChecksum) {
+        sessionForChecksum.turnCommitChecksum = contextChecksum;
+        await saveSessionState(id, sessionForChecksum);
+      }
+    }
+
     return Response.json({
       relayUrl,
       sessionToken,
@@ -364,6 +382,7 @@ export async function POST(
       reconnectToken,
       lockOwnerToken,
       ...(enterpriseMemory ? { enterpriseMemory } : {}),
+      ...(turnCommitEnabled ? { turnCommitEnabled: true, contextChecksum } : {}),
       // Degraded-network configuration for adaptive checkpoint intervals
       degradedNetworkConfig: {
         checkpointIntervalMs: { good: 15000, fair: 15000, poor: 10000 },
