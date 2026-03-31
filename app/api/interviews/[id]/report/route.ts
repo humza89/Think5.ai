@@ -29,6 +29,8 @@ export async function GET(
       ipAddress: getClientIp(request.headers),
     }).catch(() => {});
 
+    // All InterviewReport fields (including memoryIntegrityScorecard) are returned
+    // via findUnique + include. No explicit select needed on the report model.
     const report = await prisma.interviewReport.findUnique({
       where: { interviewId: id },
       include: {

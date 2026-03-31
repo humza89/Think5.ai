@@ -53,7 +53,7 @@ export interface GateAction {
 // ── Intro Detection Patterns ─────────────────────────────────────────
 // Same patterns used client-side, now enforced server-side
 
-const INTRO_PATTERNS = [
+export const INTRO_PATTERNS = [
   /hi,?\s+i'?m\s+aria/i,
   /welcome\s+to/i,
   /thanks?\s+for\s+joining/i,

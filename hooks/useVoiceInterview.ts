@@ -1,12 +1,33 @@
 "use client";
 
 /**
- * useVoiceInterview — Client-side Gemini Live WebSocket
+ * useVoiceInterview — Client-side Gemini Live WebSocket (Thin I/O Terminal)
  *
- * Connects directly to Gemini Live API from the browser.
- * No server relay — audio streams bidirectionally over WebSocket.
- * Server is only used for initialization (system prompt) and persistence
- * (transcript checkpoints, interview end).
+ * ARCHITECTURE CONTRACT (REM-2):
+ * This hook is a THIN I/O TERMINAL. It does NOT perform orchestration.
+ *
+ * What this hook does (I/O only):
+ * - Connects directly to Gemini Live API from the browser
+ * - Streams audio bidirectionally over WebSocket
+ * - Renders transcript and UI state
+ * - Sends finalized turns to server via turn-commit protocol
+ * - Handles reconnection mechanics (connect/disconnect/retry)
+ *
+ * What this hook does NOT do (server-owned):
+ * - Question selection or sequencing (Gemini drives via system prompt)
+ * - Memory assembly or context composition (server: memory-orchestrator)
+ * - Fact extraction or verification (server: fact-extractor, grounding-gate)
+ * - State machine transitions (server: interviewer-state, session-brain)
+ * - Contradiction detection (server: semantic-contradiction-detector)
+ * - Output gating (server: output-gate)
+ *
+ * Server validates every turn post-hoc via turn-commit. Gemini drives
+ * the conversation (question selection, module sequencing, difficulty).
+ * The server CANNOT inject mid-session system instructions.
+ *
+ * NETWORK INVARIANT (REM-1):
+ * `connectionQuality` is used ONLY for UI display and checkpoint frequency.
+ * It must NEVER influence logic paths, question selection, or memory assembly.
  */
 
 import { useState, useCallback, useRef, useEffect } from "react";
@@ -17,6 +38,7 @@ import {
   transitionReconnectState,
   stateToPhase,
   MAX_RECOVERY_ATTEMPTS,
+  shouldRateLimit,
 } from "@/lib/reconnect-state-machine";
 import type { ReconnectState, ReconnectPhase } from "@/lib/reconnect-state-machine";
 
@@ -49,6 +71,20 @@ export interface VoiceInterviewConfig {
   onInterviewEnd?: () => void;
 }
 
+export interface SessionSnapshot {
+  transcript: TranscriptEntry[];
+  moduleScores: Array<{ module: string; score: number; reason: string; sectionNotes?: string }>;
+  questionCount: number;
+  interviewerState: string | null;
+  ledgerVersion: number;
+  stateHash: string;
+  reconnectToken: string;
+  askedQuestions: string[];
+  currentModule: string;
+  candidateProfile: CandidateProfile | null;
+  difficultyLevel: string;
+}
+
 export interface UseVoiceInterviewReturn {
   interviewState: InterviewState;
   aiState: AISpeakingState;
@@ -72,6 +108,7 @@ export interface UseVoiceInterviewReturn {
   retryVoice: () => Promise<void>;
   pauseInterview: () => Promise<void>;
   resumeInterview: () => Promise<void>;
+  getSessionSnapshot: () => SessionSnapshot;
 }
 
 // ── Constants ────────────────────────────────────────────────────────────
@@ -171,6 +208,7 @@ export function useVoiceInterview(
   const lastRecoveryCallRef = useRef<number>(0); // Rate-limit recovery API calls
   const recoveryInFlightRef = useRef(false); // Mutex: prevent concurrent recovery API calls
   const reconnectStateRef = useRef<ReconnectState>("DISCONNECTED"); // Enforced reconnect state machine
+  const reconnectTimestampsRef = useRef<number[]>([]); // CF4: Track reconnect cycle timestamps for rate-limiting
   const memoryPacketVersionRef = useRef<number>(0); // Monotonic version for stale packet detection
 
   // ── Audio Resource Cleanup Helper ────────────────────────────────────
@@ -380,6 +418,10 @@ export function useVoiceInterview(
                   const commitData = await commitRes.json();
                   if (commitData.committed) {
                     contextChecksumRef.current = commitData.contextChecksum;
+                    // AF1: Sync server-authoritative state on every turn-commit
+                    if (commitData.stateHash) stateHashRef.current = commitData.stateHash;
+                    if (typeof commitData.turnIndex === "number") ledgerVersionRef.current = commitData.turnIndex;
+                    if (commitData.interviewerState) interviewerStateRef.current = commitData.interviewerState;
                   }
                 }
               } catch { /* Non-fatal: fall back to checkpoint */ }
@@ -460,6 +502,10 @@ export function useVoiceInterview(
                 const commitData = await commitRes.json();
                 if (commitData.committed) {
                   contextChecksumRef.current = commitData.contextChecksum;
+                  // AF1: Sync server-authoritative state on every turn-commit
+                  if (commitData.stateHash) stateHashRef.current = commitData.stateHash;
+                  if (typeof commitData.turnIndex === "number") ledgerVersionRef.current = commitData.turnIndex;
+                  if (commitData.interviewerState) interviewerStateRef.current = commitData.interviewerState;
                   // Apply server corrections if any (e.g., re-introduction stripped by output gate)
                   if (commitData.violations?.length > 0) {
                     console.warn(`[Voice] Turn-commit: ${commitData.violations.length} violation(s)`);
@@ -938,6 +984,7 @@ export function useVoiceInterview(
         if (circuitBreakerStateRef.current !== "OPEN") {
           circuitBreakerStateRef.current = "OPEN";
           console.error("[Voice] Circuit breaker OPEN — 3 consecutive setup failures");
+          try { await checkpointTranscriptRef.current?.(); } catch { /* CF1: best-effort checkpoint before fallback */ }
           setFallbackToText(true);
           onError?.("Voice connection failed repeatedly. Switching to text mode.");
           // M2/R5: Clear any existing timer before setting a new one
@@ -1204,6 +1251,7 @@ export function useVoiceInterview(
           if (permanentFailureCodes.includes(event.code)) {
             setConnectionQuality("poor");
             onError?.(`Connection failed permanently (code ${event.code}). Switch to text mode.`);
+            checkpointTranscriptRef.current?.(); // CF1: fire-and-forget checkpoint before fallback
             setFallbackToText(true);
           }
           return;
@@ -1234,6 +1282,25 @@ export function useVoiceInterview(
           setIsReconnecting(false);
           onErrorRef.current?.(`Session recovery failed after ${MAX_RECOVERY_ATTEMPTS} attempts. Please use this link to resume: /interview/${interviewId}?resume=true`);
           reportSLOEvent("session.reconnect.success_rate", false);
+          return;
+        }
+
+        // CF4: Rapid-reconnect rate-limit — block if 3+ reconnects in 60s
+        reconnectTimestampsRef.current.push(Date.now());
+        if (shouldRateLimit(reconnectTimestampsRef.current)) {
+          try {
+            if (reconnectStateRef.current === "LIVE" || reconnectStateRef.current === "SOCKET_OPEN") {
+              reconnectStateRef.current = transitionReconnectState(reconnectStateRef.current as "LIVE", "DISCONNECTED");
+            }
+            reconnectStateRef.current = transitionReconnectState("DISCONNECTED", "RATE_LIMITED");
+          } catch {
+            reconnectStateRef.current = "RATE_LIMITED";
+          }
+          setReconnectPhase(stateToPhase(reconnectStateRef.current));
+          setConnectionQuality("poor");
+          setIsReconnecting(false);
+          onErrorRef.current?.("Too many reconnect attempts. Please wait a moment before retrying, or switch to text mode.");
+          reportSLOEvent("session.reconnect.rate_limited", true);
           return;
         }
 
@@ -1866,6 +1933,7 @@ export function useVoiceInterview(
           reconnectStateRef.current = "FAILED";
           setReconnectPhase(stateToPhase(reconnectStateRef.current));
           setIsReconnecting(false);
+          try { await checkpointTranscriptRef.current?.(); } catch { /* CF1: best-effort checkpoint before fallback */ }
           setFallbackToText(true);
           onError?.(`Unable to verify interview state. Please use this link to resume: /interview/${interviewId}?resume=true`);
           return;
@@ -1900,6 +1968,7 @@ export function useVoiceInterview(
       reconnectStateRef.current = "FAILED";
       setReconnectPhase(stateToPhase(reconnectStateRef.current));
       setIsReconnecting(false);
+      try { await checkpointTranscriptRef.current?.(); } catch { /* CF1: best-effort checkpoint before fallback */ }
       setFallbackToText(true);
       onError?.("Failed to reconnect. You can switch to text mode.");
     }
@@ -1907,6 +1976,20 @@ export function useVoiceInterview(
 
   // F3: Retry voice after circuit breaker fallback — resets breaker and attempts reconnect
   const retryVoice = useCallback(async () => {
+    // CF4: Rate-limit check before retry
+    reconnectTimestampsRef.current.push(Date.now());
+    if (shouldRateLimit(reconnectTimestampsRef.current)) {
+      try {
+        reconnectStateRef.current = transitionReconnectState(reconnectStateRef.current, "DISCONNECTED");
+      } catch { reconnectStateRef.current = "DISCONNECTED"; }
+      try {
+        reconnectStateRef.current = transitionReconnectState("DISCONNECTED", "RATE_LIMITED");
+      } catch { reconnectStateRef.current = "RATE_LIMITED"; }
+      setReconnectPhase(stateToPhase(reconnectStateRef.current));
+      onError?.("Too many reconnect attempts. Please wait a moment before retrying, or switch to text mode.");
+      return;
+    }
+
     circuitBreakerStateRef.current = "HALF_OPEN";
     consecutiveSetupFailuresRef.current = 0;
     if (circuitBreakerTimerRef.current) { clearTimeout(circuitBreakerTimerRef.current); circuitBreakerTimerRef.current = null; }
@@ -1925,7 +2008,12 @@ export function useVoiceInterview(
           return;
         }
         recoveryInFlightRef.current = true;
-        reconnectStateRef.current = "RECOVERY_PENDING";
+        // CF4: Use proper state machine transition
+        try {
+          reconnectStateRef.current = transitionReconnectState(reconnectStateRef.current, "RECOVERY_PENDING");
+        } catch {
+          reconnectStateRef.current = "RECOVERY_PENDING";
+        }
         // Gap 1: AbortController with 15s timeout
         const controller = new AbortController();
         const abortTimeout = setTimeout(() => controller.abort(), 15000);
@@ -1954,23 +2042,42 @@ export function useVoiceInterview(
           if (typeof recovery.ledgerVersion === "number") ledgerVersionRef.current = recovery.ledgerVersion;
           if (recovery.stateHash) stateHashRef.current = recovery.stateHash;
           introDoneRef.current = true;
-          reconnectStateRef.current = "RECOVERY_CONFIRMED";
+          // CF4: Use proper state machine transition
+          try {
+            reconnectStateRef.current = transitionReconnectState(reconnectStateRef.current, "RECOVERY_CONFIRMED");
+          } catch {
+            reconnectStateRef.current = "RECOVERY_CONFIRMED";
+          }
         } else {
-          reconnectStateRef.current = "FAILED";
+          try {
+            reconnectStateRef.current = transitionReconnectState(reconnectStateRef.current, "FAILED");
+          } catch {
+            reconnectStateRef.current = "FAILED";
+          }
           setReconnectPhase(stateToPhase(reconnectStateRef.current));
           setIsReconnecting(false);
+          try { await checkpointTranscriptRef.current?.(); } catch { /* CF1: best-effort checkpoint before fallback */ }
           setFallbackToText(true);
           onError?.(`Unable to verify interview state. Please use this link to resume: /interview/${interviewId}?resume=true`);
           return;
         }
       } else if (isReconnect) {
         // No token but transcript exists — require server verification via voice-init
-        reconnectStateRef.current = "RECOVERY_PENDING";
+        try {
+          reconnectStateRef.current = transitionReconnectState(reconnectStateRef.current, "RECOVERY_PENDING");
+        } catch {
+          reconnectStateRef.current = "RECOVERY_PENDING";
+        }
         setReconnectPhase(stateToPhase(reconnectStateRef.current));
       }
 
       await startInterview();
-      reconnectStateRef.current = "LIVE";
+      // CF4: Use proper state machine transition to LIVE
+      try {
+        reconnectStateRef.current = transitionReconnectState(reconnectStateRef.current, "LIVE");
+      } catch {
+        reconnectStateRef.current = "LIVE";
+      }
       setIsReconnecting(false);
       setReconnectPhase(null);
     } catch {
@@ -1978,6 +2085,7 @@ export function useVoiceInterview(
       setReconnectPhase(null);
       circuitBreakerStateRef.current = "OPEN";
       consecutiveSetupFailuresRef.current = 3;
+      try { await checkpointTranscriptRef.current?.(); } catch { /* CF1: best-effort checkpoint before fallback */ }
       setFallbackToText(true);
       onError?.("Voice retry failed. Staying in text mode.");
     }
@@ -2098,6 +2206,21 @@ export function useVoiceInterview(
     };
   }, [cleanupAudioResources]);
 
+  // CF1: Export full session state for text-mode fallback continuity
+  const getSessionSnapshot = useCallback((): SessionSnapshot => ({
+    transcript: transcriptRef.current,
+    moduleScores: moduleScoresRef.current,
+    questionCount: questionCountRef.current,
+    interviewerState: interviewerStateRef.current,
+    ledgerVersion: ledgerVersionRef.current,
+    stateHash: stateHashRef.current,
+    reconnectToken: reconnectTokenRef.current,
+    askedQuestions: askedQuestionsRef.current,
+    currentModule: currentModuleRef.current,
+    candidateProfile: candidateProfileRef.current,
+    difficultyLevel: difficultyLevelRef.current,
+  }), []);
+
   return {
     interviewState,
     aiState,
@@ -2121,6 +2244,7 @@ export function useVoiceInterview(
     retryVoice,
     pauseInterview,
     resumeInterview,
+    getSessionSnapshot,
   };
 }
 

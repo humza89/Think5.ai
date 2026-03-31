@@ -83,6 +83,7 @@ export async function GET(
       );
 
       const grade = overallScore >= 90 ? "A" : overallScore >= 80 ? "B" : overallScore >= 70 ? "C" : overallScore >= 60 ? "D" : "F";
+      const verdict = overallScore >= 80 ? "PASS" : overallScore >= 60 ? "RISK" : "FAIL";
 
       const alerts: string[] = [];
       if (factRetention < 50) alerts.push("Low fact retention — interview recall may be incomplete");
@@ -97,14 +98,15 @@ export async function GET(
           : "Interview reliability is low — consider re-interviewing or supplementing with additional evaluation.";
 
       scorecard = {
+        verdict,
         overallGrade: grade,
         confidence: overallScore,
         dimensions: {
-          factRetention: { score: factRetention, detail: `${totalFacts} facts from ${totalTurns} turns` },
-          conversationContinuity: { score: conversationContinuity, detail: `Memory confidence: ${memoryConfidenceScore.toFixed(2)}` },
-          contradictionFreedom: { score: contradictionFreedom, detail: contradictionsCount === 0 ? "No contradictions" : `${contradictionsCount} contradiction(s)` },
-          commitmentFulfillment: { score: commitmentFulfillment, detail: `${fulfilledCommitments}/${totalCommitments} commitments fulfilled` },
-          reconnectResilience: { score: reconnectResilience, detail: reconnects === 0 ? "No reconnections needed" : `${successfulReconnects}/${reconnects} successful` },
+          factRetention: { score: factRetention, verdict: factRetention >= 80 ? "PASS" : factRetention >= 60 ? "RISK" : "FAIL", detail: `${totalFacts} facts from ${totalTurns} turns` },
+          conversationContinuity: { score: conversationContinuity, verdict: conversationContinuity >= 80 ? "PASS" : conversationContinuity >= 60 ? "RISK" : "FAIL", detail: `Memory confidence: ${memoryConfidenceScore.toFixed(2)}` },
+          contradictionFreedom: { score: contradictionFreedom, verdict: contradictionFreedom >= 80 ? "PASS" : contradictionFreedom >= 60 ? "RISK" : "FAIL", detail: contradictionsCount === 0 ? "No contradictions" : `${contradictionsCount} contradiction(s)` },
+          commitmentFulfillment: { score: commitmentFulfillment, verdict: commitmentFulfillment >= 80 ? "PASS" : commitmentFulfillment >= 60 ? "RISK" : "FAIL", detail: `${fulfilledCommitments}/${totalCommitments} commitments fulfilled` },
+          reconnectResilience: { score: reconnectResilience, verdict: reconnectResilience >= 80 ? "PASS" : reconnectResilience >= 60 ? "RISK" : "FAIL", detail: reconnects === 0 ? "No reconnections needed" : `${successfulReconnects}/${reconnects} successful` },
         },
         alerts,
         recommendation,

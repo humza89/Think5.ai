@@ -33,6 +33,21 @@ export interface GroundingResult {
  * Extract factual assertions from AI-generated text.
  * Pulls references to candidate statements, numbers, companies, timelines.
  */
+// CF3: Courtesy phrases that should NOT be extracted as factual claims
+const COURTESY_EXCLUSIONS = [
+  /you are welcome/i,
+  /you have any questions/i,
+  /you(?:'d| would) like to/i,
+  /you are ready/i,
+  /you are comfortable/i,
+  /you are free to/i,
+  /you have the (?:floor|opportunity)/i,
+  /you(?:'re| are) doing (?:great|well|fine)/i,
+  /you can (?:take|feel)/i,
+  /you want to (?:add|share|ask)/i,
+  /you(?:'d| would) prefer/i,
+];
+
 export function extractAssertions(text: string): string[] {
   const assertions: string[] = [];
 
@@ -74,6 +89,25 @@ export function extractAssertions(text: string): string[] {
     let match;
     while ((match = pattern.exec(text)) !== null) {
       assertions.push(match[1].trim());
+    }
+  }
+
+  // CF3: Broader attributive claims — "you have extensive...", "you demonstrated..."
+  const attributivePatterns = [
+    /you\s+(?:have|had|demonstrated|showed|displayed)\s+(.{10,150}?)(?:\.|,|;|$)/gi,
+    /your\s+(?:team'?s?|project'?s?|company'?s?|approach|work|experience|background|expertise)\s+(.{10,150}?)(?:\.|,|;|$)/gi,
+    /(?:as|since|given that)\s+you\s+(?:are|were)\s+(?:a|an|the)\s+(.{10,100}?)(?:\.|,|;|$)/gi,
+  ];
+
+  for (const pattern of attributivePatterns) {
+    let match: RegExpExecArray | null;
+    while ((match = pattern.exec(text)) !== null) {
+      const extracted = match[1].trim();
+      // Filter out courtesy phrases that aren't factual claims
+      const isCourteousPhrase = COURTESY_EXCLUSIONS.some(p => p.test(match![0]));
+      if (!isCourteousPhrase && extracted.length >= 10) {
+        assertions.push(extracted);
+      }
     }
   }
 

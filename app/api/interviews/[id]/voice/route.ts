@@ -34,6 +34,7 @@ import { validateTranscript, repairTranscript } from "@/lib/transcript-validator
 import { isMaintenanceMode, getMaintenanceMessage, maintenanceResponse } from "@/lib/maintenance-mode";
 import { recordEvent } from "@/lib/interview-timeline";
 import { isEnabled } from "@/lib/feature-flags";
+import { composeMemoryPacket, compute4FactorConfidence } from "@/lib/memory-orchestrator";
 import { extractFactsImmediate, isContradiction } from "@/lib/fact-extractor";
 import { verifyGrounding, checkFollowUpGrounding } from "@/lib/grounding-gate";
 import { transitionState, deserializeState, serializeState, hashQuestion, createInitialState } from "@/lib/interviewer-state";
@@ -999,6 +1000,99 @@ export async function POST(
       await recordSLOEvent("session.30min_completion.rate", true);
       // Record no hard-stop (normal completion = success)
       await recordSLOEvent("session.hard_stop.rate", true);
+
+      // Compute and persist memory integrity scorecard before session cleanup
+      if (isEnabled("MEMORY_INTEGRITY_SCORECARD")) {
+        try {
+          const scorecardSession = await getSessionState(id);
+          if (scorecardSession) {
+            const packet = await composeMemoryPacket(id, scorecardSession);
+            const memoryConfScore = compute4FactorConfidence(
+              packet.retrievalStatus,
+              packet.manifest.totalTokens,
+              parseInt(process.env.MEMORY_MIN_TOKEN_THRESHOLD || "2000", 10),
+              scorecardSession.violationCount || 0,
+              scorecardSession.reconnectCount || 0,
+              !!packet.stateHash,
+            );
+
+            const totalTurns = packet.recentTurns.length;
+            const totalFacts = packet.verifiedFacts.length;
+            const contradictionsCount = packet.contradictions.length;
+            const totalCommitments = packet.followupQueue.length;
+            const fulfilledCommitments = 0;
+            const reconnects = scorecardSession.reconnectCount || 0;
+            const successfulReconnects = (scorecardSession.reconnectHistory || []).filter(
+              (r: { outcome: string }) => r.outcome !== "failed"
+            ).length;
+
+            const factRetention = totalTurns > 0
+              ? Math.min(100, Math.round((totalFacts / Math.max(totalTurns * 0.3, 1)) * 100))
+              : 100;
+            const conversationContinuity = Math.round(memoryConfScore * 100);
+            const contradictionFreedom = totalFacts > 0
+              ? Math.round((1 - contradictionsCount / Math.max(totalFacts, 1)) * 100)
+              : 100;
+            const commitmentFulfillment = totalCommitments > 0
+              ? Math.round((fulfilledCommitments / totalCommitments) * 100)
+              : 100;
+            const reconnectResilience = reconnects > 0
+              ? Math.round((successfulReconnects / reconnects) * 100)
+              : 100;
+
+            const overallScore = Math.round(
+              factRetention * 0.25 +
+              conversationContinuity * 0.25 +
+              contradictionFreedom * 0.2 +
+              commitmentFulfillment * 0.15 +
+              reconnectResilience * 0.15
+            );
+
+            const grade = overallScore >= 90 ? "A" : overallScore >= 80 ? "B" : overallScore >= 70 ? "C" : overallScore >= 60 ? "D" : "F";
+            const verdict = overallScore >= 80 ? "PASS" : overallScore >= 60 ? "RISK" : "FAIL";
+
+            const alerts: string[] = [];
+            if (factRetention < 50) alerts.push("Low fact retention — interview recall may be incomplete");
+            if (contradictionsCount > 0) alerts.push(`${contradictionsCount} contradiction(s) detected in candidate statements`);
+            if (conversationContinuity < 70) alerts.push("Low conversation continuity — possible memory gaps");
+            if (reconnects > 2) alerts.push(`${reconnects} reconnection(s) during interview — check for context loss`);
+
+            const recommendation = overallScore >= 80
+              ? "Interview data is reliable for hiring decisions."
+              : overallScore >= 60
+                ? "Interview data has some gaps — review transcript for completeness before making decisions."
+                : "Interview reliability is low — consider re-interviewing or supplementing with additional evaluation.";
+
+            const memoryIntegrityScorecard = {
+              verdict,
+              overallGrade: grade,
+              confidence: overallScore,
+              dimensions: {
+                factRetention: { score: factRetention, verdict: factRetention >= 80 ? "PASS" : factRetention >= 60 ? "RISK" : "FAIL", detail: `${totalFacts} facts from ${totalTurns} turns` },
+                conversationContinuity: { score: conversationContinuity, verdict: conversationContinuity >= 80 ? "PASS" : conversationContinuity >= 60 ? "RISK" : "FAIL", detail: `Memory confidence: ${memoryConfScore.toFixed(2)}` },
+                contradictionFreedom: { score: contradictionFreedom, verdict: contradictionFreedom >= 80 ? "PASS" : contradictionFreedom >= 60 ? "RISK" : "FAIL", detail: contradictionsCount === 0 ? "No contradictions" : `${contradictionsCount} contradiction(s)` },
+                commitmentFulfillment: { score: commitmentFulfillment, verdict: commitmentFulfillment >= 80 ? "PASS" : commitmentFulfillment >= 60 ? "RISK" : "FAIL", detail: `${fulfilledCommitments}/${totalCommitments} commitments fulfilled` },
+                reconnectResilience: { score: reconnectResilience, verdict: reconnectResilience >= 80 ? "PASS" : reconnectResilience >= 60 ? "RISK" : "FAIL", detail: reconnects === 0 ? "No reconnections needed" : `${successfulReconnects}/${reconnects} successful` },
+              },
+              alerts,
+              recommendation,
+            };
+
+            await prisma.interviewReport.updateMany({
+              where: { interviewId: id },
+              data: { memoryIntegrityScorecard: memoryIntegrityScorecard as any },
+            });
+          }
+        } catch (scorecardErr) {
+          console.error(JSON.stringify({
+            event: "scorecard_persistence_failure",
+            interviewId: id,
+            error: (scorecardErr as Error).message,
+            severity: "warning",
+            timestamp: new Date().toISOString(),
+          }));
+        }
+      }
 
       // Clean up durable session state and release lock (H5: pass owner token)
       const endSession = await getSessionState(id);

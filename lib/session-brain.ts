@@ -17,9 +17,9 @@ import type { InterviewerState } from "./interviewer-state";
 import { transitionState, computeStateHash, deserializeState, serializeState, createInitialState } from "./interviewer-state";
 import { commitSingleTurn } from "./conversation-ledger";
 import type { LedgerTurn } from "./conversation-ledger";
-import { checkOutputGateWithAction } from "./output-gate";
+import { checkOutputGateWithAction, INTRO_PATTERNS } from "./output-gate";
 import type { GateViolation } from "./output-gate";
-import { checkFollowUpGrounding } from "./grounding-gate";
+import { checkFollowUpGrounding, verifyGrounding } from "./grounding-gate";
 import { isEnabled } from "./feature-flags";
 import { detectContradictions } from "./semantic-contradiction-detector";
 import { compute4FactorConfidence } from "./memory-orchestrator";
@@ -45,6 +45,10 @@ export interface TurnCommitResult {
   corrections?: string;
   reason?: string;
   memorySlotWarnings?: string[];
+  interviewerState?: string;
+  ledgerVersion?: number;
+  /** Regeneration guidance when blocked by contradiction detector — tells caller how to correct */
+  regenerationPrompt?: string;
 }
 
 export interface ContinuityContract {
@@ -129,6 +133,33 @@ export async function commitTurn(
 
   // 3. Run output gate for AI turns (blocking when FF_OUTPUT_GATE_BLOCKING enabled)
   const isAITurn = request.role === "model" || request.role === "interviewer";
+
+  // AF6/AF7: Compute memory confidence BEFORE grounding gates so it can escalate severity
+  let memoryConfidence = 1.0;
+  if (isAITurn && isEnabled("TURN_COMMIT_PROTOCOL")) {
+    try {
+      const estimatedTokens = sessionState.recentTurns?.reduce(
+        (sum, t) => sum + Math.ceil(t.content.length / 4), 0
+      ) ?? 0;
+      memoryConfidence = compute4FactorConfidence(
+        {
+          factsOk: (sessionState.verifiedFacts?.length ?? 0) > 0,
+          knowledgeGraphOk: false,
+          recentTurnsOk: (sessionState.recentTurns?.length ?? 0) > 0,
+        },
+        estimatedTokens,
+        parseInt(process.env.MEMORY_MIN_TOKEN_THRESHOLD || "2000", 10),
+        0, 0, !!interviewerState.stateHash
+      );
+      if (memoryConfidence < 0.3) {
+        memorySlotWarnings.push(`LOW_MEMORY_CONFIDENCE: ${memoryConfidence.toFixed(2)} — asking for clarification instead`);
+        recordSLOEvent("memory.confidence.adequate_rate", false).catch(() => {});
+      } else {
+        recordSLOEvent("memory.confidence.adequate_rate", true).catch(() => {});
+      }
+    } catch { /* Non-fatal */ }
+  }
+
   if (isAITurn) {
     const blockingEnabled = isEnabled("OUTPUT_GATE_BLOCKING");
     const gateAction = checkOutputGateWithAction(request.content, {
@@ -154,6 +185,20 @@ export async function commitTurn(
       violations.push(...gateAction.violations);
     }
 
+    // 3b. Unconditional intro guard — NOT flag-gated (CF2: architectural guarantee)
+    if (interviewerState.personaLocked) {
+      const hasIntro = INTRO_PATTERNS.some(p => p.test(request.content));
+      if (hasIntro) {
+        return {
+          committed: false,
+          stateHash: interviewerState.stateHash,
+          contextChecksum: sessionState.contextChecksum || "",
+          violations: [{ type: "reintroduction", detail: "Unconditional intro block: persona locked", severity: "block" }],
+          reason: "INTRO_BLOCKED_UNCONDITIONAL",
+        };
+      }
+    }
+
     // 4. Run grounding gate for AI turns that reference candidate statements
     if (sessionState.recentTurns && sessionState.recentTurns.length > 0) {
       const groundingResult = checkFollowUpGrounding(
@@ -165,14 +210,41 @@ export async function commitTurn(
         }))
       );
       if (!groundingResult.grounded && groundingResult.flag) {
-        const groundingSeverity = blockingEnabled ? "block" : "warn";
+        // AF7: Escalate to blocking when memory confidence is critically low
+        const groundingSeverity = (blockingEnabled || memoryConfidence < 0.3) ? "block" : "warn";
         violations.push({
           type: "unsupported_claim",
           detail: `Ungrounded follow-up: ${groundingResult.flag}`,
           severity: groundingSeverity,
         });
-        // When blocking is enabled, reject the turn for ungrounded claims
-        if (blockingEnabled) {
+        // When blocking is enabled or memory confidence is low, reject the turn
+        if (blockingEnabled || memoryConfidence < 0.3) {
+          return {
+            committed: false,
+            stateHash: interviewerState.stateHash,
+            contextChecksum: sessionState.contextChecksum || "",
+            violations,
+            reason: "GROUNDING_GATE_BLOCKED",
+          };
+        }
+      }
+    }
+
+    // 4a. CF3: Full grounding verification for all AI claims (broader than follow-up check)
+    if (isEnabled("GROUNDING_GATE_ENABLED") && sessionState.verifiedFacts?.length) {
+      const groundingScore = verifyGrounding(
+        request.content,
+        sessionState.verifiedFacts.map((f) => ({
+          turnId: "prior", content: f.content, factType: f.factType as any, confidence: f.confidence, extractedBy: "checkpoint",
+        }))
+      );
+      if (!groundingScore.grounded && groundingScore.unsupportedClaims.length > 0) {
+        // AF7: Escalate to blocking when memory confidence is critically low
+        const severity = (blockingEnabled || memoryConfidence < 0.3) ? "block" : "warn";
+        for (const claim of groundingScore.unsupportedClaims) {
+          violations.push({ type: "unsupported_claim", detail: `Ungrounded claim: ${claim}`, severity });
+        }
+        if ((blockingEnabled || memoryConfidence < 0.3) && groundingScore.score < 0.5) {
           return {
             committed: false,
             stateHash: interviewerState.stateHash,
@@ -185,7 +257,8 @@ export async function commitTurn(
     }
   }
 
-  // 4b. Contradiction gate: detect contradictions between new content and verified facts
+  // 4b. Contradiction gate: detect contradictions — HARD BLOCK (F1: zero-tolerance)
+  // Runs on every AI turn with verifiedFacts. No bypass path.
   if (isAITurn && isEnabled("SEMANTIC_CONTRADICTION_DETECTOR") && sessionState.verifiedFacts?.length) {
     const contradictionStart = Date.now();
     try {
@@ -200,12 +273,27 @@ export async function commitTurn(
         console.warn(`[SessionBrain] Contradiction detection slow: ${contradictionMs}ms (threshold: ${CONTRADICTION_TIMEOUT_MS}ms)`);
       }
       recordSLOEvent("memory.contradiction.detection_rate", true).catch(() => {});
-      for (const c of contradictions) {
-        violations.push({
-          type: "unsupported_claim",
-          detail: `Contradiction detected (${c.type}): ${c.description}`,
-          severity: "warn",
-        });
+
+      // F1: Hard block — any contradiction = rejected turn with regeneration guidance
+      if (contradictions.length > 0) {
+        const regenerationPrompt = [
+          "The following claims contradict verified facts from this conversation:",
+          ...contradictions.map((c) => `- ${c.description}`),
+          "Confine your response to verified facts only.",
+        ].join("\n");
+
+        return {
+          committed: false,
+          stateHash: interviewerState.stateHash,
+          contextChecksum: sessionState.contextChecksum || "",
+          violations: contradictions.map((c) => ({
+            type: "unsupported_claim" as const,
+            detail: `Contradiction detected (${c.type}): ${c.description}`,
+            severity: "block" as const,
+          })),
+          reason: "SEMANTIC_CONTRADICTION_DETECTED",
+          regenerationPrompt,
+        };
       }
     } catch (err) {
       const contradictionMs = Date.now() - contradictionStart;
@@ -214,31 +302,7 @@ export async function commitTurn(
     }
   }
 
-  // 4c. Memory confidence gate: warn when confidence is critically low
-  if (isAITurn && isEnabled("TURN_COMMIT_PROTOCOL")) {
-    try {
-      // Estimate token count from actual content length (chars / 4 approximation)
-      const estimatedTokens = sessionState.recentTurns?.reduce(
-        (sum, t) => sum + Math.ceil(t.content.length / 4), 0
-      ) ?? 0;
-      const confidence = compute4FactorConfidence(
-        {
-          factsOk: (sessionState.verifiedFacts?.length ?? 0) > 0,
-          knowledgeGraphOk: false, // Conservative: unknown KG state at commit time
-          recentTurnsOk: (sessionState.recentTurns?.length ?? 0) > 0,
-        },
-        estimatedTokens,
-        parseInt(process.env.MEMORY_MIN_TOKEN_THRESHOLD || "2000", 10),
-        0, 0, !!interviewerState.stateHash
-      );
-      if (confidence < 0.3) {
-        memorySlotWarnings.push(`LOW_MEMORY_CONFIDENCE: ${confidence.toFixed(2)} — asking for clarification instead`);
-        recordSLOEvent("memory.confidence.adequate_rate", false).catch(() => {});
-      } else {
-        recordSLOEvent("memory.confidence.adequate_rate", true).catch(() => {});
-      }
-    } catch { /* Non-fatal */ }
-  }
+  // 4c. (Memory confidence computed earlier — before grounding gates — for AF7 escalation)
 
   // 4d. Memory freshness SLA: warn when facts are stale
   if (isAITurn && sessionState.lastFactRefreshAt) {
@@ -305,6 +369,8 @@ export async function commitTurn(
     corrections: violations.length > 0
       ? `${violations.length} violation(s) detected but turn committed (warn mode)`
       : undefined,
+    interviewerState: serializeState(interviewerState),
+    ledgerVersion: commitResult.currentVersion ?? sessionState.lastTurnIndex + 1,
   };
 }
 

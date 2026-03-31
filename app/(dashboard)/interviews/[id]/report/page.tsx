@@ -99,6 +99,7 @@ export default async function ReportPage({
             jobMatchScore: report.jobMatchScore,
             requirementMatches: report.requirementMatches as any,
             environmentFitNotes: report.environmentFitNotes,
+            memoryIntegrityScorecard: (report as any).memoryIntegrityScorecard ?? null,
           }}
           candidateName={interview.candidate.fullName}
           candidateTitle={interview.candidate.currentTitle}

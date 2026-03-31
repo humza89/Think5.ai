@@ -185,6 +185,7 @@ export default async function SharedReportPage({
             jobMatchScore: report.jobMatchScore,
             requirementMatches: report.requirementMatches as any,
             environmentFitNotes: report.environmentFitNotes,
+            memoryIntegrityScorecard: (report as any).memoryIntegrityScorecard ?? null,
           }}
           candidateName={report.interview.candidate.fullName}
           candidateTitle={report.interview.candidate.currentTitle}

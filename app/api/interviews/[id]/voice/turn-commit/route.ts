@@ -120,6 +120,10 @@ export async function POST(
     session.stateHash = result.stateHash;
     session.turnCommitChecksum = result.contextChecksum;
     session.lastActiveAt = new Date().toISOString();
+    // AF1: Persist server-authoritative interviewer state from commit result
+    if (result.interviewerState) {
+      session.interviewerState = result.interviewerState;
+    }
     await saveSessionState(id, session);
   }
 
@@ -149,6 +153,8 @@ export async function POST(
     corrections: result.corrections,
     reason: result.reason,
     memorySlotWarnings: result.memorySlotWarnings,
+    interviewerState: result.interviewerState,
+    ledgerVersion: result.ledgerVersion,
     durationMs,
   });
 }

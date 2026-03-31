@@ -12,14 +12,16 @@ export type ReconnectState =
   | "RECOVERY_CONFIRMED"
   | "SOCKET_OPEN"
   | "LIVE"
-  | "FAILED";
+  | "FAILED"
+  | "RATE_LIMITED";
 
 const VALID_TRANSITIONS: Record<ReconnectState, ReconnectState[]> = {
-  DISCONNECTED: ["RECOVERY_PENDING", "FAILED"],
+  DISCONNECTED: ["RECOVERY_PENDING", "RATE_LIMITED", "FAILED"],
   RECOVERY_PENDING: ["RECOVERY_CONFIRMED", "FAILED"],
   RECOVERY_CONFIRMED: ["SOCKET_OPEN", "FAILED"],
   SOCKET_OPEN: ["LIVE", "FAILED"],
   LIVE: ["DISCONNECTED", "FAILED"],
+  RATE_LIMITED: ["RECOVERY_PENDING", "FAILED"], // CF4: Can retry after cooldown or fail permanently
   FAILED: [], // terminal
 };
 
@@ -55,6 +57,7 @@ export function stateToPhase(state: ReconnectState): ReconnectPhase {
     case "RECOVERY_CONFIRMED": return "restoring";
     case "SOCKET_OPEN": return "verifying";
     case "LIVE": return "re-synced";
+    case "RATE_LIMITED": return "recovery-rate-limited";
     case "FAILED": return "recovery-failed";
     default: return null;
   }
@@ -65,3 +68,16 @@ export const MAX_RECOVERY_ATTEMPTS = parseInt(
   typeof process !== "undefined" ? process.env?.NEXT_PUBLIC_MAX_RECONNECT_ATTEMPTS || "3" : "3",
   10,
 );
+
+/** CF4: Rapid-reconnect rate-limit — max cycles within window before throttling */
+export const RATE_LIMIT_MAX_CYCLES = 3;
+export const RATE_LIMIT_WINDOW_MS = 60_000; // 60 seconds
+
+/**
+ * Check whether reconnect timestamps indicate rate-limiting is needed.
+ * Returns true if `RATE_LIMIT_MAX_CYCLES` or more reconnects occurred within `RATE_LIMIT_WINDOW_MS`.
+ */
+export function shouldRateLimit(timestamps: number[], now: number = Date.now()): boolean {
+  const recentCount = timestamps.filter(t => now - t < RATE_LIMIT_WINDOW_MS).length;
+  return recentCount >= RATE_LIMIT_MAX_CYCLES;
+}

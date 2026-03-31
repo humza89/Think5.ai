@@ -655,6 +655,8 @@ ${depthCounters}`;
 ## ⚠️ RECONNECT DIRECTIVE — MANDATORY OVERRIDE
 This is a RESUMED session after a technical interruption. The following rules OVERRIDE the opening instructions above.
 
+CRITICAL: Your persona has been locked. The opening has ALREADY been completed. You MUST NOT say any greeting, introduction, or welcome. Begin IMMEDIATELY with a substantive question or continuation. Any introduction attempt will be blocked by the system.
+
 **DO NOT:**
 - Re-introduce yourself
 - Say "Hi ${safeName}" or "Thanks for joining"
@@ -720,6 +722,8 @@ ${questionsList}
 
 ## ⚠️ RECONNECT DIRECTIVE — MANDATORY OVERRIDE
 This is a RESUMED session after a technical interruption. The following rules OVERRIDE the opening instructions above.
+
+CRITICAL: Your persona has been locked. The opening has ALREADY been completed. You MUST NOT say any greeting, introduction, or welcome. Begin IMMEDIATELY with a substantive question or continuation. Any introduction attempt will be blocked by the system.
 
 **DO NOT:**
 - Re-introduce yourself

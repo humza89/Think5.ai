@@ -75,6 +75,27 @@ interface RequirementMatch {
   evidence: string;
 }
 
+interface MemoryDimensionScore {
+  score: number;
+  verdict: "PASS" | "RISK" | "FAIL";
+  detail: string;
+}
+
+interface MemoryIntegrityScorecard {
+  verdict: "PASS" | "RISK" | "FAIL";
+  overallGrade: string;
+  confidence: number;
+  dimensions: {
+    factRetention: MemoryDimensionScore;
+    conversationContinuity: MemoryDimensionScore;
+    contradictionFreedom: MemoryDimensionScore;
+    commitmentFulfillment: MemoryDimensionScore;
+    reconnectResilience: MemoryDimensionScore;
+  };
+  alerts: string[];
+  recommendation: string;
+}
+
 interface ReportData {
   overallScore: number | null;
   recommendation: string | null;
@@ -104,6 +125,7 @@ interface ReportData {
   jobMatchScore: number | null;
   requirementMatches: RequirementMatch[] | null;
   environmentFitNotes: string | null;
+  memoryIntegrityScorecard: MemoryIntegrityScorecard | null;
 }
 
 interface InterviewReportViewerProps {
@@ -695,6 +717,109 @@ export function InterviewReportViewer({
                       {flag}
                     </span>
                   ))}
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Memory Integrity Scorecard */}
+      {report.memoryIntegrityScorecard && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Shield className="w-5 h-5 text-indigo-500" />
+              Memory Integrity Scorecard
+              <Badge
+                className={`ml-2 ${
+                  report.memoryIntegrityScorecard.verdict === "PASS"
+                    ? "bg-green-100 text-green-800 border-green-300"
+                    : report.memoryIntegrityScorecard.verdict === "RISK"
+                      ? "bg-yellow-100 text-yellow-800 border-yellow-300"
+                      : "bg-red-100 text-red-800 border-red-300"
+                }`}
+              >
+                {report.memoryIntegrityScorecard.verdict}
+              </Badge>
+              <span className="ml-auto text-sm font-normal text-gray-500">
+                Grade: {report.memoryIntegrityScorecard.overallGrade} | Confidence: {report.memoryIntegrityScorecard.confidence}/100
+              </span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              {/* Dimension scores */}
+              <div className="space-y-3">
+                {Object.entries(report.memoryIntegrityScorecard.dimensions).map(([key, dim]) => (
+                  <div key={key} className="flex items-center gap-3">
+                    <span className="text-sm font-medium w-48 text-gray-700">
+                      {key.replace(/([A-Z])/g, " $1").replace(/^./, (s) => s.toUpperCase())}
+                    </span>
+                    <div className="flex-1 h-3 bg-gray-100 rounded-full overflow-hidden">
+                      <div
+                        className={`h-full rounded-full transition-all duration-1000 ease-out ${
+                          dim.score >= 80 ? "bg-green-500" : dim.score >= 60 ? "bg-yellow-500" : "bg-red-500"
+                        }`}
+                        style={{ width: `${dim.score}%` }}
+                      />
+                    </div>
+                    <span className="text-sm font-bold w-12 text-right">{dim.score}/100</span>
+                    <Badge
+                      variant="outline"
+                      className={`text-xs w-14 justify-center ${
+                        dim.verdict === "PASS"
+                          ? "border-green-300 text-green-700 bg-green-50"
+                          : dim.verdict === "RISK"
+                            ? "border-yellow-300 text-yellow-700 bg-yellow-50"
+                            : "border-red-300 text-red-700 bg-red-50"
+                      }`}
+                    >
+                      {dim.verdict}
+                    </Badge>
+                    <span className="text-xs text-gray-400 w-48 truncate" title={dim.detail}>
+                      {dim.detail}
+                    </span>
+                  </div>
+                ))}
+              </div>
+
+              {/* Alerts */}
+              {report.memoryIntegrityScorecard.alerts.length > 0 && (
+                <div className="space-y-2 mt-4">
+                  <p className="text-sm font-medium text-gray-500">
+                    Alerts ({report.memoryIntegrityScorecard.alerts.length})
+                  </p>
+                  {report.memoryIntegrityScorecard.alerts.map((alert, i) => (
+                    <div
+                      key={i}
+                      className="flex items-center gap-3 text-sm bg-amber-50 border border-amber-200 rounded-lg px-3 py-2"
+                    >
+                      <AlertTriangle className="w-4 h-4 text-amber-500 flex-shrink-0" />
+                      <span className="text-gray-700">{alert}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Recommendation */}
+              {report.memoryIntegrityScorecard.recommendation && (
+                <div className={`mt-4 p-3 rounded-lg border ${
+                  report.memoryIntegrityScorecard.verdict === "PASS"
+                    ? "bg-green-50 border-green-200"
+                    : report.memoryIntegrityScorecard.verdict === "RISK"
+                      ? "bg-yellow-50 border-yellow-200"
+                      : "bg-red-50 border-red-200"
+                }`}>
+                  <p className={`text-sm ${
+                    report.memoryIntegrityScorecard.verdict === "PASS"
+                      ? "text-green-800"
+                      : report.memoryIntegrityScorecard.verdict === "RISK"
+                        ? "text-yellow-800"
+                        : "text-red-800"
+                  }`}>
+                    {report.memoryIntegrityScorecard.recommendation}
+                  </p>
                 </div>
               )}
             </div>

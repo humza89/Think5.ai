@@ -908,6 +908,7 @@ model InterviewReport {
 
   // Memory diagnostics (enterprise audit)
   memoryMetadata  Json?     // {memoryConfidence, retrievalStatus, factCount, turnsCount, ...}
+  memoryIntegrityScorecard Json? // {verdict, overallGrade, confidence, dimensions, alerts, recommendation}
 
   // Relations
   views           ReportShareView[]
