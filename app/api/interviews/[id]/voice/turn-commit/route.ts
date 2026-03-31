@@ -83,8 +83,9 @@ export async function POST(
       select: { factType: true, content: true, confidence: true },
     });
     verifiedFacts = facts;
-  } catch {
-    // Non-fatal: proceed without facts
+  } catch (err) {
+    console.error(`[${id}] Facts retrieval failed — fail-closed:`, err);
+    return Response.json({ error: "Memory retrieval failed", detail: "facts" }, { status: 503 });
   }
 
   // Load recent turns for grounding checks
@@ -97,8 +98,9 @@ export async function POST(
       select: { turnId: true, content: true },
     });
     recentTurns = turns;
-  } catch {
-    // Non-fatal
+  } catch (err) {
+    console.error(`[${id}] Turns retrieval failed — fail-closed:`, err);
+    return Response.json({ error: "Memory retrieval failed", detail: "turns" }, { status: 503 });
   }
 
   // Commit the turn via session brain

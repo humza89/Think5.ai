@@ -36,6 +36,11 @@ export async function POST(
     return maintenanceResponse(msg);
   }
 
+  // FIX-8: Voice mode kill switch
+  if (!isEnabled("VOICE_MODE_ENABLED")) {
+    return Response.json({ error: "Voice mode is temporarily disabled", code: "VOICE_DISABLED" }, { status: 503 });
+  }
+
   console.log(`[voice-init] Called for interview=${id}, VOICE_RELAY_URL=${process.env.VOICE_RELAY_URL ? "SET" : "MISSING"}, RELAY_JWT_SECRET=${process.env.RELAY_JWT_SECRET ? "SET" : "MISSING"}`);
 
   let lockOwnerToken = "";

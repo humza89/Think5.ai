@@ -60,6 +60,7 @@ export interface TranscriptEntry {
   content: string;
   timestamp: string;
   finalized?: boolean; // true when turn is complete (used to accumulate fragments)
+  interrupted?: boolean;
 }
 
 export interface VoiceInterviewConfig {
@@ -567,6 +568,18 @@ export function useVoiceInterview(
         // Interrupted — reset scheduled playback time so new audio starts immediately
         if (serverContent.interrupted) {
           nextPlayTimeRef.current = 0;
+          // FIX-1: Preserve partial turn instead of discarding
+          if (currentTurnTextRef.current.trim()) {
+            const partialEntry: TranscriptEntry = {
+              role: "interviewer",
+              content: currentTurnTextRef.current.trim(),
+              timestamp: new Date().toISOString(),
+              finalized: true,
+              interrupted: true,
+            };
+            transcriptRef.current = [...transcriptRef.current, partialEntry];
+            setTranscript(prev => [...prev, partialEntry]);
+          }
           currentTurnTextRef.current = "";
         }
       }

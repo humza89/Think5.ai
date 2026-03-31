@@ -41,6 +41,9 @@ export const FeatureFlags = {
 
   /** Phase 12: Recruiter memory integrity scorecard */
   MEMORY_INTEGRITY_SCORECARD: envBool("FF_MEMORY_INTEGRITY_SCORECARD", true),
+
+  /** Phase 13: Voice mode global kill switch */
+  VOICE_MODE_ENABLED: envBool("FF_VOICE_MODE_ENABLED", true),
 } as const;
 
 /**

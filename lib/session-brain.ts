@@ -23,7 +23,8 @@ import { checkFollowUpGrounding, verifyGrounding } from "./grounding-gate";
 import { isEnabled } from "./feature-flags";
 import { detectContradictions } from "./semantic-contradiction-detector";
 import { compute4FactorConfidence } from "./memory-orchestrator";
-import { recordSLOEvent } from "./slo-monitor";
+import { recordSLOEvent, enforceSessionSLO } from "./slo-monitor";
+import { recordEvent } from "./interview-timeline";
 
 // ── Types ────────────────────────────────────────────────────────────
 
@@ -104,6 +105,20 @@ export async function commitTurn(
   const violations: GateViolation[] = [];
   const memorySlotWarnings: string[] = [];
 
+  // 0. SLO enforcement hard gate — block session if critical SLOs breached
+  try {
+    const sloCheck = await enforceSessionSLO(interviewId);
+    if (sloCheck.blocked) {
+      return {
+        committed: false,
+        stateHash: "",
+        contextChecksum: "",
+        violations: [],
+        reason: sloCheck.reason,
+      };
+    }
+  } catch { /* SLO enforcement failure is non-fatal */ }
+
   // 1. Deserialize interviewer state
   let interviewerState: InterviewerState;
   try {
@@ -154,10 +169,31 @@ export async function commitTurn(
       if (memoryConfidence < 0.3) {
         memorySlotWarnings.push(`LOW_MEMORY_CONFIDENCE: ${memoryConfidence.toFixed(2)} — asking for clarification instead`);
         recordSLOEvent("memory.confidence.adequate_rate", false).catch(() => {});
+        // FIX-3: Hard-block — do NOT proceed with degraded memory
+        return {
+          committed: false,
+          stateHash: interviewerState.stateHash,
+          contextChecksum: sessionState.contextChecksum || "",
+          violations: [],
+          reason: "MEMORY_CONFIDENCE_LOW",
+          memorySlotWarnings: [...memorySlotWarnings],
+        };
       } else {
         recordSLOEvent("memory.confidence.adequate_rate", true).catch(() => {});
       }
-    } catch { /* Non-fatal */ }
+    } catch (err) {
+      // FIX-5: Fail-closed — computation error → confidence=0.0 → hard block
+      console.error("[SessionBrain] Memory confidence computation failed:", err);
+      memoryConfidence = 0.0;
+      return {
+        committed: false,
+        stateHash: interviewerState.stateHash,
+        contextChecksum: sessionState.contextChecksum || "",
+        violations: [],
+        reason: "MEMORY_CONFIDENCE_LOW",
+        memorySlotWarnings: ["HARD_BLOCK: confidence computation failed — fail-closed"],
+      };
+    }
   }
 
   if (isAITurn) {
@@ -282,6 +318,15 @@ export async function commitTurn(
           "Confine your response to verified facts only.",
         ].join("\n");
 
+        // FIX-10: Persist contradictions to durable storage (Postgres InterviewEvent)
+        try {
+          await recordEvent(interviewId, "contradiction_detected", {
+            contradictions: contradictions.map((c) => ({ type: c.type, description: c.description, confidence: c.confidence })),
+            turnId: request.turnId,
+            blockedAt: new Date().toISOString(),
+          });
+        } catch { /* Durable persistence failure is non-fatal — we're already blocking */ }
+
         return {
           committed: false,
           stateHash: interviewerState.stateHash,
@@ -296,9 +341,17 @@ export async function commitTurn(
         };
       }
     } catch (err) {
+      // FIX-6: Fail-closed — contradiction gate unavailable → block turn
       const contradictionMs = Date.now() - contradictionStart;
-      console.warn(`[SessionBrain] Contradiction detection failed after ${contradictionMs}ms:`, err);
+      console.error(`[SessionBrain] Contradiction detection failed after ${contradictionMs}ms — blocking turn:`, err);
       recordSLOEvent("memory.contradiction.detection_rate", false).catch(() => {});
+      return {
+        committed: false,
+        stateHash: interviewerState.stateHash,
+        contextChecksum: sessionState.contextChecksum || "",
+        violations: [{ type: "unsupported_claim" as const, detail: "Contradiction detection unavailable — fail-closed", severity: "block" as const }],
+        reason: "CONTRADICTION_GATE_UNAVAILABLE",
+      };
     }
   }
 

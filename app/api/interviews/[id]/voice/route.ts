@@ -836,13 +836,16 @@ export async function POST(
       // Fix 4: Persist InterviewerState snapshot to Postgres on every checkpoint
       // Prevents askedQuestionIds reset when Redis TTL expires and session is reconstructed
       if (updatedInterviewerState && isEnabled("STATEFUL_INTERVIEWER")) {
-        prisma.interviewerStateSnapshot.upsert({
-          where: { interviewId_turnIndex: { interviewId: id, turnIndex: ledgerVersion } },
-          update: { stateJson: updatedInterviewerState, stateHash: authoritativeStateHash || "" },
-          create: { interviewId: id, turnIndex: ledgerVersion, stateJson: updatedInterviewerState, stateHash: authoritativeStateHash || "" },
-        }).catch((err: Error) => {
-          console.warn(`[${id}] InterviewerState snapshot save failed (non-fatal):`, err.message);
-        });
+        try {
+          await prisma.interviewerStateSnapshot.upsert({
+            where: { interviewId_turnIndex: { interviewId: id, turnIndex: ledgerVersion } },
+            update: { stateJson: updatedInterviewerState, stateHash: authoritativeStateHash || "" },
+            create: { interviewId: id, turnIndex: ledgerVersion, stateJson: updatedInterviewerState, stateHash: authoritativeStateHash || "" },
+          });
+        } catch (err: unknown) {
+          console.error(`[${id}] CRITICAL: InterviewerState snapshot save FAILED:`, err);
+          await recordSLOEvent("session.snapshot.persistence_rate", false);
+        }
       }
 
       await refreshSessionTTL(id);
@@ -874,7 +877,7 @@ export async function POST(
       }));
 
       // Task 4: Trigger knowledge graph update every 10 transcript turns
-      if (currentTranscript.length > 0 && currentTranscript.length % 10 === 0) {
+      if (currentTranscript.length > 0 && currentTranscript.length % 3 === 0) {
         inngest
           .send({ name: "interview/transcript_updated", data: { interviewId: id } })
           .catch((err: unknown) => {

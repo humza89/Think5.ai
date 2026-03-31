@@ -175,6 +175,13 @@ export const SLO_DEFINITIONS: SLODefinition[] = [
     description: "Fact freshness SLA compliance rate — facts under 5 min old (≥99.5%)",
     unit: "rate",
   },
+  {
+    name: "session.snapshot.persistence_rate",
+    target: 0.999,
+    windowHours: 24,
+    description: "InterviewerState snapshot persistence success rate (≥99.9%)",
+    unit: "rate",
+  },
 ];
 
 /**
@@ -367,6 +374,27 @@ export async function getSLOTrend(days: number = 30): Promise<Array<{
   }
 
   return results.reverse();
+}
+
+/**
+ * FIX-9: Enforce session-level SLO hard gates.
+ * Returns blocked=true if critical SLOs are breached beyond error budget.
+ * Called from commitTurn to hard-stop sessions with repeated failures.
+ */
+export async function enforceSessionSLO(_interviewId: string): Promise<{ blocked: boolean; reason?: string }> {
+  try {
+    const introSLO = await getSLOStatus("gate.repeated_intro.rate");
+    if (introSLO && introSLO.breached && introSLO.errorBudgetRemaining <= 0) {
+      return { blocked: true, reason: "SLO_BREACH: repeated_intro rate exceeded — error budget exhausted" };
+    }
+    const contextLossSLO = await getSLOStatus("session.reconnect.context_loss.rate");
+    if (contextLossSLO && contextLossSLO.breached && contextLossSLO.errorBudgetRemaining <= 0) {
+      return { blocked: true, reason: "SLO_BREACH: context_loss rate exceeded — error budget exhausted" };
+    }
+    return { blocked: false };
+  } catch {
+    return { blocked: false }; // SLO check failure is non-blocking
+  }
 }
 
 /**
