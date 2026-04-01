@@ -129,8 +129,8 @@ export async function shouldBlockVoiceMode(): Promise<{ blocked: boolean; reason
     }
     return { blocked: false };
   } catch (err) {
-    // Fail-open: if SLO check fails, don't block voice mode
-    console.error("[ContinuitySLO] Failed to check SLO status:", err);
-    return { blocked: false };
+    // Fail-closed: if SLO check fails, block voice mode to prevent unmonitored sessions
+    console.error("[ContinuitySLO] Failed to check SLO status — fail-closed:", err);
+    return { blocked: true, reason: "SLO_CHECK_UNAVAILABLE: continuity monitor failed — fail-closed" };
   }
 }

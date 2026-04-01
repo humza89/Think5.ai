@@ -3,6 +3,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 // ── Mock data buckets (mutated per test) ────────────────────────────
 let mockTranscriptRows: any[] = [];
 let mockFactRows: any[] = [];
+let mockContradictionRows: any[] = [];
+let mockCommitmentRows: any[] = [];
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
@@ -11,6 +13,12 @@ vi.mock("@/lib/prisma", () => ({
     },
     interviewFact: {
       findMany: vi.fn().mockImplementation(() => Promise.resolve(mockFactRows)),
+    },
+    interviewContradiction: {
+      findMany: vi.fn().mockImplementation(() => Promise.resolve(mockContradictionRows)),
+    },
+    interviewCommitment: {
+      findMany: vi.fn().mockImplementation(() => Promise.resolve(mockCommitmentRows)),
     },
   },
 }));
@@ -70,6 +78,8 @@ describe("REM-6: Memory Truth Service integration", () => {
   beforeEach(() => {
     mockTranscriptRows = [];
     mockFactRows = [];
+    mockContradictionRows = [];
+    mockCommitmentRows = [];
   });
 
   // ── 1. 20 turns + 10 facts → correct integrity metrics ───────────
@@ -242,5 +252,109 @@ describe("REM-6: Memory Truth Service integration", () => {
     const result = computeFactRecall(truth, groundTruth);
     expect(result.recall).toBe(0.5);
     expect(result.missing).toHaveLength(5);
+  });
+
+  // ── N7: Postgres-sourced contradictions/commitments ─────────────
+  describe("N7: Durable contradictions/commitments from Postgres", () => {
+    it("loads contradictions and commitments from Postgres when present", async () => {
+      mockTranscriptRows.push(
+        makeTurn(0, "interviewer", "Tell me about your experience."),
+        makeTurn(1, "candidate", "I worked at Stripe for 3 years."),
+        makeTurn(2, "interviewer", "How long at Stripe?"),
+        makeTurn(3, "candidate", "About 2 years."),
+      );
+
+      mockContradictionRows = [
+        {
+          id: "contra-1",
+          interviewId: "test-n7",
+          claimTurnId: "turn-1",
+          evidenceTurnId: "turn-3",
+          description: "Duration at Stripe: 3yr vs 2yr",
+          type: "temporal",
+          confidence: 0.9,
+          detectedAt: new Date("2026-01-01T00:01:00Z"),
+        },
+      ];
+
+      mockCommitmentRows = [
+        {
+          id: "commit-1",
+          interviewId: "test-n7",
+          turnId: "turn-2",
+          description: "Deep dive on distributed systems",
+          status: "pending",
+          createdAt: new Date("2026-01-01T00:00:30Z"),
+          resolvedAt: null,
+        },
+        {
+          id: "commit-2",
+          interviewId: "test-n7",
+          turnId: "turn-0",
+          description: "Ask about leadership",
+          status: "fulfilled",
+          createdAt: new Date("2026-01-01T00:00:10Z"),
+          resolvedAt: new Date("2026-01-01T00:01:00Z"),
+        },
+      ];
+
+      const truth = await buildMemoryTruth("test-n7");
+
+      // Contradictions loaded from Postgres
+      expect(truth.contradictions).toHaveLength(1);
+      expect(truth.contradictions[0].turnIdA).toBe("turn-1");
+      expect(truth.contradictions[0].turnIdB).toBe("turn-3");
+      expect(truth.contradictions[0].description).toContain("Stripe");
+
+      // Commitments loaded from Postgres
+      expect(truth.commitments).toHaveLength(2);
+      expect(truth.commitments[0].fulfilled).toBe(false);
+      expect(truth.commitments[1].fulfilled).toBe(true);
+
+      // Integrity metrics reflect Postgres data
+      expect(truth.integrity.contradictionCount).toBe(1);
+      expect(truth.integrity.unfulfilledCommitments).toBe(1);
+    });
+
+    it("falls back to Redis session state when Postgres has no data", async () => {
+      mockTranscriptRows.push(makeTurn(0, "interviewer", "Hello."));
+      mockContradictionRows = [];
+      mockCommitmentRows = [];
+
+      // Redis fallback returns data via deserializeState
+      const { getSessionState } = await import("@/lib/session-store");
+      const { deserializeState } = await import("@/lib/interviewer-state");
+      (getSessionState as any).mockResolvedValueOnce({
+        interviewerState: "serialized-state",
+      });
+      (deserializeState as any).mockReturnValueOnce({
+        contradictionMap: [
+          { turnIdA: "t-1", turnIdB: "t-2", description: "Redis contradiction" },
+        ],
+        commitments: [
+          { description: "Redis commitment", turnId: "t-1", fulfilled: false },
+        ],
+      });
+
+      const truth = await buildMemoryTruth("test-n7-fallback");
+
+      expect(truth.contradictions).toHaveLength(1);
+      expect(truth.contradictions[0].description).toBe("Redis contradiction");
+      expect(truth.commitments).toHaveLength(1);
+      expect(truth.commitments[0].description).toBe("Redis commitment");
+    });
+
+    it("returns empty when both Postgres and Redis have no data", async () => {
+      mockTranscriptRows.push(makeTurn(0, "interviewer", "Hello."));
+      mockContradictionRows = [];
+      mockCommitmentRows = [];
+
+      const truth = await buildMemoryTruth("test-n7-empty");
+
+      expect(truth.contradictions).toHaveLength(0);
+      expect(truth.commitments).toHaveLength(0);
+      expect(truth.integrity.contradictionCount).toBe(0);
+      expect(truth.integrity.unfulfilledCommitments).toBe(0);
+    });
   });
 });

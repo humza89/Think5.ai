@@ -68,6 +68,30 @@ describe("N13: Enterprise Verification Evidence Suite", () => {
 
       expect(evidence.verified).toBe(true);
     });
+
+    it("memory integrity checksum is deterministic across restarts", () => {
+      // Simulate computing checksum, restarting, recomputing — must be identical
+      const params = {
+        ledgerVersion: 10,
+        lastExtractionTurnIndex: 8,
+        stateHash: "abc123",
+        commitmentCount: 3,
+        contradictionCount: 1,
+        confidenceTier: "normal",
+      };
+
+      const before = computeMemoryIntegrityChecksum(params);
+      // Simulate restart: recompute with identical params
+      const after = computeMemoryIntegrityChecksum({ ...params });
+
+      const evidence = produceEvidence(
+        "Memory checksum determinism across restarts",
+        before === after && /^[a-f0-9]{32}$/.test(before),
+        { checksumBefore: before, checksumAfter: after, match: before === after }
+      );
+
+      expect(evidence.verified).toBe(true);
+    });
   });
 
   // VERIFY-2: Zero-hallucination rate with telemetry
@@ -208,6 +232,52 @@ describe("N13: Enterprise Verification Evidence Suite", () => {
           checksumLength: checksum.length,
           checksumFormat: /^[a-f0-9]{32}$/.test(checksum) ? "valid_hex" : "invalid",
         }
+      );
+
+      expect(evidence.verified).toBe(true);
+    });
+
+    it("each state field survives independently across serialization boundary", () => {
+      // Exhaustive field-by-field verification that no data is lost
+      let state = createInitialState();
+      state = transitionState(state, { type: "INTRO_COMPLETED" });
+
+      // Set every mutable field to non-default values
+      state.askedQuestionIds = ["q-1", "q-2", "q-3"];
+      state.followupQueue = [{ topic: "leadership", reason: "depth needed", priority: "high", turnId: "t-2" }];
+      state.contradictionMap = [
+        { turnIdA: "t-1", turnIdB: "t-5", description: "Duration conflict" },
+      ];
+      state.pendingClarifications = [
+        { question: "How long at Stripe?", turnId: "t-5" },
+      ];
+      state.topicDepthCounters = { experience: 3, leadership: 1 };
+      state.commitments = [
+        { id: "c-1", description: "Explore systems design", turnId: "t-3", fulfilled: false },
+      ];
+      state.revisitAllowList = ["topic-a"];
+
+      const serialized = serializeState(state);
+      const restored = deserializeState(serialized);
+
+      const fieldChecks = {
+        introDone: restored.introDone === true,
+        currentStep: restored.currentStep === state.currentStep,
+        askedQuestionIds: JSON.stringify(restored.askedQuestionIds) === JSON.stringify(state.askedQuestionIds),
+        followupQueue: JSON.stringify(restored.followupQueue) === JSON.stringify(state.followupQueue),
+        contradictionMap: restored.contradictionMap.length === 1,
+        pendingClarifications: restored.pendingClarifications.length === 1,
+        topicDepthCounters: restored.topicDepthCounters.experience === 3,
+        commitments: restored.commitments.length === 1,
+        revisitAllowList: JSON.stringify(restored.revisitAllowList) === JSON.stringify(state.revisitAllowList),
+        stateHash: restored.stateHash === state.stateHash,
+      };
+
+      const allPassed = Object.values(fieldChecks).every(Boolean);
+      const evidence = produceEvidence(
+        "Every state field survives serialization independently",
+        allPassed,
+        fieldChecks
       );
 
       expect(evidence.verified).toBe(true);

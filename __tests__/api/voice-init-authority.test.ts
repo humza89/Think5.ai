@@ -11,8 +11,10 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 process.env.VOICE_RELAY_URL = "wss://test-relay.example.com";
 process.env.RELAY_JWT_SECRET = "test-jwt-secret-for-voice-init-tests";
 
-// Feature flags
-const featureFlags: Record<string, boolean> = {};
+// Feature flags — disable SLO enforcement since this test doesn't mock the SLO monitor
+const featureFlags: Record<string, boolean> = {
+  CONTINUITY_SLO_ENFORCEMENT: false,
+};
 vi.mock("@/lib/feature-flags", () => ({
   isEnabled: (flag: string) => featureFlags[flag] ?? true,
 }));
@@ -125,6 +127,7 @@ describe("Voice-Init — Server-Authoritative askedQuestions", () => {
     Object.keys(featureFlags).forEach((k) => delete featureFlags[k]);
     featureFlags["STATEFUL_INTERVIEWER"] = true;
     featureFlags["TIMELINE_OBSERVABILITY"] = true;
+    featureFlags["CONTINUITY_SLO_ENFORCEMENT"] = false;
   });
 
   it("uses server InterviewerState.askedQuestionIds over client askedQuestions", async () => {

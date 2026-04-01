@@ -50,7 +50,11 @@ export async function POST(
         recordEvent(id, "anomaly", { type: "continuity_slo_breach", reason: sloGate.reason }).catch(() => {});
         return Response.json({ error: "Voice mode paused due to SLO breach", reason: sloGate.reason }, { status: 503 });
       }
-    } catch { /* Non-fatal: SLO check failure doesn't block voice */ }
+    } catch (err) {
+      // Fail-closed: SLO check failure blocks voice mode
+      console.error(`[voice-init] SLO check failed — fail-closed:`, err);
+      return Response.json({ error: "Voice mode paused: SLO monitor unavailable", reason: "SLO_CHECK_UNAVAILABLE" }, { status: 503 });
+    }
   }
 
   console.log(`[voice-init] Called for interview=${id}, VOICE_RELAY_URL=${process.env.VOICE_RELAY_URL ? "SET" : "MISSING"}, RELAY_JWT_SECRET=${process.env.RELAY_JWT_SECRET ? "SET" : "MISSING"}`);
@@ -418,6 +422,8 @@ export async function POST(
       // N1: Server-authoritative turn delivery config
       serverAuthoritativeTurns: isEnabled("SERVER_AUTHORITATIVE_TURNS"),
       turnValidationCallbackUrl: `${process.env.NEXT_PUBLIC_APP_URL || ""}/api/interviews/${id}/voice/turn-commit`,
+      // N9: Expected next sequence number for reconnect recovery
+      ...(reconnect ? { expectedNextSequenceNumber: (existingSessionForToken?.lastSequenceNumber ?? -1) + 1 } : {}),
       // Degraded-network configuration for adaptive checkpoint intervals
       degradedNetworkConfig: {
         checkpointIntervalMs: { good: 15000, fair: 15000, poor: 10000 },

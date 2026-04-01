@@ -470,16 +470,21 @@ export function useVoiceInterview(
           // Filter out Gemini's internal thinking/reasoning
           if (!fragment.startsWith("*")) {
             currentTurnTextRef.current += fragment;
-            // Update transcript with accumulated text (single entry per turn)
-            setTranscript((prev) => {
-              const last = prev[prev.length - 1];
-              if (last && last.role === "interviewer" && !last.finalized) {
-                // Update existing in-progress entry
-                return [...prev.slice(0, -1), { ...last, content: currentTurnTextRef.current }];
-              }
-              // Create new in-progress entry
-              return [...prev, { role: "interviewer" as const, content: currentTurnTextRef.current, timestamp: new Date().toISOString() }];
-            });
+            // N1: Only render real-time transcription when NOT in server-authoritative mode.
+            // In server-authoritative mode, text is buffered in currentTurnTextRef and
+            // rendered only after turnComplete + successful server validation (zero-render-before-validate).
+            if (!serverAuthoritativeTurnsRef.current) {
+              // Update transcript with accumulated text (single entry per turn)
+              setTranscript((prev) => {
+                const last = prev[prev.length - 1];
+                if (last && last.role === "interviewer" && !last.finalized) {
+                  // Update existing in-progress entry
+                  return [...prev.slice(0, -1), { ...last, content: currentTurnTextRef.current }];
+                }
+                // Create new in-progress entry
+                return [...prev, { role: "interviewer" as const, content: currentTurnTextRef.current, timestamp: new Date().toISOString() }];
+              });
+            }
           }
         }
 
@@ -544,6 +549,32 @@ export function useVoiceInterview(
                 } else if (commitData.reason === "GROUNDING_GATE_BLOCKED" && !commitData.corrections) {
                   // Grounding gate blocked without corrections — use safe fallback
                   finalText = "Let's continue with the interview.";
+                } else if (commitData.reason === "MEMORY_CONFIDENCE_DEGRADED" && commitData.holdSignal) {
+                  // N3: Recovery sync — hold, then retry once after delay
+                  const retryMs = commitData.holdSignal.retryAfterMs || 2000;
+                  console.warn(`[Voice] N3: Memory degraded — holding for ${retryMs}ms then retrying`);
+                  await new Promise(r => setTimeout(r, retryMs));
+                  try {
+                    const retrySeqNum = sequenceNumberRef.current++;
+                    const retryRes = await fetch(`/api/interviews/${interviewId}/voice/turn-commit`, {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
+                      body: JSON.stringify({
+                        turnId: crypto.randomUUID(), role: "model", content: finalText,
+                        contextChecksum: contextChecksumRef.current,
+                        clientTimestamp: new Date().toISOString(), sequenceNumber: retrySeqNum,
+                      }),
+                    });
+                    if (retryRes.ok) {
+                      const retryData = await retryRes.json();
+                      if (retryData.committed) {
+                        contextChecksumRef.current = retryData.contextChecksum;
+                        if (retryData.stateHash) stateHashRef.current = retryData.stateHash;
+                        if (typeof retryData.turnIndex === "number") ledgerVersionRef.current = retryData.turnIndex;
+                        if (retryData.interviewerState) interviewerStateRef.current = retryData.interviewerState;
+                      } else { shouldRender = false; }
+                    } else { shouldRender = false; }
+                  } catch { shouldRender = false; }
                 } else if (!commitData.committed && serverAuthoritativeTurnsRef.current) {
                   // N1: Server rejected turn AND server-authoritative mode is on — suppress rendering
                   console.warn(`[Voice] N1: Turn suppressed by server — reason=${commitData.reason}`);
@@ -587,6 +618,18 @@ export function useVoiceInterview(
           nextPlayTimeRef.current = 0;
           // FIX-1: Preserve partial turn instead of discarding
           if (currentTurnTextRef.current.trim()) {
+            // N4: Persist interrupted fragment to server (non-blocking)
+            if (turnCommitEnabledRef.current) {
+              const chunkId = crypto.randomUUID();
+              fetch(`/api/interviews/${interviewId}/voice/fragment`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
+                body: JSON.stringify({
+                  chunkId, role: "interviewer",
+                  content: currentTurnTextRef.current.trim(), status: "interrupted",
+                }),
+              }).catch(() => {}); // Non-blocking — best effort
+            }
             const partialEntry: TranscriptEntry = {
               role: "interviewer",
               content: currentTurnTextRef.current.trim(),
@@ -1101,8 +1144,10 @@ export function useVoiceInterview(
 
       // N1: Enable server-authoritative turn delivery (hold-and-validate)
       serverAuthoritativeTurnsRef.current = !!initData.serverAuthoritativeTurns;
-      // N9: Reset sequence number on fresh connect, preserve on reconnect
-      if (!isReconnect) {
+      // N9: Recover sequence number from server on reconnect, reset on fresh connect
+      if (isReconnect && typeof initData.expectedNextSequenceNumber === "number") {
+        sequenceNumberRef.current = initData.expectedNextSequenceNumber;
+      } else if (!isReconnect) {
         sequenceNumberRef.current = 0;
       }
 

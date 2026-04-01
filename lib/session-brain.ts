@@ -73,6 +73,20 @@ export interface ContinuityContract {
   stateHash: string;
 }
 
+/** Session state parameter shared across commit functions */
+export type CommitSessionState = {
+  interviewerState?: string;
+  lastTurnIndex: number;
+  verifiedFacts?: Array<{ factType: string; content: string; confidence: number }>;
+  recentTurns?: Array<{ turnId: string; content: string }>;
+  contextChecksum?: string;
+  factCount?: number;
+  lastFactRefreshAt?: string;
+  lastSequenceNumber?: number;
+  lastMemoryChecksum?: string;
+  lastExtractionTurnIndex?: number;
+};
+
 // ── Context Checksum ─────────────────────────────────────────────────
 
 /**
@@ -91,37 +105,26 @@ export function computeContextChecksum(
     .slice(0, 16);
 }
 
-// ── Turn Commit ──────────────────────────────────────────────────────
+// ── Validation Gates (Read-Only) ─────────────────────────────────────
+
+/** Result of running all validation gates (read-only checks) */
+interface ValidationGateResult {
+  passed: boolean;
+  rejectionResult?: TurnCommitResult;
+  interviewerState: InterviewerState;
+  violations: GateViolation[];
+  memorySlotWarnings: string[];
+}
 
 /**
- * Process and commit a single turn with full server-side validation.
- *
- * 1. Verify continuity contract (context checksum)
- * 2. Run output gate (for AI turns)
- * 3. Run grounding gate (for AI turns referencing candidate facts)
- * 4. Commit to canonical ledger with version assertion
- * 5. Apply state machine transitions
- * 6. Return new state hash + context checksum
+ * Run all read-only validation gates without performing any writes.
+ * Shared by both commitTurn (non-atomic) and atomicTurnCommit (atomic).
  */
-export async function commitTurn(
+async function runValidationGates(
   interviewId: string,
   request: TurnCommitRequest,
-  sessionState: {
-    interviewerState?: string;
-    lastTurnIndex: number;
-    verifiedFacts?: Array<{ factType: string; content: string; confidence: number }>;
-    recentTurns?: Array<{ turnId: string; content: string }>;
-    contextChecksum?: string;
-    factCount?: number;
-    lastFactRefreshAt?: string;
-    /** N9: Last committed sequence number */
-    lastSequenceNumber?: number;
-    /** N5: Last memory integrity checksum */
-    lastMemoryChecksum?: string;
-    /** N5: Last extraction turn index */
-    lastExtractionTurnIndex?: number;
-  }
-): Promise<TurnCommitResult> {
+  sessionState: CommitSessionState
+): Promise<ValidationGateResult> {
   const violations: GateViolation[] = [];
   const memorySlotWarnings: string[] = [];
 
@@ -130,11 +133,11 @@ export async function commitTurn(
     const sloCheck = await enforceSessionSLO(interviewId);
     if (sloCheck.blocked) {
       return {
-        committed: false,
-        stateHash: "",
-        contextChecksum: "",
+        passed: false,
+        rejectionResult: { committed: false, stateHash: "", contextChecksum: "", violations: [], reason: sloCheck.reason },
+        interviewerState: createInitialState(),
         violations: [],
-        reason: sloCheck.reason,
+        memorySlotWarnings: [],
       };
     }
   } catch { /* SLO enforcement failure is non-fatal */ }
@@ -144,16 +147,20 @@ export async function commitTurn(
     const expectedSeq = (sessionState.lastSequenceNumber ?? -1) + 1;
     if (request.sequenceNumber < expectedSeq) {
       return {
-        committed: false, stateHash: "", contextChecksum: "",
-        violations: [], reason: "DUPLICATE_SEQUENCE",
-        expectedSequenceNumber: expectedSeq,
+        passed: false,
+        rejectionResult: { committed: false, stateHash: "", contextChecksum: "", violations: [], reason: "DUPLICATE_SEQUENCE", expectedSequenceNumber: expectedSeq },
+        interviewerState: createInitialState(),
+        violations: [],
+        memorySlotWarnings: [],
       };
     }
     if (request.sequenceNumber > expectedSeq) {
       return {
-        committed: false, stateHash: "", contextChecksum: "",
-        violations: [], reason: "OUT_OF_ORDER_SEQUENCE",
-        expectedSequenceNumber: expectedSeq,
+        passed: false,
+        rejectionResult: { committed: false, stateHash: "", contextChecksum: "", violations: [], reason: "OUT_OF_ORDER_SEQUENCE", expectedSequenceNumber: expectedSeq },
+        interviewerState: createInitialState(),
+        violations: [],
+        memorySlotWarnings: [],
       };
     }
   }
@@ -176,11 +183,11 @@ export async function commitTurn(
   ) {
     if (request.contextChecksum !== sessionState.contextChecksum) {
       return {
-        committed: false,
-        stateHash: interviewerState.stateHash,
-        contextChecksum: sessionState.contextChecksum,
+        passed: false,
+        rejectionResult: { committed: false, stateHash: interviewerState.stateHash, contextChecksum: sessionState.contextChecksum, violations: [], reason: "CONTEXT_STALE" },
+        interviewerState,
         violations: [],
-        reason: "CONTEXT_STALE",
+        memorySlotWarnings: [],
       };
     }
   }
@@ -208,14 +215,14 @@ export async function commitTurn(
       if (memoryConfidence < 0.3) {
         memorySlotWarnings.push(`LOW_MEMORY_CONFIDENCE: ${memoryConfidence.toFixed(2)} — asking for clarification instead`);
         recordSLOEvent("memory.confidence.adequate_rate", false).catch(() => {});
-        // FIX-3: Hard-block — do NOT proceed with degraded memory
         return {
-          committed: false,
-          stateHash: interviewerState.stateHash,
-          contextChecksum: sessionState.contextChecksum || "",
-          violations: [],
-          reason: "MEMORY_CONFIDENCE_LOW",
-          memorySlotWarnings: [...memorySlotWarnings],
+          passed: false,
+          rejectionResult: {
+            committed: false, stateHash: interviewerState.stateHash,
+            contextChecksum: sessionState.contextChecksum || "", violations: [],
+            reason: "MEMORY_CONFIDENCE_LOW", memorySlotWarnings: [...memorySlotWarnings],
+          },
+          interviewerState, violations, memorySlotWarnings,
         };
       }
       // N3: Enterprise memory pause — degraded but not critically low (0.3 ≤ confidence < 0.65)
@@ -223,13 +230,15 @@ export async function commitTurn(
         memorySlotWarnings.push(`ENTERPRISE_PAUSE: confidence=${memoryConfidence.toFixed(2)} < 0.65`);
         recordSLOEvent("memory.confidence.adequate_rate", false).catch(() => {});
         return {
-          committed: false,
-          stateHash: interviewerState.stateHash,
-          contextChecksum: sessionState.contextChecksum || "",
-          violations: [],
-          reason: "MEMORY_CONFIDENCE_DEGRADED",
-          holdSignal: { action: "HOLD_AND_RETRY", retryAfterMs: 2000, recoverySyncRequired: true },
-          memorySlotWarnings: [...memorySlotWarnings],
+          passed: false,
+          rejectionResult: {
+            committed: false, stateHash: interviewerState.stateHash,
+            contextChecksum: sessionState.contextChecksum || "", violations: [],
+            reason: "MEMORY_CONFIDENCE_DEGRADED",
+            holdSignal: { action: "HOLD_AND_RETRY", retryAfterMs: 2000, recoverySyncRequired: true },
+            memorySlotWarnings: [...memorySlotWarnings],
+          },
+          interviewerState, violations, memorySlotWarnings,
         };
       } else {
         recordSLOEvent("memory.confidence.adequate_rate", true).catch(() => {});
@@ -239,12 +248,14 @@ export async function commitTurn(
       console.error("[SessionBrain] Memory confidence computation failed:", err);
       memoryConfidence = 0.0;
       return {
-        committed: false,
-        stateHash: interviewerState.stateHash,
-        contextChecksum: sessionState.contextChecksum || "",
-        violations: [],
-        reason: "MEMORY_CONFIDENCE_LOW",
-        memorySlotWarnings: ["HARD_BLOCK: confidence computation failed — fail-closed"],
+        passed: false,
+        rejectionResult: {
+          committed: false, stateHash: interviewerState.stateHash,
+          contextChecksum: sessionState.contextChecksum || "", violations: [],
+          reason: "MEMORY_CONFIDENCE_LOW",
+          memorySlotWarnings: ["HARD_BLOCK: confidence computation failed — fail-closed"],
+        },
+        interviewerState, violations, memorySlotWarnings,
       };
     }
   }
@@ -261,12 +272,14 @@ export async function commitTurn(
 
     if (gateAction.action === "block") {
       return {
-        committed: false,
-        stateHash: interviewerState.stateHash,
-        contextChecksum: sessionState.contextChecksum || "",
-        violations: gateAction.violations,
-        corrections: gateAction.sanitizedResponse,
-        reason: "OUTPUT_GATE_BLOCKED",
+        passed: false,
+        rejectionResult: {
+          committed: false, stateHash: interviewerState.stateHash,
+          contextChecksum: sessionState.contextChecksum || "",
+          violations: gateAction.violations, corrections: gateAction.sanitizedResponse,
+          reason: "OUTPUT_GATE_BLOCKED",
+        },
+        interviewerState, violations: gateAction.violations, memorySlotWarnings,
       };
     }
 
@@ -279,11 +292,14 @@ export async function commitTurn(
       const hasIntro = INTRO_PATTERNS.some(p => p.test(request.content));
       if (hasIntro) {
         return {
-          committed: false,
-          stateHash: interviewerState.stateHash,
-          contextChecksum: sessionState.contextChecksum || "",
-          violations: [{ type: "reintroduction", detail: "Unconditional intro block: persona locked", severity: "block" }],
-          reason: "INTRO_BLOCKED_UNCONDITIONAL",
+          passed: false,
+          rejectionResult: {
+            committed: false, stateHash: interviewerState.stateHash,
+            contextChecksum: sessionState.contextChecksum || "",
+            violations: [{ type: "reintroduction", detail: "Unconditional intro block: persona locked", severity: "block" }],
+            reason: "INTRO_BLOCKED_UNCONDITIONAL",
+          },
+          interviewerState, violations, memorySlotWarnings,
         };
       }
     }
@@ -309,11 +325,13 @@ export async function commitTurn(
         // When blocking is enabled or memory confidence is low, reject the turn
         if (blockingEnabled || memoryConfidence < 0.3) {
           return {
-            committed: false,
-            stateHash: interviewerState.stateHash,
-            contextChecksum: sessionState.contextChecksum || "",
-            violations,
-            reason: "GROUNDING_GATE_BLOCKED",
+            passed: false,
+            rejectionResult: {
+              committed: false, stateHash: interviewerState.stateHash,
+              contextChecksum: sessionState.contextChecksum || "",
+              violations, reason: "GROUNDING_GATE_BLOCKED",
+            },
+            interviewerState, violations, memorySlotWarnings,
           };
         }
       }
@@ -335,11 +353,13 @@ export async function commitTurn(
         }
         if ((blockingEnabled || memoryConfidence < 0.3) && groundingScore.score < 0.5) {
           return {
-            committed: false,
-            stateHash: interviewerState.stateHash,
-            contextChecksum: sessionState.contextChecksum || "",
-            violations,
-            reason: "GROUNDING_GATE_BLOCKED",
+            passed: false,
+            rejectionResult: {
+              committed: false, stateHash: interviewerState.stateHash,
+              contextChecksum: sessionState.contextChecksum || "",
+              violations, reason: "GROUNDING_GATE_BLOCKED",
+            },
+            interviewerState, violations, memorySlotWarnings,
           };
         }
       }
@@ -381,16 +401,19 @@ export async function commitTurn(
         } catch { /* Durable persistence failure is non-fatal — we're already blocking */ }
 
         return {
-          committed: false,
-          stateHash: interviewerState.stateHash,
-          contextChecksum: sessionState.contextChecksum || "",
-          violations: contradictions.map((c) => ({
-            type: "unsupported_claim" as const,
-            detail: `Contradiction detected (${c.type}): ${c.description}`,
-            severity: "block" as const,
-          })),
-          reason: "SEMANTIC_CONTRADICTION_DETECTED",
-          regenerationPrompt,
+          passed: false,
+          rejectionResult: {
+            committed: false, stateHash: interviewerState.stateHash,
+            contextChecksum: sessionState.contextChecksum || "",
+            violations: contradictions.map((c) => ({
+              type: "unsupported_claim" as const,
+              detail: `Contradiction detected (${c.type}): ${c.description}`,
+              severity: "block" as const,
+            })),
+            reason: "SEMANTIC_CONTRADICTION_DETECTED",
+            regenerationPrompt,
+          },
+          interviewerState, violations, memorySlotWarnings,
         };
       }
     } catch (err) {
@@ -399,16 +422,17 @@ export async function commitTurn(
       console.error(`[SessionBrain] Contradiction detection failed after ${contradictionMs}ms — blocking turn:`, err);
       recordSLOEvent("memory.contradiction.detection_rate", false).catch(() => {});
       return {
-        committed: false,
-        stateHash: interviewerState.stateHash,
-        contextChecksum: sessionState.contextChecksum || "",
-        violations: [{ type: "unsupported_claim" as const, detail: "Contradiction detection unavailable — fail-closed", severity: "block" as const }],
-        reason: "CONTRADICTION_GATE_UNAVAILABLE",
+        passed: false,
+        rejectionResult: {
+          committed: false, stateHash: interviewerState.stateHash,
+          contextChecksum: sessionState.contextChecksum || "",
+          violations: [{ type: "unsupported_claim" as const, detail: "Contradiction detection unavailable — fail-closed", severity: "block" as const }],
+          reason: "CONTRADICTION_GATE_UNAVAILABLE",
+        },
+        interviewerState, violations, memorySlotWarnings,
       };
     }
   }
-
-  // 4c. (Memory confidence computed earlier — before grounding gates — for AF7 escalation)
 
   // 4d. Memory freshness SLA: warn when facts are stale
   if (isAITurn && sessionState.lastFactRefreshAt) {
@@ -422,7 +446,31 @@ export async function commitTurn(
     }
   }
 
-  // 5. Commit to canonical ledger with version assertion
+  // All gates passed
+  return { passed: true, interviewerState, violations, memorySlotWarnings };
+}
+
+// ── Turn Commit ──────────────────────────────────────────────────────
+
+/**
+ * Process and commit a single turn with full server-side validation.
+ * Non-atomic fallback — used when ATOMIC_TURN_COMMIT is disabled.
+ *
+ * 1. Run validation gates (read-only)
+ * 2. Commit to canonical ledger with version assertion
+ * 3. Apply state machine transitions
+ * 4. Return new state hash + context checksum
+ */
+export async function commitTurn(
+  interviewId: string,
+  request: TurnCommitRequest,
+  sessionState: CommitSessionState
+): Promise<TurnCommitResult> {
+  // Phase 1: Run all read-only validation gates
+  const gates = await runValidationGates(interviewId, request, sessionState);
+  if (!gates.passed) return gates.rejectionResult!;
+
+  // Phase 2: Build ledger turn and commit
   const ledgerTurn: LedgerTurn = {
     role: request.role === "model" ? "interviewer" : request.role === "user" ? "candidate" : request.role,
     content: request.content,
@@ -442,14 +490,17 @@ export async function commitTurn(
   if (!commitResult.committed) {
     return {
       committed: false,
-      stateHash: interviewerState.stateHash,
+      stateHash: gates.interviewerState.stateHash,
       contextChecksum: sessionState.contextChecksum || "",
-      violations,
+      violations: gates.violations,
       reason: commitResult.reason,
     };
   }
 
-  // 6. Apply state machine transitions
+  // Phase 3: Apply state machine transitions
+  let interviewerState = gates.interviewerState;
+  const isAITurn = request.role === "model" || request.role === "interviewer";
+
   if (isAITurn && !interviewerState.personaLocked) {
     interviewerState = transitionState(interviewerState, { type: "PERSONA_LOCKED" });
   }
@@ -458,7 +509,7 @@ export async function commitTurn(
     interviewerState = transitionState(interviewerState, { type: "INTRO_COMPLETED" });
   }
 
-  // 7. Compute new context checksum
+  // Phase 4: Compute new context checksum
   const newChecksum = computeContextChecksum(
     interviewerState.stateHash,
     commitResult.currentVersion ?? sessionState.lastTurnIndex + 1,
@@ -470,10 +521,10 @@ export async function commitTurn(
     turnIndex: commitResult.turn?.turnIndex,
     stateHash: interviewerState.stateHash,
     contextChecksum: newChecksum,
-    violations,
-    memorySlotWarnings,
-    corrections: violations.length > 0
-      ? `${violations.length} violation(s) detected but turn committed (warn mode)`
+    violations: gates.violations,
+    memorySlotWarnings: gates.memorySlotWarnings,
+    corrections: gates.violations.length > 0
+      ? `${gates.violations.length} violation(s) detected but turn committed (warn mode)`
       : undefined,
     interviewerState: serializeState(interviewerState),
     ledgerVersion: commitResult.currentVersion ?? sessionState.lastTurnIndex + 1,
@@ -503,63 +554,109 @@ export function computeMemoryIntegrityChecksum(params: {
 // ── N2: Atomic Turn Commit ──────────────────────────────────────────
 
 /**
- * Atomic turn commit — wraps turn commit + state snapshot + memory updates
- * in a single Prisma $transaction. If any write fails, all roll back.
+ * Truly atomic turn commit — ALL writes in a single Prisma $transaction.
+ * If any write fails, ALL roll back (including the ledger commit).
  *
- * Runs all read-only gates OUTSIDE the transaction, then performs all
- * writes atomically inside the transaction.
+ * Flow:
+ * 1. Run validation gates (read-only, outside transaction)
+ * 2. N5: Verify memory integrity checksum against stored value
+ * 3. Single $transaction containing:
+ *    - Ledger commit (commitSingleTurn with external tx)
+ *    - State snapshot upsert
+ *    - Per-turn fact extraction (N6)
+ *    - Durable contradictions/commitments (N7)
+ *    - Source turn ID validation + storage (N8 — enforced)
+ *    - Memory integrity checksum (N5)
+ *    - Sequence number storage (N9)
  *
- * Integrates: N2 (atomic boundary), N5 (checksum), N6 (per-turn extraction),
- * N7 (durable commitments/contradictions), N8 (source_turn_ids), N9 (sequence numbers).
+ * Integrates: N2, N5, N6, N7, N8, N9.
  */
 export async function atomicTurnCommit(
   interviewId: string,
   request: TurnCommitRequest,
-  sessionState: {
-    interviewerState?: string;
-    lastTurnIndex: number;
-    verifiedFacts?: Array<{ factType: string; content: string; confidence: number }>;
-    recentTurns?: Array<{ turnId: string; content: string }>;
-    contextChecksum?: string;
-    factCount?: number;
-    lastFactRefreshAt?: string;
-    lastSequenceNumber?: number;
-    lastMemoryChecksum?: string;
-    lastExtractionTurnIndex?: number;
-  }
+  sessionState: CommitSessionState
 ): Promise<TurnCommitResult> {
-  // Phase 1: Run all read-only gates (no transaction needed)
-  // Delegate to commitTurn for all gate logic, but intercept before the ledger write
-  const gateResult = await commitTurn(interviewId, request, sessionState);
+  // Phase 1: Run all read-only validation gates (no transaction needed)
+  const gates = await runValidationGates(interviewId, request, sessionState);
+  if (!gates.passed) return gates.rejectionResult!;
 
-  // If gates blocked or the turn was committed by commitTurn, return as-is
-  // (commitTurn already handles the full flow — atomicTurnCommit adds the
-  // transactional write layer on top)
-  if (!gateResult.committed) {
-    return gateResult;
+  const { prisma } = await import("@/lib/prisma");
+  const isAITurn = request.role === "model" || request.role === "interviewer";
+  const isCandidateTurn = request.role === "user" || request.role === "candidate";
+
+  // Phase 1b: N5 — Verify memory integrity checksum against stored value in Postgres
+  if (sessionState.lastMemoryChecksum && sessionState.lastTurnIndex >= 0) {
+    try {
+      const prevTurn = await prisma.interviewTranscript.findFirst({
+        where: { interviewId, turnIndex: sessionState.lastTurnIndex },
+        select: { memoryChecksum: true },
+      });
+      if (prevTurn?.memoryChecksum && prevTurn.memoryChecksum !== sessionState.lastMemoryChecksum) {
+        console.warn(`[SessionBrain] N5: Memory integrity break — session=${sessionState.lastMemoryChecksum}, stored=${prevTurn.memoryChecksum}`);
+        return {
+          committed: false,
+          stateHash: gates.interviewerState.stateHash,
+          contextChecksum: sessionState.contextChecksum || "",
+          violations: [],
+          reason: "MEMORY_INTEGRITY_BREAK",
+        };
+      }
+    } catch {
+      // Non-fatal: if we can't verify, proceed (don't block on DB read failure)
+    }
   }
 
-  // Phase 2: The turn was committed by commitTurn (non-atomically).
-  // Now perform the additional atomic writes that commitTurn doesn't do.
-  const { prisma } = await import("@/lib/prisma");
-
+  // Phase 2: ALL writes in a single atomic transaction
   try {
-    const turnIndex = gateResult.turnIndex;
-    const isAITurn = request.role === "model" || request.role === "interviewer";
-    const isCandidateTurn = request.role === "user" || request.role === "candidate";
+    const result = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+      // 2a. Commit to canonical ledger (INSIDE transaction — true atomicity)
+      const ledgerTurn: LedgerTurn = {
+        role: request.role === "model" ? "interviewer" : request.role === "user" ? "candidate" : request.role,
+        content: request.content,
+        timestamp: request.clientTimestamp || new Date().toISOString(),
+        turnId: request.turnId,
+        causalParentTurnId: request.causalParentTurnId,
+        clientTimestamp: request.clientTimestamp,
+        finalized: false,
+      };
 
-    await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-      // N2a: State snapshot (already done by voice/route.ts — ensure it's in transaction)
-      const interviewerStateJson = gateResult.interviewerState;
-      if (interviewerStateJson && turnIndex !== undefined) {
+      const commitResult = await commitSingleTurn(
+        interviewId, ledgerTurn, sessionState.lastTurnIndex, tx
+      );
+
+      if (!commitResult.committed) {
+        return {
+          committed: false as const,
+          stateHash: gates.interviewerState.stateHash,
+          contextChecksum: sessionState.contextChecksum || "",
+          violations: gates.violations,
+          reason: commitResult.reason,
+        } satisfies TurnCommitResult;
+      }
+
+      const turnIndex = commitResult.turn?.turnIndex ?? commitResult.currentVersion;
+
+      // 2b. State transitions
+      let interviewerState = gates.interviewerState;
+      if (isAITurn && !interviewerState.personaLocked) {
+        interviewerState = transitionState(interviewerState, { type: "PERSONA_LOCKED" });
+      }
+      if (isAITurn && !interviewerState.introDone && interviewerState.currentStep === "opening") {
+        interviewerState = transitionState(interviewerState, { type: "INTRO_COMPLETED" });
+      }
+
+      const serializedState = serializeState(interviewerState);
+
+      // 2c. State snapshot (INSIDE transaction)
+      if (turnIndex !== undefined) {
         await tx.interviewerStateSnapshot.upsert({
           where: { interviewId_turnIndex: { interviewId, turnIndex } },
-          update: { stateJson: interviewerStateJson, stateHash: gateResult.stateHash },
-          create: { interviewId, turnIndex, stateJson: interviewerStateJson, stateHash: gateResult.stateHash },
+          update: { stateJson: serializedState, stateHash: interviewerState.stateHash },
+          create: { interviewId, turnIndex, stateJson: serializedState, stateHash: interviewerState.stateHash },
         });
       }
 
-      // N6: Per-turn fact extraction for candidate turns
+      // 2d. N6: Per-turn fact extraction for candidate turns
       let extractedFactCount = 0;
       if (isCandidateTurn && request.content.length > 10) {
         const facts = extractFactsImmediate({ turnId: request.turnId, role: request.role, content: request.content });
@@ -579,11 +676,10 @@ export async function atomicTurnCommit(
         }
       }
 
-      // N7: Persist contradictions to InterviewContradiction table
-      if (interviewerStateJson) {
+      // 2e. N7: Persist contradictions to InterviewContradiction table
+      if (serializedState) {
         try {
-          const state = deserializeState(interviewerStateJson);
-          // Persist any new contradictions from state
+          const state = deserializeState(serializedState);
           if (state.contradictionMap.length > 0) {
             for (const c of state.contradictionMap) {
               await tx.interviewContradiction.create({
@@ -598,7 +694,6 @@ export async function atomicTurnCommit(
               }).catch(() => {}); // Skip duplicates
             }
           }
-          // Persist any new commitments from state
           if (state.commitments.length > 0) {
             for (const c of state.commitments) {
               await tx.interviewCommitment.upsert({
@@ -621,9 +716,8 @@ export async function atomicTurnCommit(
         } catch { /* Non-fatal — state parsing may fail */ }
       }
 
-      // N8: Validate and store source_turn_ids for AI turns
+      // 2f. N8: Validate and store source_turn_ids — ENFORCED (block on invalid)
       if (isAITurn && request.sourceTurnIds && request.sourceTurnIds.length > 0 && turnIndex !== undefined) {
-        // Validate that referenced turns exist
         const referencedTurns = await tx.interviewTranscript.findMany({
           where: { interviewId, turnId: { in: request.sourceTurnIds } },
           select: { turnId: true },
@@ -633,29 +727,31 @@ export async function atomicTurnCommit(
         const invalidSourceTurnIds = request.sourceTurnIds.filter((id) => !validTurnIds.has(id));
 
         if (invalidSourceTurnIds.length > 0) {
-          console.warn(`[SessionBrain] Invalid sourceTurnIds: ${invalidSourceTurnIds.join(", ")}`);
+          console.warn(`[SessionBrain] N8: Invalid sourceTurnIds rejected: ${invalidSourceTurnIds.join(", ")}`);
+          // N8 ENFORCEMENT: roll back the entire transaction
+          throw new Error(`INVALID_SOURCE_TURN_IDS: ${invalidSourceTurnIds.join(", ")}`);
         }
 
-        // Store in generationMetadata
+        // Store validated sourceTurnIds in generationMetadata
         await tx.interviewTranscript.updateMany({
           where: { interviewId, turnId: request.turnId },
           data: {
             generationMetadata: {
               sourceTurnIds: validatedSourceTurnIds,
-              invalidSourceTurnIds,
             },
           },
         });
       }
 
-      // N5: Compute and store memory integrity checksum
+      // 2g. N5: Compute and store memory integrity checksum
+      let memoryChecksum: string | undefined;
       if (turnIndex !== undefined) {
-        const memoryChecksum = computeMemoryIntegrityChecksum({
+        memoryChecksum = computeMemoryIntegrityChecksum({
           ledgerVersion: turnIndex,
           lastExtractionTurnIndex: isCandidateTurn ? turnIndex : (sessionState.lastExtractionTurnIndex ?? -1),
-          stateHash: gateResult.stateHash,
-          commitmentCount: 0, // Will be counted from state
-          contradictionCount: 0,
+          stateHash: interviewerState.stateHash,
+          commitmentCount: interviewerState.commitments?.length ?? 0,
+          contradictionCount: interviewerState.contradictionMap?.length ?? 0,
           confidenceTier: "normal",
         });
 
@@ -666,18 +762,57 @@ export async function atomicTurnCommit(
             sequenceNumber: request.sequenceNumber ?? null,
           },
         });
-
-        // Attach checksum to result
-        (gateResult as TurnCommitResult).memoryChecksum = memoryChecksum;
       }
-    });
-  } catch (err) {
-    console.error(`[SessionBrain] Atomic transaction failed for ${interviewId}:`, err);
-    // The ledger commit already succeeded via commitTurn — log but don't fail the whole turn
-    recordSLOEvent("session.atomic_commit.success_rate", false).catch(() => {});
-  }
 
-  return gateResult;
+      // 2h. Compute context checksum
+      const newChecksum = computeContextChecksum(
+        interviewerState.stateHash,
+        turnIndex ?? sessionState.lastTurnIndex + 1,
+        (sessionState.factCount ?? 0) + extractedFactCount
+      );
+
+      return {
+        committed: true as const,
+        turnIndex,
+        stateHash: interviewerState.stateHash,
+        contextChecksum: newChecksum,
+        violations: gates.violations,
+        memorySlotWarnings: gates.memorySlotWarnings,
+        corrections: gates.violations.length > 0
+          ? `${gates.violations.length} violation(s) detected but turn committed (warn mode)`
+          : undefined,
+        interviewerState: serializedState,
+        ledgerVersion: turnIndex ?? sessionState.lastTurnIndex + 1,
+        memoryChecksum,
+      } satisfies TurnCommitResult;
+    });
+
+    return result;
+  } catch (err) {
+    const errMsg = err instanceof Error ? err.message : String(err);
+
+    // N8: Invalid source turn IDs → specific rejection
+    if (errMsg.startsWith("INVALID_SOURCE_TURN_IDS")) {
+      return {
+        committed: false,
+        stateHash: gates.interviewerState.stateHash,
+        contextChecksum: sessionState.contextChecksum || "",
+        violations: [{ type: "unsupported_claim", detail: errMsg, severity: "block" }],
+        reason: "INVALID_SOURCE_TURN_IDS",
+      };
+    }
+
+    // Transaction failed — ALL writes rolled back (including ledger commit)
+    console.error(`[SessionBrain] Atomic transaction failed for ${interviewId}:`, err);
+    recordSLOEvent("session.atomic_commit.success_rate", false).catch(() => {});
+    return {
+      committed: false,
+      stateHash: gates.interviewerState.stateHash,
+      contextChecksum: sessionState.contextChecksum || "",
+      violations: [],
+      reason: "ATOMIC_COMMIT_FAILED",
+    };
+  }
 }
 
 /**

@@ -150,8 +150,29 @@ export async function reconstructReplay(interviewId: string): Promise<ReplayRepo
 
   const frames: ReplayFrame[] = [];
 
+  // N11: Build event-by-turnIndex index for enriching modelInputManifest from event log
+  const eventsByTurnIndex = new Map<number, Array<{ eventType: string; payload: Record<string, unknown> | null }>>();
+  for (const event of eventRows) {
+    if (event.turnIndex !== null && event.turnIndex !== undefined) {
+      const list = eventsByTurnIndex.get(event.turnIndex) || [];
+      list.push({ eventType: event.eventType, payload: event.payload as Record<string, unknown> | null });
+      eventsByTurnIndex.set(event.turnIndex, list);
+    }
+  }
+
+  // N11: Pre-compute per-turn fact counts for memoryDeltaSummary
+  const factCountByTurnIndex = new Map<number, number>();
+  for (const fact of factRows) {
+    // Find the turn this fact belongs to
+    const turn = transcriptRows.find((t: { turnId: string }) => t.turnId === fact.turnId);
+    if (turn) {
+      factCountByTurnIndex.set(turn.turnIndex, (factCountByTurnIndex.get(turn.turnIndex) || 0) + 1);
+    }
+  }
+
   // Add transcript turns as frames — N11: include modelInputManifest for AI turns
   let prevSnapshot: { stateHash: string; stateJson: string } | undefined;
+  let prevTurnIndex = -1;
   for (const row of transcriptRows) {
     const isAITurn = row.role === "interviewer" || row.role === "model" || row.role === "assistant";
     const meta = row.generationMetadata as Record<string, unknown> | null;
@@ -173,33 +194,48 @@ export async function reconstructReplay(interviewId: string): Promise<ReplayRepo
       causalParentId: row.causalParentTurnId || undefined,
     };
 
-    // N11: modelInputManifest for AI turns
+    // N11: modelInputManifest for AI turns — enriched from event log + snapshots
     if (isAITurn) {
       const snapshot = snapshotByTurnIndex.get(row.turnIndex);
+      const turnEvents = eventsByTurnIndex.get(row.turnIndex) || [];
+
+      // Extract confidence score from checkpoint event if available
+      const checkpointEvent = turnEvents.find(e => e.eventType === "checkpoint");
+      const eventConfidence = checkpointEvent?.payload?.memoryConfidence as number | undefined;
+
       frame.modelInputManifest = {
         memoryPacketHash: snapshot?.stateHash || "",
         contextTurnCount: row.turnIndex + 1,
         factCount: factRows.filter((f: { createdAt: Date }) => f.createdAt <= row.timestamp).length,
-        confidenceScore: 1.0,
+        confidenceScore: eventConfidence ?? (snapshot ? 1.0 : 0.0),
         memoryIntegrityChecksum: row.memoryChecksum || null,
         sourceTurnIds,
       };
 
-      // N11: stateDiff between consecutive snapshots
+      // N11: stateDiff between consecutive snapshots with real memoryDeltaSummary
       if (snapshot && prevSnapshot) {
         const fieldsChanged = computeFieldsDiff(prevSnapshot.stateJson, snapshot.stateJson);
+
+        // Compute real memoryDeltaSummary from events + facts between turns
+        let factsAdded = 0;
+        let contradictionsDetected = 0;
+        let commitmentsMade = 0;
+        for (let ti = prevTurnIndex + 1; ti <= row.turnIndex; ti++) {
+          factsAdded += factCountByTurnIndex.get(ti) || 0;
+          const tiEvents = eventsByTurnIndex.get(ti) || [];
+          contradictionsDetected += tiEvents.filter(e => e.eventType === "contradiction_detected").length;
+          commitmentsMade += tiEvents.filter(e => e.eventType === "state_transition" && e.payload?.type === "COMMITMENT_MADE").length;
+        }
+
         frame.stateDiff = {
           stateHashBefore: prevSnapshot.stateHash,
           stateHashAfter: snapshot.stateHash,
           fieldsChanged,
-          memoryDeltaSummary: {
-            factsAdded: 0,
-            contradictionsDetected: 0,
-            commitmentsMade: 0,
-          },
+          memoryDeltaSummary: { factsAdded, contradictionsDetected, commitmentsMade },
         };
       }
       if (snapshot) prevSnapshot = snapshot;
+      prevTurnIndex = row.turnIndex;
     }
 
     frames.push(frame);
