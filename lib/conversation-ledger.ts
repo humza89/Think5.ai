@@ -159,9 +159,11 @@ export async function appendTurns(
 export async function commitSingleTurn(
   interviewId: string,
   turn: LedgerTurn,
-  expectedVersion: number
+  expectedVersion: number,
+  /** N2: Optional external transaction client for atomic turn boundary */
+  externalTx?: Prisma.TransactionClient
 ): Promise<{ committed: boolean; turn?: StoredTurn; reason?: string; currentVersion?: number }> {
-  return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+  const executor = async (tx: Prisma.TransactionClient) => {
     // 1. Version assertion: current ledger must match expectedVersion
     const lastTurn = await tx.interviewTranscript.findFirst({
       where: { interviewId },
@@ -221,7 +223,13 @@ export async function commitSingleTurn(
       turn: mapRow(created),
       currentVersion: turnIndex,
     };
-  });
+  };
+
+  // N2: Use external transaction if provided, otherwise self-contained
+  if (externalTx) {
+    return executor(externalTx);
+  }
+  return prisma.$transaction(executor);
 }
 
 /**

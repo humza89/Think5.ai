@@ -14,10 +14,11 @@
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSessionState, saveSessionState } from "@/lib/session-store";
-import { commitTurn, computeContextChecksum } from "@/lib/session-brain";
+import { commitTurn, atomicTurnCommit, computeContextChecksum } from "@/lib/session-brain";
 import { recordEvent } from "@/lib/interview-timeline";
 import { recordSLOEvent } from "@/lib/slo-monitor";
 import { isEnabled } from "@/lib/feature-flags";
+import { markFragmentComplete, cleanupCompletedFragments } from "@/lib/turn-fragment-store";
 
 export async function POST(
   request: NextRequest,
@@ -53,6 +54,12 @@ export async function POST(
     causalParentTurnId?: string;
     clientTimestamp?: string;
     contextChecksum?: string;
+    /** N9: Client-assigned monotonic sequence number */
+    sequenceNumber?: number;
+    /** N8: Grounding references — which candidate turns ground this question */
+    sourceTurnIds?: string[];
+    /** N4: Chunk ID for turn fragment tracking */
+    chunkId?: string;
   };
   try {
     body = await request.json();
@@ -103,14 +110,18 @@ export async function POST(
     return Response.json({ error: "Memory retrieval failed", detail: "turns" }, { status: 503 });
   }
 
-  // Commit the turn via session brain
-  const result = await commitTurn(id, body, {
+  // Commit the turn via session brain — N2: route to atomicTurnCommit when enabled
+  const commitFn = isEnabled("ATOMIC_TURN_COMMIT") ? atomicTurnCommit : commitTurn;
+  const result = await commitFn(id, body, {
     interviewerState: session.interviewerState,
     lastTurnIndex: session.lastTurnIndex ?? -1,
     verifiedFacts,
     recentTurns,
     contextChecksum: session.turnCommitChecksum,
     factCount: verifiedFacts.length,
+    lastSequenceNumber: session.lastSequenceNumber,
+    lastMemoryChecksum: session.lastMemoryChecksum,
+    lastExtractionTurnIndex: session.lastExtractionTurnIndex,
   });
 
   const durationMs = Date.now() - startMs;
@@ -126,7 +137,35 @@ export async function POST(
     if (result.interviewerState) {
       session.interviewerState = result.interviewerState;
     }
+    // N9: Track last sequence number
+    if (body.sequenceNumber !== undefined) {
+      session.lastSequenceNumber = body.sequenceNumber;
+    }
+    // N5: Track memory integrity checksum
+    if (result.memoryChecksum) {
+      session.lastMemoryChecksum = result.memoryChecksum;
+    }
+    // N6: Track last extraction turn index for candidate turns
+    if (body.role === "user" || body.role === "candidate") {
+      session.lastExtractionTurnIndex = result.turnIndex;
+    }
     await saveSessionState(id, session);
+
+    // N4: Mark fragment complete and cleanup (non-blocking)
+    if (body.chunkId) {
+      markFragmentComplete(id, body.chunkId).catch(() => {});
+      cleanupCompletedFragments(id).catch(() => {});
+    }
+  }
+
+  // N3: Return 202 when holdSignal present (memory degradation pause)
+  if (!result.committed && result.holdSignal) {
+    return Response.json({
+      committed: false,
+      reason: result.reason,
+      holdSignal: result.holdSignal,
+      memorySlotWarnings: result.memorySlotWarnings,
+    }, { status: 202 });
   }
 
   // Record timeline event
@@ -157,6 +196,8 @@ export async function POST(
     memorySlotWarnings: result.memorySlotWarnings,
     interviewerState: result.interviewerState,
     ledgerVersion: result.ledgerVersion,
+    memoryChecksum: result.memoryChecksum,
+    expectedSequenceNumber: result.expectedSequenceNumber,
     durationMs,
   });
 }

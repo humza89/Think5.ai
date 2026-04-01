@@ -28,7 +28,10 @@ vi.mock("@/lib/conversation-ledger", () => ({
 }));
 
 vi.mock("@/lib/feature-flags", () => ({
-  isEnabled: vi.fn().mockReturnValue(true),
+  isEnabled: vi.fn().mockImplementation((flag: string) => {
+    if (flag === "ENTERPRISE_MEMORY_HARD_PAUSE") return false;
+    return true;
+  }),
   FeatureFlags: {
     USE_CANONICAL_LEDGER: true,
     DETERMINISTIC_RESUME: true,
@@ -42,6 +45,7 @@ vi.mock("@/lib/feature-flags", () => ({
     MEMORY_TRUTH_SERVICE: true,
     SEMANTIC_CONTRADICTION_DETECTOR: true,
     MEMORY_INTEGRITY_SCORECARD: true,
+    ENTERPRISE_MEMORY_HARD_PAUSE: false,
   },
 }));
 

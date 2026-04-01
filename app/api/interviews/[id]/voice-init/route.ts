@@ -41,6 +41,18 @@ export async function POST(
     return Response.json({ error: "Voice mode is temporarily disabled", code: "VOICE_DISABLED" }, { status: 503 });
   }
 
+  // N12: Continuity SLO enforcement — auto-disable voice on breach
+  if (isEnabled("CONTINUITY_SLO_ENFORCEMENT")) {
+    try {
+      const { shouldBlockVoiceMode } = await import("@/lib/continuity-slo-monitor");
+      const sloGate = await shouldBlockVoiceMode();
+      if (sloGate.blocked) {
+        recordEvent(id, "anomaly", { type: "continuity_slo_breach", reason: sloGate.reason }).catch(() => {});
+        return Response.json({ error: "Voice mode paused due to SLO breach", reason: sloGate.reason }, { status: 503 });
+      }
+    } catch { /* Non-fatal: SLO check failure doesn't block voice */ }
+  }
+
   console.log(`[voice-init] Called for interview=${id}, VOICE_RELAY_URL=${process.env.VOICE_RELAY_URL ? "SET" : "MISSING"}, RELAY_JWT_SECRET=${process.env.RELAY_JWT_SECRET ? "SET" : "MISSING"}`);
 
   let lockOwnerToken = "";
@@ -345,6 +357,7 @@ export async function POST(
 
     // On reconnect, include server-side enterprise memory fields so client refs stay in sync
     let enterpriseMemory: Record<string, unknown> | undefined;
+    let partialFragments: Array<{ chunkId: string; role: string; partialContent: string; status: string }> | undefined;
     if (reconnect) {
       const serverState = await getSessionState(id);
       if (serverState) {
@@ -356,6 +369,19 @@ export async function POST(
           ...(serverState.interviewerState ? { interviewerState: serverState.interviewerState } : {}),
         };
       }
+      // N4: Load incomplete turn fragments for context recovery
+      try {
+        const { getIncompleteFragments } = await import("@/lib/turn-fragment-store");
+        const fragments = await getIncompleteFragments(id);
+        if (fragments.length > 0) {
+          partialFragments = fragments.map((f) => ({
+            chunkId: f.chunkId,
+            role: f.role,
+            partialContent: f.partialContent,
+            status: f.status,
+          }));
+        }
+      } catch { /* Non-fatal: fragment recovery failure */ }
     }
 
     // Compute initial context checksum for turn-commit protocol
@@ -387,7 +413,11 @@ export async function POST(
       reconnectToken,
       lockOwnerToken,
       ...(enterpriseMemory ? { enterpriseMemory } : {}),
+      ...(partialFragments ? { partialFragments } : {}),
       ...(turnCommitEnabled ? { turnCommitEnabled: true, contextChecksum } : {}),
+      // N1: Server-authoritative turn delivery config
+      serverAuthoritativeTurns: isEnabled("SERVER_AUTHORITATIVE_TURNS"),
+      turnValidationCallbackUrl: `${process.env.NEXT_PUBLIC_APP_URL || ""}/api/interviews/${id}/voice/turn-commit`,
       // Degraded-network configuration for adaptive checkpoint intervals
       degradedNetworkConfig: {
         checkpointIntervalMs: { good: 15000, fair: 15000, poor: 10000 },

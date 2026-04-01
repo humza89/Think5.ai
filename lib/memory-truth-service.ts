@@ -20,6 +20,8 @@ export interface TurnNode {
   factIds: string[];
   causalParentId: string | null;
   timestamp: Date;
+  /** N8: Which candidate turns ground this AI turn */
+  sourceTurnIds?: string[];
 }
 
 export interface CanonicalFact {
@@ -47,6 +49,8 @@ export interface MemoryTruth {
   unresolvedQuestions: UnresolvedQuestion[];
   contradictions: Contradiction[];
   commitments: Commitment[];
+  /** N8: Bidirectional reference index — for each turn, which turns cite it */
+  turnReferences: Record<string, string[]>;
   /** Computed integrity metrics */
   integrity: {
     totalTurns: number;
@@ -69,7 +73,7 @@ export async function buildMemoryTruth(interviewId: string): Promise<MemoryTruth
   const { deserializeState, createInitialState } = await import("@/lib/interviewer-state");
   const { getSessionState } = await import("@/lib/session-store");
 
-  // 1. Load turn graph from canonical ledger
+  // 1. Load turn graph from canonical ledger (include generationMetadata for N8 sourceTurnIds)
   const transcriptRows = await prisma.interviewTranscript.findMany({
     where: { interviewId },
     orderBy: { turnIndex: "asc" },
@@ -80,6 +84,7 @@ export async function buildMemoryTruth(interviewId: string): Promise<MemoryTruth
       content: true,
       causalParentTurnId: true,
       timestamp: true,
+      generationMetadata: true,
     },
   });
 
@@ -106,16 +111,21 @@ export async function buildMemoryTruth(interviewId: string): Promise<MemoryTruth
     factsByTurn.set(fact.turnId, existing);
   }
 
-  // 4. Build turn graph
-  const turnGraph: TurnNode[] = transcriptRows.map((row: { turnId: string; turnIndex: number; role: string; content: string; causalParentTurnId: string | null; timestamp: Date }) => ({
-    turnId: row.turnId,
-    turnIndex: row.turnIndex,
-    role: row.role,
-    content: row.content,
-    factIds: factsByTurn.get(row.turnId) || [],
-    causalParentId: row.causalParentTurnId,
-    timestamp: row.timestamp,
-  }));
+  // 4. Build turn graph — N8: extract sourceTurnIds from generationMetadata
+  const turnGraph: TurnNode[] = transcriptRows.map((row: { turnId: string; turnIndex: number; role: string; content: string; causalParentTurnId: string | null; timestamp: Date; generationMetadata: unknown }) => {
+    const meta = row.generationMetadata as Record<string, unknown> | null;
+    const sourceTurnIds = Array.isArray(meta?.sourceTurnIds) ? (meta.sourceTurnIds as string[]) : undefined;
+    return {
+      turnId: row.turnId,
+      turnIndex: row.turnIndex,
+      role: row.role,
+      content: row.content,
+      factIds: factsByTurn.get(row.turnId) || [],
+      causalParentId: row.causalParentTurnId,
+      timestamp: row.timestamp,
+      sourceTurnIds,
+    };
+  });
 
   // 5. Canonical facts (deduplicated by content, highest confidence wins)
   const factMap = new Map<string, CanonicalFact>();
@@ -155,18 +165,56 @@ export async function buildMemoryTruth(interviewId: string): Promise<MemoryTruth
     }
   }
 
-  // 7. Load interviewer state for contradictions and commitments
+  // 7. N7: Load contradictions and commitments from Postgres (canonical source)
+  //    Falls back to Redis session state only if Postgres has no data.
   let contradictions: Contradiction[] = [];
   let commitments: Commitment[] = [];
   try {
-    const session = await getSessionState(interviewId);
-    if (session?.interviewerState) {
-      const state = deserializeState(session.interviewerState);
-      contradictions = state.contradictionMap;
-      commitments = state.commitments;
+    const [dbContradictions, dbCommitments] = await Promise.all([
+      prisma.interviewContradiction.findMany({
+        where: { interviewId },
+        orderBy: { detectedAt: "asc" },
+      }),
+      prisma.interviewCommitment.findMany({
+        where: { interviewId },
+        orderBy: { createdAt: "asc" },
+      }),
+    ]);
+
+    if (dbContradictions.length > 0 || dbCommitments.length > 0) {
+      // Postgres is canonical — map to Contradiction/Commitment interface
+      contradictions = dbContradictions.map((c: { claimTurnId: string; evidenceTurnId: string; description: string }) => ({
+        turnIdA: c.claimTurnId,
+        turnIdB: c.evidenceTurnId,
+        description: c.description,
+      }));
+      commitments = dbCommitments.map((c: { description: string; turnId: string; status: string }) => ({
+        description: c.description,
+        turnId: c.turnId,
+        fulfilled: c.status === "fulfilled",
+      }));
+    } else {
+      // Fallback: try Redis session state (pre-N7 data)
+      const session = await getSessionState(interviewId);
+      if (session?.interviewerState) {
+        const state = deserializeState(session.interviewerState);
+        contradictions = state.contradictionMap;
+        commitments = state.commitments;
+      }
     }
   } catch {
-    // Fall back to empty
+    // Fall back to empty — fail-closed means no phantom data
+  }
+
+  // N8: Build bidirectional reference index
+  const turnReferences: Record<string, string[]> = {};
+  for (const turn of turnGraph) {
+    if (turn.sourceTurnIds) {
+      for (const refId of turn.sourceTurnIds) {
+        if (!turnReferences[refId]) turnReferences[refId] = [];
+        turnReferences[refId].push(turn.turnId);
+      }
+    }
   }
 
   // 8. Compute integrity metrics
@@ -180,6 +228,7 @@ export async function buildMemoryTruth(interviewId: string): Promise<MemoryTruth
     unresolvedQuestions,
     contradictions,
     commitments,
+    turnReferences,
     integrity: {
       totalTurns,
       totalFacts,

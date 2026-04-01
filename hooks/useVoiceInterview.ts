@@ -211,6 +211,8 @@ export function useVoiceInterview(
   const reconnectStateRef = useRef<ReconnectState>("DISCONNECTED"); // Enforced reconnect state machine
   const reconnectTimestampsRef = useRef<number[]>([]); // CF4: Track reconnect cycle timestamps for rate-limiting
   const memoryPacketVersionRef = useRef<number>(0); // Monotonic version for stale packet detection
+  const serverAuthoritativeTurnsRef = useRef(false); // N1: Hold-and-validate mode (set from voice-init)
+  const sequenceNumberRef = useRef(0); // N9: Monotonic client sequence number
 
   // ── Audio Resource Cleanup Helper ────────────────────────────────────
   // Called before reconnect and on unmount to prevent resource leaks
@@ -403,6 +405,7 @@ export function useVoiceInterview(
 
             // Turn-commit protocol: commit candidate turn to server
             if (turnCommitEnabledRef.current) {
+              const seqNum = sequenceNumberRef.current++;
               try {
                 const commitRes = await fetch(`/api/interviews/${interviewId}/voice/turn-commit`, {
                   method: "POST",
@@ -413,6 +416,7 @@ export function useVoiceInterview(
                     content: candidateText,
                     contextChecksum: contextChecksumRef.current,
                     clientTimestamp: new Date().toISOString(),
+                    sequenceNumber: seqNum,
                   }),
                 });
                 if (commitRes.ok) {
@@ -480,13 +484,16 @@ export function useVoiceInterview(
         }
 
         // Turn complete — finalize the accumulated transcript entry
+        // N1: When server-authoritative mode is on, HOLD the turn and only render after server validates
         if (serverContent.turnComplete) {
           if (currentTurnTextRef.current.trim()) {
             let finalText = currentTurnTextRef.current.trim();
+            let shouldRender = true; // N1: gate rendering on server validation
 
             // Turn-commit protocol: commit AI turn to server for validation
             // Server handles intro suppression, contradiction gates, and memory confidence checks
             if (turnCommitEnabledRef.current) {
+              const seqNum = sequenceNumberRef.current++;
               try {
                 const commitRes = await fetch(`/api/interviews/${interviewId}/voice/turn-commit`, {
                   method: "POST",
@@ -497,6 +504,7 @@ export function useVoiceInterview(
                     content: finalText,
                     contextChecksum: contextChecksumRef.current,
                     clientTimestamp: new Date().toISOString(),
+                    sequenceNumber: seqNum,
                   }),
                 });
                 if (!commitRes.ok) throw new Error(`Turn-commit failed: ${commitRes.status}`);
@@ -510,7 +518,6 @@ export function useVoiceInterview(
                   // Apply server corrections if any (e.g., re-introduction stripped by output gate)
                   if (commitData.violations?.length > 0) {
                     console.warn(`[Voice] Turn-commit: ${commitData.violations.length} violation(s)`);
-                    // If server returned a sanitized response, use it
                     const reintroViolation = commitData.violations.find((v: { type: string }) => v.type === "reintroduction");
                     if (reintroViolation) {
                       finalText = "Let's continue where we left off.";
@@ -518,10 +525,6 @@ export function useVoiceInterview(
                   }
                   if (commitData.memorySlotWarnings?.length > 0) {
                     console.warn(`[Voice] Memory warnings: ${commitData.memorySlotWarnings.length} warning(s)`);
-                    // Fix 2: Log memory confidence warnings — server-side gates enforce caution
-                    // Note: Cannot inject mid-session system instructions via Gemini Live WebSocket
-                    // (clientContent with role:"user" would be treated as candidate speech).
-                    // Server-side output gate + grounding gate enforce safe behavior instead.
                     for (const w of commitData.memorySlotWarnings) {
                       if (w.includes("LOW_MEMORY_CONFIDENCE")) {
                         console.warn("[Voice] LOW_MEMORY_CONFIDENCE — server gates will enforce cautious output");
@@ -541,24 +544,38 @@ export function useVoiceInterview(
                 } else if (commitData.reason === "GROUNDING_GATE_BLOCKED" && !commitData.corrections) {
                   // Grounding gate blocked without corrections — use safe fallback
                   finalText = "Let's continue with the interview.";
+                } else if (!commitData.committed && serverAuthoritativeTurnsRef.current) {
+                  // N1: Server rejected turn AND server-authoritative mode is on — suppress rendering
+                  console.warn(`[Voice] N1: Turn suppressed by server — reason=${commitData.reason}`);
+                  shouldRender = false;
                 }
-              } catch { /* Non-fatal: fall back to checkpoint-based persistence */ }
+              } catch {
+                // Non-fatal: if commit fails in non-authoritative mode, still render
+                // In server-authoritative mode, suppress on commit failure (fail-closed)
+                if (serverAuthoritativeTurnsRef.current) {
+                  console.warn("[Voice] N1: Turn-commit failed — suppressing turn (fail-closed)");
+                  shouldRender = false;
+                }
+              }
             }
 
-            setTranscript((prev) => {
-              const last = prev[prev.length - 1];
-              if (last && last.role === "interviewer") {
-                return [...prev.slice(0, -1), { ...last, content: finalText, finalized: true }];
+            // N1: Only render if server validated (or server-authoritative mode is off)
+            if (shouldRender) {
+              setTranscript((prev) => {
+                const last = prev[prev.length - 1];
+                if (last && last.role === "interviewer") {
+                  return [...prev.slice(0, -1), { ...last, content: finalText, finalized: true }];
+                }
+                return [...prev, { role: "interviewer" as const, content: finalText, timestamp: new Date().toISOString(), finalized: true }];
+              });
+              // Count questions and track for dedup
+              if (finalText.includes("?")) {
+                setQuestionCount((prev) => prev + 1);
+                if (askedQuestionsRef.current.length >= 50) {
+                  askedQuestionsRef.current = askedQuestionsRef.current.slice(-49);
+                }
+                askedQuestionsRef.current.push(finalText);
               }
-              return [...prev, { role: "interviewer" as const, content: finalText, timestamp: new Date().toISOString(), finalized: true }];
-            });
-            // Count questions and track for dedup
-            if (finalText.includes("?")) {
-              setQuestionCount((prev) => prev + 1);
-              if (askedQuestionsRef.current.length >= 50) {
-                askedQuestionsRef.current = askedQuestionsRef.current.slice(-49);
-              }
-              askedQuestionsRef.current.push(finalText);
             }
           }
           currentTurnTextRef.current = "";
@@ -1080,6 +1097,13 @@ export function useVoiceInterview(
         if (initData.contextChecksum) {
           contextChecksumRef.current = initData.contextChecksum;
         }
+      }
+
+      // N1: Enable server-authoritative turn delivery (hold-and-validate)
+      serverAuthoritativeTurnsRef.current = !!initData.serverAuthoritativeTurns;
+      // N9: Reset sequence number on fresh connect, preserve on reconnect
+      if (!isReconnect) {
+        sequenceNumberRef.current = 0;
       }
 
       // Fix 1: Complete server verification for tokenless reconnects.

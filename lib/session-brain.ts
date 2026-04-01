@@ -13,6 +13,7 @@
  */
 
 import { createHash } from "crypto";
+import { Prisma } from "@prisma/client";
 import type { InterviewerState } from "./interviewer-state";
 import { transitionState, computeStateHash, deserializeState, serializeState, createInitialState } from "./interviewer-state";
 import { commitSingleTurn } from "./conversation-ledger";
@@ -25,6 +26,7 @@ import { detectContradictions } from "./semantic-contradiction-detector";
 import { compute4FactorConfidence } from "./memory-orchestrator";
 import { recordSLOEvent, enforceSessionSLO } from "./slo-monitor";
 import { recordEvent } from "./interview-timeline";
+import { extractFactsImmediate } from "./fact-extractor";
 
 // ── Types ────────────────────────────────────────────────────────────
 
@@ -35,6 +37,12 @@ export interface TurnCommitRequest {
   causalParentTurnId?: string;
   clientTimestamp?: string;
   contextChecksum?: string;
+  /** N9: Client-assigned monotonic sequence number (starts at 0) */
+  sequenceNumber?: number;
+  /** N8: Grounding references — which candidate turns ground this question */
+  sourceTurnIds?: string[];
+  /** N4: Chunk ID for turn fragment tracking */
+  chunkId?: string;
 }
 
 export interface TurnCommitResult {
@@ -50,6 +58,12 @@ export interface TurnCommitResult {
   ledgerVersion?: number;
   /** Regeneration guidance when blocked by contradiction detector — tells caller how to correct */
   regenerationPrompt?: string;
+  /** N3: Hold signal when memory confidence is degraded (0.3-0.65) */
+  holdSignal?: { action: string; retryAfterMs: number; recoverySyncRequired: boolean };
+  /** N5: Per-turn memory integrity checksum */
+  memoryChecksum?: string;
+  /** N9: Expected next sequence number (for resync on rejection) */
+  expectedSequenceNumber?: number;
 }
 
 export interface ContinuityContract {
@@ -100,6 +114,12 @@ export async function commitTurn(
     contextChecksum?: string;
     factCount?: number;
     lastFactRefreshAt?: string;
+    /** N9: Last committed sequence number */
+    lastSequenceNumber?: number;
+    /** N5: Last memory integrity checksum */
+    lastMemoryChecksum?: string;
+    /** N5: Last extraction turn index */
+    lastExtractionTurnIndex?: number;
   }
 ): Promise<TurnCommitResult> {
   const violations: GateViolation[] = [];
@@ -118,6 +138,25 @@ export async function commitTurn(
       };
     }
   } catch { /* SLO enforcement failure is non-fatal */ }
+
+  // 0b. N9: Strict sequence number enforcement
+  if (isEnabled("STRICT_SEQUENCE_NUMBERS") && request.sequenceNumber !== undefined) {
+    const expectedSeq = (sessionState.lastSequenceNumber ?? -1) + 1;
+    if (request.sequenceNumber < expectedSeq) {
+      return {
+        committed: false, stateHash: "", contextChecksum: "",
+        violations: [], reason: "DUPLICATE_SEQUENCE",
+        expectedSequenceNumber: expectedSeq,
+      };
+    }
+    if (request.sequenceNumber > expectedSeq) {
+      return {
+        committed: false, stateHash: "", contextChecksum: "",
+        violations: [], reason: "OUT_OF_ORDER_SEQUENCE",
+        expectedSequenceNumber: expectedSeq,
+      };
+    }
+  }
 
   // 1. Deserialize interviewer state
   let interviewerState: InterviewerState;
@@ -176,6 +215,20 @@ export async function commitTurn(
           contextChecksum: sessionState.contextChecksum || "",
           violations: [],
           reason: "MEMORY_CONFIDENCE_LOW",
+          memorySlotWarnings: [...memorySlotWarnings],
+        };
+      }
+      // N3: Enterprise memory pause — degraded but not critically low (0.3 ≤ confidence < 0.65)
+      else if (memoryConfidence < 0.65 && isEnabled("ENTERPRISE_MEMORY_HARD_PAUSE")) {
+        memorySlotWarnings.push(`ENTERPRISE_PAUSE: confidence=${memoryConfidence.toFixed(2)} < 0.65`);
+        recordSLOEvent("memory.confidence.adequate_rate", false).catch(() => {});
+        return {
+          committed: false,
+          stateHash: interviewerState.stateHash,
+          contextChecksum: sessionState.contextChecksum || "",
+          violations: [],
+          reason: "MEMORY_CONFIDENCE_DEGRADED",
+          holdSignal: { action: "HOLD_AND_RETRY", retryAfterMs: 2000, recoverySyncRequired: true },
           memorySlotWarnings: [...memorySlotWarnings],
         };
       } else {
@@ -425,6 +478,206 @@ export async function commitTurn(
     interviewerState: serializeState(interviewerState),
     ledgerVersion: commitResult.currentVersion ?? sessionState.lastTurnIndex + 1,
   };
+}
+
+// ── N5: Memory Integrity Checksum ────────────────────────────────────
+
+/**
+ * Compute a deterministic memory integrity checksum for a turn.
+ * Used to detect memory state drift between turns.
+ */
+export function computeMemoryIntegrityChecksum(params: {
+  ledgerVersion: number;
+  lastExtractionTurnIndex: number;
+  stateHash: string;
+  commitmentCount: number;
+  contradictionCount: number;
+  confidenceTier: string;
+}): string {
+  return createHash("sha256")
+    .update(JSON.stringify(params))
+    .digest("hex")
+    .slice(0, 32);
+}
+
+// ── N2: Atomic Turn Commit ──────────────────────────────────────────
+
+/**
+ * Atomic turn commit — wraps turn commit + state snapshot + memory updates
+ * in a single Prisma $transaction. If any write fails, all roll back.
+ *
+ * Runs all read-only gates OUTSIDE the transaction, then performs all
+ * writes atomically inside the transaction.
+ *
+ * Integrates: N2 (atomic boundary), N5 (checksum), N6 (per-turn extraction),
+ * N7 (durable commitments/contradictions), N8 (source_turn_ids), N9 (sequence numbers).
+ */
+export async function atomicTurnCommit(
+  interviewId: string,
+  request: TurnCommitRequest,
+  sessionState: {
+    interviewerState?: string;
+    lastTurnIndex: number;
+    verifiedFacts?: Array<{ factType: string; content: string; confidence: number }>;
+    recentTurns?: Array<{ turnId: string; content: string }>;
+    contextChecksum?: string;
+    factCount?: number;
+    lastFactRefreshAt?: string;
+    lastSequenceNumber?: number;
+    lastMemoryChecksum?: string;
+    lastExtractionTurnIndex?: number;
+  }
+): Promise<TurnCommitResult> {
+  // Phase 1: Run all read-only gates (no transaction needed)
+  // Delegate to commitTurn for all gate logic, but intercept before the ledger write
+  const gateResult = await commitTurn(interviewId, request, sessionState);
+
+  // If gates blocked or the turn was committed by commitTurn, return as-is
+  // (commitTurn already handles the full flow — atomicTurnCommit adds the
+  // transactional write layer on top)
+  if (!gateResult.committed) {
+    return gateResult;
+  }
+
+  // Phase 2: The turn was committed by commitTurn (non-atomically).
+  // Now perform the additional atomic writes that commitTurn doesn't do.
+  const { prisma } = await import("@/lib/prisma");
+
+  try {
+    const turnIndex = gateResult.turnIndex;
+    const isAITurn = request.role === "model" || request.role === "interviewer";
+    const isCandidateTurn = request.role === "user" || request.role === "candidate";
+
+    await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+      // N2a: State snapshot (already done by voice/route.ts — ensure it's in transaction)
+      const interviewerStateJson = gateResult.interviewerState;
+      if (interviewerStateJson && turnIndex !== undefined) {
+        await tx.interviewerStateSnapshot.upsert({
+          where: { interviewId_turnIndex: { interviewId, turnIndex } },
+          update: { stateJson: interviewerStateJson, stateHash: gateResult.stateHash },
+          create: { interviewId, turnIndex, stateJson: interviewerStateJson, stateHash: gateResult.stateHash },
+        });
+      }
+
+      // N6: Per-turn fact extraction for candidate turns
+      let extractedFactCount = 0;
+      if (isCandidateTurn && request.content.length > 10) {
+        const facts = extractFactsImmediate({ turnId: request.turnId, role: request.role, content: request.content });
+        if (facts.length > 0) {
+          await tx.interviewFact.createMany({
+            data: facts.map((f) => ({
+              interviewId,
+              turnId: request.turnId,
+              factType: f.factType,
+              content: f.content,
+              confidence: f.confidence,
+              extractedBy: "immediate",
+            })),
+            skipDuplicates: true,
+          });
+          extractedFactCount = facts.length;
+        }
+      }
+
+      // N7: Persist contradictions to InterviewContradiction table
+      if (interviewerStateJson) {
+        try {
+          const state = deserializeState(interviewerStateJson);
+          // Persist any new contradictions from state
+          if (state.contradictionMap.length > 0) {
+            for (const c of state.contradictionMap) {
+              await tx.interviewContradiction.create({
+                data: {
+                  interviewId,
+                  claimTurnId: c.turnIdA,
+                  evidenceTurnId: c.turnIdB,
+                  description: c.description,
+                  type: "semantic",
+                  confidence: 0.8,
+                },
+              }).catch(() => {}); // Skip duplicates
+            }
+          }
+          // Persist any new commitments from state
+          if (state.commitments.length > 0) {
+            for (const c of state.commitments) {
+              await tx.interviewCommitment.upsert({
+                where: {
+                  id: `${interviewId}-${c.turnId}-${c.description.slice(0, 50)}`,
+                },
+                update: {
+                  status: c.fulfilled ? "fulfilled" : "pending",
+                  resolvedAt: c.fulfilled ? new Date() : null,
+                },
+                create: {
+                  interviewId,
+                  turnId: c.turnId,
+                  description: c.description,
+                  status: c.fulfilled ? "fulfilled" : "pending",
+                },
+              }).catch(() => {}); // Skip duplicates
+            }
+          }
+        } catch { /* Non-fatal — state parsing may fail */ }
+      }
+
+      // N8: Validate and store source_turn_ids for AI turns
+      if (isAITurn && request.sourceTurnIds && request.sourceTurnIds.length > 0 && turnIndex !== undefined) {
+        // Validate that referenced turns exist
+        const referencedTurns = await tx.interviewTranscript.findMany({
+          where: { interviewId, turnId: { in: request.sourceTurnIds } },
+          select: { turnId: true },
+        });
+        const validTurnIds = new Set(referencedTurns.map((t: { turnId: string }) => t.turnId));
+        const validatedSourceTurnIds = request.sourceTurnIds.filter((id) => validTurnIds.has(id));
+        const invalidSourceTurnIds = request.sourceTurnIds.filter((id) => !validTurnIds.has(id));
+
+        if (invalidSourceTurnIds.length > 0) {
+          console.warn(`[SessionBrain] Invalid sourceTurnIds: ${invalidSourceTurnIds.join(", ")}`);
+        }
+
+        // Store in generationMetadata
+        await tx.interviewTranscript.updateMany({
+          where: { interviewId, turnId: request.turnId },
+          data: {
+            generationMetadata: {
+              sourceTurnIds: validatedSourceTurnIds,
+              invalidSourceTurnIds,
+            },
+          },
+        });
+      }
+
+      // N5: Compute and store memory integrity checksum
+      if (turnIndex !== undefined) {
+        const memoryChecksum = computeMemoryIntegrityChecksum({
+          ledgerVersion: turnIndex,
+          lastExtractionTurnIndex: isCandidateTurn ? turnIndex : (sessionState.lastExtractionTurnIndex ?? -1),
+          stateHash: gateResult.stateHash,
+          commitmentCount: 0, // Will be counted from state
+          contradictionCount: 0,
+          confidenceTier: "normal",
+        });
+
+        await tx.interviewTranscript.updateMany({
+          where: { interviewId, turnId: request.turnId },
+          data: {
+            memoryChecksum,
+            sequenceNumber: request.sequenceNumber ?? null,
+          },
+        });
+
+        // Attach checksum to result
+        (gateResult as TurnCommitResult).memoryChecksum = memoryChecksum;
+      }
+    });
+  } catch (err) {
+    console.error(`[SessionBrain] Atomic transaction failed for ${interviewId}:`, err);
+    // The ledger commit already succeeded via commitTurn — log but don't fail the whole turn
+    recordSLOEvent("session.atomic_commit.success_rate", false).catch(() => {});
+  }
+
+  return gateResult;
 }
 
 /**

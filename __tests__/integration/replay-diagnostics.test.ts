@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 let mockTranscriptRows: any[] = [];
 let mockEventRows: any[] = [];
 let mockFactRows: any[] = [];
+let mockSnapshotRows: any[] = [];
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
@@ -14,6 +15,9 @@ vi.mock("@/lib/prisma", () => ({
     },
     interviewFact: {
       findMany: vi.fn().mockImplementation(() => Promise.resolve(mockFactRows)),
+    },
+    interviewerStateSnapshot: {
+      findMany: vi.fn().mockImplementation(() => Promise.resolve(mockSnapshotRows)),
     },
   },
 }));
@@ -31,6 +35,8 @@ function makeTranscriptRow(turnIndex: number, role: "candidate" | "interviewer" 
     serverReceivedAt: new Date(baseTime + turnIndex * 1000 + 100),
     contentChecksum: `checksum-${turnIndex}`,
     finalized: false,
+    generationMetadata: null,
+    memoryChecksum: null,
   };
 }
 
@@ -62,6 +68,7 @@ describe("Replay Diagnostics (REM-8)", () => {
     mockTranscriptRows = [];
     mockEventRows = [];
     mockFactRows = [];
+    mockSnapshotRows = [];
     vi.clearAllMocks();
   });
 

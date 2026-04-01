@@ -39,6 +39,8 @@ vi.mock("@/lib/feature-flags", () => ({
   isEnabled: vi.fn().mockImplementation((flag: string) => {
     // Disable output gate blocking so the unconditional intro guard fires
     if (flag === "OUTPUT_GATE_BLOCKING") return false;
+    // N3: Disable enterprise memory pause — test doesn't provide full memory context
+    if (flag === "ENTERPRISE_MEMORY_HARD_PAUSE") return false;
     return true;
   }),
   FeatureFlags: {},

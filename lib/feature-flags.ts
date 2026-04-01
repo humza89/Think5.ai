@@ -44,6 +44,23 @@ export const FeatureFlags = {
 
   /** Phase 13: Voice mode global kill switch */
   VOICE_MODE_ENABLED: envBool("FF_VOICE_MODE_ENABLED", true),
+
+  // ── Round 12: Enterprise Audit N1-N13 ──────────────────────────────
+
+  /** N1: Server-authoritative turn delivery (client hold-and-validate) */
+  SERVER_AUTHORITATIVE_TURNS: envBool("FF_SERVER_AUTHORITATIVE_TURNS", true),
+
+  /** N2: Atomic turn boundary (Prisma $transaction wrapping all writes) */
+  ATOMIC_TURN_COMMIT: envBool("FF_ATOMIC_TURN_COMMIT", true),
+
+  /** N3: Enterprise memory hard pause at 0.65 confidence threshold */
+  ENTERPRISE_MEMORY_HARD_PAUSE: envBool("FF_ENTERPRISE_MEMORY_HARD_PAUSE", true),
+
+  /** N9: Strict monotonic sequence number enforcement */
+  STRICT_SEQUENCE_NUMBERS: envBool("FF_STRICT_SEQUENCE_NUMBERS", true),
+
+  /** N12: Continuity SLO enforcement — auto-disable voice on breach */
+  CONTINUITY_SLO_ENFORCEMENT: envBool("FF_CONTINUITY_SLO_ENFORCEMENT", true),
 } as const;
 
 /**

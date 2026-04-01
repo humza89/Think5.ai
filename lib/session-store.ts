@@ -130,6 +130,12 @@ export interface SessionState {
     outcome: "synced" | "delta" | "full" | "failed";
     recoveryMs: number;
   }>;
+  /** N9: Last committed sequence number */
+  lastSequenceNumber?: number;
+  /** N5: Last memory integrity checksum */
+  lastMemoryChecksum?: string;
+  /** N5/N6: Last turn index where facts were extracted */
+  lastExtractionTurnIndex?: number;
 }
 
 function sessionKey(interviewId: string): string {

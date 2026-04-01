@@ -28,12 +28,34 @@ export interface ReplayFrame {
   turnIndex?: number;
   data: Record<string, unknown>;
   causalParentId?: string;
+  /** N11: What the model received as input context for this turn */
+  modelInputManifest?: {
+    memoryPacketHash: string;
+    contextTurnCount: number;
+    factCount: number;
+    confidenceScore: number;
+    memoryIntegrityChecksum: string | null;
+    sourceTurnIds: string[];
+  };
+  /** N11: State diff between consecutive interviewer state snapshots */
+  stateDiff?: {
+    stateHashBefore: string;
+    stateHashAfter: string;
+    fieldsChanged: string[];
+    memoryDeltaSummary: { factsAdded: number; contradictionsDetected: number; commitmentsMade: number };
+  };
 }
+
+export type DivergenceType =
+  | "TURN_INDEX_GAP"
+  | "SERVER_LAG"
+  | "MEMORY_MANIFEST_DIVERGENCE";
 
 export interface DivergencePoint {
   turnIndex: number;
   description: string;
   severity: "critical" | "warning" | "info";
+  type?: DivergenceType;
 }
 
 export interface ReplayReport {
@@ -64,8 +86,8 @@ export interface ReplayReport {
 export async function reconstructReplay(interviewId: string): Promise<ReplayReport> {
   const { prisma } = await import("@/lib/prisma");
 
-  // Fetch all data sources in parallel
-  const [transcriptRows, eventRows, factRows] = await Promise.all([
+  // Fetch all data sources in parallel (N11: include state snapshots + memoryChecksum)
+  const [transcriptRows, eventRows, factRows, snapshotRows] = await Promise.all([
     prisma.interviewTranscript.findMany({
       where: { interviewId },
       orderBy: { turnIndex: "asc" },
@@ -79,6 +101,8 @@ export async function reconstructReplay(interviewId: string): Promise<ReplayRepo
         contentChecksum: true,
         causalParentTurnId: true,
         finalized: true,
+        generationMetadata: true,
+        memoryChecksum: true,
       },
     }),
     prisma.interviewEvent.findMany({
@@ -106,13 +130,34 @@ export async function reconstructReplay(interviewId: string): Promise<ReplayRepo
         createdAt: true,
       },
     }),
+    // N11: Load state snapshots for modelInputManifest + stateDiff
+    prisma.interviewerStateSnapshot.findMany({
+      where: { interviewId },
+      orderBy: { turnIndex: "asc" },
+      select: {
+        turnIndex: true,
+        stateHash: true,
+        stateJson: true,
+      },
+    }),
   ]);
+
+  // N11: Build snapshot map by turnIndex for efficient lookup
+  const snapshotByTurnIndex = new Map<number, { stateHash: string; stateJson: string }>();
+  for (const snap of snapshotRows) {
+    snapshotByTurnIndex.set(snap.turnIndex, { stateHash: snap.stateHash, stateJson: snap.stateJson });
+  }
 
   const frames: ReplayFrame[] = [];
 
-  // Add transcript turns as frames
+  // Add transcript turns as frames — N11: include modelInputManifest for AI turns
+  let prevSnapshot: { stateHash: string; stateJson: string } | undefined;
   for (const row of transcriptRows) {
-    frames.push({
+    const isAITurn = row.role === "interviewer" || row.role === "model" || row.role === "assistant";
+    const meta = row.generationMetadata as Record<string, unknown> | null;
+    const sourceTurnIds = Array.isArray(meta?.sourceTurnIds) ? (meta.sourceTurnIds as string[]) : [];
+
+    const frame: ReplayFrame = {
       timestamp: row.timestamp,
       type: "turn",
       turnIndex: row.turnIndex,
@@ -126,7 +171,38 @@ export async function reconstructReplay(interviewId: string): Promise<ReplayRepo
         serverReceivedAt: row.serverReceivedAt,
       },
       causalParentId: row.causalParentTurnId || undefined,
-    });
+    };
+
+    // N11: modelInputManifest for AI turns
+    if (isAITurn) {
+      const snapshot = snapshotByTurnIndex.get(row.turnIndex);
+      frame.modelInputManifest = {
+        memoryPacketHash: snapshot?.stateHash || "",
+        contextTurnCount: row.turnIndex + 1,
+        factCount: factRows.filter((f: { createdAt: Date }) => f.createdAt <= row.timestamp).length,
+        confidenceScore: 1.0,
+        memoryIntegrityChecksum: row.memoryChecksum || null,
+        sourceTurnIds,
+      };
+
+      // N11: stateDiff between consecutive snapshots
+      if (snapshot && prevSnapshot) {
+        const fieldsChanged = computeFieldsDiff(prevSnapshot.stateJson, snapshot.stateJson);
+        frame.stateDiff = {
+          stateHashBefore: prevSnapshot.stateHash,
+          stateHashAfter: snapshot.stateHash,
+          fieldsChanged,
+          memoryDeltaSummary: {
+            factsAdded: 0,
+            contradictionsDetected: 0,
+            commitmentsMade: 0,
+          },
+        };
+      }
+      if (snapshot) prevSnapshot = snapshot;
+    }
+
+    frames.push(frame);
   }
 
   // Add events as frames
@@ -202,7 +278,7 @@ export async function reconstructReplay(interviewId: string): Promise<ReplayRepo
   // Sort all frames chronologically
   frames.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
 
-  // Detect divergence points (gaps in turn sequence, checksum mismatches)
+  // Detect divergence points (gaps in turn sequence, checksum mismatches, manifest divergence)
   const divergencePoints: DivergencePoint[] = [];
   for (let i = 1; i < transcriptRows.length; i++) {
     const prev = transcriptRows[i - 1];
@@ -214,6 +290,7 @@ export async function reconstructReplay(interviewId: string): Promise<ReplayRepo
         turnIndex: curr.turnIndex,
         description: `Turn index gap: ${prev.turnIndex} → ${curr.turnIndex} (expected ${prev.turnIndex + 1})`,
         severity: "critical",
+        type: "TURN_INDEX_GAP",
       });
     }
 
@@ -225,6 +302,22 @@ export async function reconstructReplay(interviewId: string): Promise<ReplayRepo
           turnIndex: curr.turnIndex,
           description: `Server lag: ${Math.round(lag / 1000)}s between client timestamp and server receipt`,
           severity: "warning",
+          type: "SERVER_LAG",
+        });
+      }
+    }
+
+    // N11: Memory manifest divergence — consecutive AI turns should have consistent state
+    const isAITurn = curr.role === "interviewer" || curr.role === "model" || curr.role === "assistant";
+    if (isAITurn && curr.memoryChecksum && prev.memoryChecksum) {
+      const currSnap = snapshotByTurnIndex.get(curr.turnIndex);
+      const prevSnap = snapshotByTurnIndex.get(prev.turnIndex);
+      if (currSnap && prevSnap && currSnap.stateHash === prevSnap.stateHash && curr.memoryChecksum !== prev.memoryChecksum) {
+        divergencePoints.push({
+          turnIndex: curr.turnIndex,
+          description: `Memory manifest divergence: state hash unchanged but memory checksum differs`,
+          severity: "warning",
+          type: "MEMORY_MANIFEST_DIVERGENCE",
         });
       }
     }
@@ -258,4 +351,27 @@ export async function reconstructReplay(interviewId: string): Promise<ReplayRepo
     divergencePoints,
     continuityScore,
   };
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────
+
+/**
+ * N11: Compute shallow field diff between two state JSON strings.
+ * Returns the list of top-level keys that changed.
+ */
+function computeFieldsDiff(beforeJson: string, afterJson: string): string[] {
+  try {
+    const before = JSON.parse(beforeJson) as Record<string, unknown>;
+    const after = JSON.parse(afterJson) as Record<string, unknown>;
+    const allKeys = new Set([...Object.keys(before), ...Object.keys(after)]);
+    const changed: string[] = [];
+    for (const key of allKeys) {
+      if (JSON.stringify(before[key]) !== JSON.stringify(after[key])) {
+        changed.push(key);
+      }
+    }
+    return changed;
+  } catch {
+    return ["parse_error"];
+  }
 }

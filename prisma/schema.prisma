@@ -713,6 +713,11 @@ model Interview {
   events          InterviewEvent[]
   // Screen capture sessions
   screenCaptures  ScreenCaptureSession[]
+  // N4: In-flight turn fragment persistence
+  turnFragments           TurnFragment[]
+  // N7: Durable commitments/contradictions (canonical Postgres store)
+  interviewCommitments    InterviewCommitment[]
+  interviewContradictions InterviewContradiction[]
 
   createdAt       DateTime          @default(now())
   updatedAt       DateTime          @updatedAt
@@ -747,11 +752,68 @@ model InterviewTranscript {
   clientTimestamp      DateTime? // Original client-side timestamp
   contentChecksum     String?   // SHA-256 of role:content for integrity verification
   finalized           Boolean   @default(true)
+  memoryChecksum      String?   // N5: SHA-256 memory integrity checksum per turn
+  sequenceNumber      Int?      // N9: Client-assigned monotonic sequence number
 
   createdAt           DateTime  @default(now())
 
   @@unique([interviewId, turnIndex])
   @@unique([interviewId, turnId])
+  @@index([interviewId])
+}
+
+// ============================================
+// Turn Fragments — In-flight partial turn persistence (N4)
+// ============================================
+
+model TurnFragment {
+  id              String    @id @default(cuid())
+  interviewId     String
+  interview       Interview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+  chunkId         String    // Unique per in-progress turn
+  partialContent  String    @db.Text
+  role            String
+  startedAt       DateTime  @default(now())
+  interruptedAt   DateTime?
+  resumedAt       DateTime?
+  status          String    @default("in_progress") // in_progress | interrupted | resumed | finalized
+
+  @@unique([interviewId, chunkId])
+  @@index([interviewId, status])
+}
+
+// ============================================
+// Interview Commitments — Durable Postgres store (N7)
+// ============================================
+
+model InterviewCommitment {
+  id            String    @id @default(cuid())
+  interviewId   String
+  interview     Interview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+  turnId        String
+  description   String    @db.Text
+  status        String    @default("pending") // pending | fulfilled | expired
+  createdAt     DateTime  @default(now())
+  resolvedAt    DateTime?
+
+  @@index([interviewId])
+}
+
+// ============================================
+// Interview Contradictions — Durable Postgres store (N7)
+// ============================================
+
+model InterviewContradiction {
+  id              String   @id @default(cuid())
+  interviewId     String
+  interview       Interview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+  claimTurnId     String
+  evidenceTurnId  String
+  description     String   @db.Text
+  type            String   // temporal | numeric | entity_scope
+  confidence      Float
+  detectedAt      DateTime @default(now())
+
   @@index([interviewId])
 }
 
