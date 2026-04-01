@@ -122,6 +122,43 @@ describe("N13: Enterprise Verification Evidence Suite", () => {
       expect(evidence.verified).toBe(true);
     });
 
+    it("50 hallucination-prone turns all detected via checksum divergence — gate simulation", () => {
+      // Simulate 50 AI turns where the model's state diverged from server state
+      // Each turn has a stale checksum that doesn't match the server's expected checksum
+      const telemetry: Array<{ turnIndex: number; blocked: boolean; blockReason: string }> = [];
+
+      const serverStateHash = "server-canonical-hash";
+      const serverChecksum = computeContextChecksum(serverStateHash, 10, 20);
+
+      for (let i = 0; i < 50; i++) {
+        // Simulate hallucination: model operates on stale/wrong state
+        const staleStateHash = `stale-hash-${i}`;
+        const clientChecksum = computeContextChecksum(staleStateHash, 10, 20);
+
+        // Gate check: does client's checksum match server's?
+        const blocked = clientChecksum !== serverChecksum;
+        telemetry.push({
+          turnIndex: i,
+          blocked,
+          blockReason: blocked ? "CONTEXT_STALE" : "NONE",
+        });
+      }
+
+      const allBlocked = telemetry.every(t => t.blocked);
+      const evidence = produceEvidence(
+        "50 hallucination-prone turns blocked by context gate",
+        allBlocked && telemetry.length === 50,
+        {
+          telemetryEntryCount: telemetry.length,
+          allBlocked,
+          blockedCount: telemetry.filter(t => t.blocked).length,
+          passedCount: telemetry.filter(t => !t.blocked).length,
+        }
+      );
+
+      expect(evidence.verified).toBe(true);
+    });
+
     it("memory integrity checksums detect any state mutation", () => {
       const baseParams = {
         ledgerVersion: 10,

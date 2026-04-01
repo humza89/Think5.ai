@@ -165,6 +165,24 @@ async function runValidationGates(
     }
   }
 
+  // 0c. N8: Enterprise source grounding — require sourceTurnIds on AI question turns
+  const isAIRole = request.role === "model" || request.role === "interviewer";
+  if (isAIRole && isEnabled("ENTERPRISE_SOURCE_GROUNDING_REQUIRED")) {
+    if (!request.sourceTurnIds || request.sourceTurnIds.length === 0) {
+      return {
+        passed: false,
+        rejectionResult: {
+          committed: false, stateHash: "", contextChecksum: "", violations: [],
+          reason: "SOURCE_GROUNDING_REQUIRED",
+          memorySlotWarnings: ["N8: AI turn missing required sourceTurnIds (enterprise mode)"],
+        },
+        interviewerState: createInitialState(),
+        violations: [],
+        memorySlotWarnings: ["N8: AI turn missing required sourceTurnIds (enterprise mode)"],
+      };
+    }
+  }
+
   // 1. Deserialize interviewer state
   let interviewerState: InterviewerState;
   try {
@@ -228,18 +246,68 @@ async function runValidationGates(
       // N3: Enterprise memory pause — degraded but not critically low (0.3 ≤ confidence < 0.65)
       else if (memoryConfidence < 0.65 && isEnabled("ENTERPRISE_MEMORY_HARD_PAUSE")) {
         memorySlotWarnings.push(`ENTERPRISE_PAUSE: confidence=${memoryConfidence.toFixed(2)} < 0.65`);
-        recordSLOEvent("memory.confidence.adequate_rate", false).catch(() => {});
-        return {
-          passed: false,
-          rejectionResult: {
-            committed: false, stateHash: interviewerState.stateHash,
-            contextChecksum: sessionState.contextChecksum || "", violations: [],
-            reason: "MEMORY_CONFIDENCE_DEGRADED",
-            holdSignal: { action: "HOLD_AND_RETRY", retryAfterMs: 2000, recoverySyncRequired: true },
-            memorySlotWarnings: [...memorySlotWarnings],
-          },
-          interviewerState, violations, memorySlotWarnings,
-        };
+
+        // N3: Attempt server-side memory recovery before sending holdSignal
+        let recovered = false;
+        try {
+          recordEvent(interviewId, "memory_recovery_in_progress", { confidence: memoryConfidence }).catch(() => {});
+
+          const { prisma } = await import("@/lib/prisma");
+          // Re-fetch canonical facts from Postgres
+          const freshFacts = await prisma.interviewFact.findMany({
+            where: { interviewId },
+            orderBy: { createdAt: "desc" },
+            take: 50,
+            select: { factType: true, content: true, confidence: true },
+          });
+          // Re-fetch latest state snapshot
+          const freshSnapshot = await prisma.interviewerStateSnapshot.findFirst({
+            where: { interviewId },
+            orderBy: { turnIndex: "desc" },
+            select: { stateHash: true },
+          });
+
+          // Recompute confidence with fresh data
+          const recoveredConfidence = compute4FactorConfidence(
+            {
+              factsOk: freshFacts.length > 0,
+              knowledgeGraphOk: false,
+              recentTurnsOk: (sessionState.recentTurns?.length ?? 0) > 0,
+            },
+            sessionState.recentTurns?.reduce((sum, t) => sum + Math.ceil(t.content.length / 4), 0) ?? 0,
+            parseInt(process.env.MEMORY_MIN_TOKEN_THRESHOLD || "2000", 10),
+            0, 0, !!freshSnapshot?.stateHash
+          );
+
+          if (recoveredConfidence >= 0.65) {
+            memoryConfidence = recoveredConfidence;
+            recovered = true;
+            memorySlotWarnings.push(`MEMORY_RECOVERED: confidence=${recoveredConfidence.toFixed(2)} after re-fetch`);
+            recordEvent(interviewId, "memory_recovered", {
+              previousConfidence: memoryConfidence,
+              recoveredConfidence,
+            }).catch(() => {});
+            recordSLOEvent("memory.confidence.adequate_rate", true).catch(() => {});
+          }
+        } catch {
+          // Recovery failed — proceed with holdSignal (fail-closed)
+        }
+
+        if (!recovered) {
+          recordSLOEvent("memory.confidence.adequate_rate", false).catch(() => {});
+          return {
+            passed: false,
+            rejectionResult: {
+              committed: false, stateHash: interviewerState.stateHash,
+              contextChecksum: sessionState.contextChecksum || "", violations: [],
+              reason: "MEMORY_CONFIDENCE_DEGRADED",
+              holdSignal: { action: "HOLD_AND_RETRY", retryAfterMs: 2000, recoverySyncRequired: true },
+              memorySlotWarnings: [...memorySlotWarnings],
+            },
+            interviewerState, violations, memorySlotWarnings,
+          };
+        }
+        // If recovered, fall through to normal gate processing
       } else {
         recordSLOEvent("memory.confidence.adequate_rate", true).catch(() => {});
       }

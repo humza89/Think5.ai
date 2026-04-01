@@ -61,6 +61,9 @@ export const FeatureFlags = {
 
   /** N12: Continuity SLO enforcement — auto-disable voice on breach */
   CONTINUITY_SLO_ENFORCEMENT: envBool("FF_CONTINUITY_SLO_ENFORCEMENT", true),
+
+  /** N8: Enterprise source grounding — require sourceTurnIds on AI question turns */
+  ENTERPRISE_SOURCE_GROUNDING_REQUIRED: envBool("FF_ENTERPRISE_SOURCE_GROUNDING_REQUIRED", false),
 } as const;
 
 /**

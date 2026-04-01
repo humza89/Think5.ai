@@ -41,6 +41,8 @@ vi.mock("@/lib/feature-flags", () => ({
     if (flag === "OUTPUT_GATE_BLOCKING") return false;
     // N3: Disable enterprise memory pause — test doesn't provide full memory context
     if (flag === "ENTERPRISE_MEMORY_HARD_PAUSE") return false;
+    // N8: Enterprise source grounding is opt-in, not relevant to persona tests
+    if (flag === "ENTERPRISE_SOURCE_GROUNDING_REQUIRED") return false;
     return true;
   }),
   FeatureFlags: {},

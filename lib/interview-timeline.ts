@@ -30,7 +30,10 @@ export type EventType =
   | "output_gate_blocked"
   | "contradiction_detected"
   | "error"
-  | "anomaly";
+  | "anomaly"
+  | "memory_recovery_in_progress"
+  | "memory_recovered"
+  | "continuity_slo_breach_enforcement";
 
 export interface TimelineEvent {
   id: string;

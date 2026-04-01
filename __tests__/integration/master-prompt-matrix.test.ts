@@ -504,9 +504,15 @@ describe("Master Prompt Matrix Compliance Tests", () => {
       expect(flagNames.length).toBeGreaterThanOrEqual(12);
     });
 
-    it("all flags default to true (enterprise mode)", () => {
+    it("all flags default to true (enterprise mode) except opt-in enterprise flags", () => {
+      // ENTERPRISE_SOURCE_GROUNDING_REQUIRED defaults to false (opt-in for enterprise sessions)
+      const optInFlags = new Set(["ENTERPRISE_SOURCE_GROUNDING_REQUIRED"]);
       for (const [name, value] of Object.entries(FeatureFlags)) {
-        expect(value).toBe(true);
+        if (optInFlags.has(name)) {
+          expect(value).toBe(false);
+        } else {
+          expect(value).toBe(true);
+        }
       }
     });
 

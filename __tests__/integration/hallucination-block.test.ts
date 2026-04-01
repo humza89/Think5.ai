@@ -27,7 +27,10 @@ vi.mock("@/lib/conversation-ledger", () => ({
 }));
 
 vi.mock("@/lib/feature-flags", () => ({
-  isEnabled: vi.fn().mockReturnValue(true), // All gates enabled
+  isEnabled: vi.fn().mockImplementation((flag: string) => {
+    if (flag === "ENTERPRISE_SOURCE_GROUNDING_REQUIRED") return false;
+    return true;
+  }), // All gates enabled except opt-in enterprise source grounding
   FeatureFlags: { OUTPUT_GATE_BLOCKING: true, GROUNDING_GATE_ENABLED: true, TURN_COMMIT_PROTOCOL: true, SEMANTIC_CONTRADICTION_DETECTOR: true },
 }));
 

@@ -35,6 +35,8 @@ vi.mock("@/lib/feature-flags", () => ({
   isEnabled: vi.fn().mockImplementation((flag: string) => {
     // N3: Disable enterprise memory pause in this test — tests don't provide full memory context
     if (flag === "ENTERPRISE_MEMORY_HARD_PAUSE") return false;
+    // N8: Enterprise source grounding is opt-in
+    if (flag === "ENTERPRISE_SOURCE_GROUNDING_REQUIRED") return false;
     return true;
   }),
   FeatureFlags: {

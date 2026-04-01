@@ -47,7 +47,7 @@ export async function POST(
       const { shouldBlockVoiceMode } = await import("@/lib/continuity-slo-monitor");
       const sloGate = await shouldBlockVoiceMode();
       if (sloGate.blocked) {
-        recordEvent(id, "anomaly", { type: "continuity_slo_breach", reason: sloGate.reason }).catch(() => {});
+        recordEvent(id, "continuity_slo_breach_enforcement", { reason: sloGate.reason }).catch(() => {});
         return Response.json({ error: "Voice mode paused due to SLO breach", reason: sloGate.reason }, { status: 503 });
       }
     } catch (err) {
