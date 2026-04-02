@@ -220,7 +220,27 @@ export async function POST(
         : {}),
     });
   } catch (error) {
-    console.error("Interview validation error:", error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error("Interview validation error:", {
+      interviewId: id,
+      errorMessage,
+      errorName: error instanceof Error ? error.name : typeof error,
+      stack: error instanceof Error ? error.stack : undefined,
+    });
+
+    // Surface DB connectivity issues as 503 for better UX
+    if (
+      errorMessage.includes("connect") ||
+      errorMessage.includes("ECONNREFUSED") ||
+      errorMessage.includes("timed out") ||
+      errorMessage.includes("Connection pool")
+    ) {
+      return NextResponse.json(
+        { error: "Service temporarily unavailable. Please try again." },
+        { status: 503 }
+      );
+    }
+
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }

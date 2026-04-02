@@ -24,7 +24,7 @@ export default function CandidateInterviewClient({
   return (
     <div className="min-h-screen bg-zinc-950 text-foreground">
       {!preCheckPassed ? (
-        <InterviewPreCheck onComplete={() => setPreCheckPassed(true)} />
+        <InterviewPreCheck interviewId={interviewId} accessToken={accessToken} onComplete={() => setPreCheckPassed(true)} />
       ) : (
         <InterviewRoom 
           interviewId={interviewId} 

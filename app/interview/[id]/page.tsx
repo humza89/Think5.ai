@@ -15,6 +15,7 @@ import { VoiceInterviewRoom } from "@/components/interview/VoiceInterviewRoom";
 import { InterviewPreCheck } from "@/components/interview/InterviewPreCheck";
 import { useScreenCapture } from "@/hooks/useScreenCapture";
 import { useMediaRecording } from "@/hooks/useMediaRecording";
+import { classifyError } from "@/lib/error-classification";
 
 type InterviewStage =
   | "LOADING"
@@ -59,6 +60,7 @@ export default function InterviewRoom() {
   const [stage, setStage] = useState<InterviewStage>("LOADING");
   const [meta, setMeta] = useState<InterviewMeta | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [errorStatus, setErrorStatus] = useState<number | null>(null);
   const [showEndConfirm, setShowEndConfirm] = useState(false);
   const [proctoringConfig, setProctoringConfig] = useState<ProctoringConfig>({ tier: "strict" });
   const autoEndTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -87,6 +89,7 @@ export default function InterviewRoom() {
 
         if (!res.ok) {
           const data = await res.json().catch(() => ({}));
+          setErrorStatus(res.status);
           setError(data.error || "Unable to access this interview");
           return;
         }
@@ -293,14 +296,24 @@ export default function InterviewRoom() {
 
   // Error state
   if (error) {
+    const classified = classifyError(error, { statusCode: errorStatus ?? undefined });
     return (
       <div className="flex items-center justify-center min-h-screen bg-zinc-950">
         <div className="max-w-md w-full mx-4 text-center">
           <div className="w-16 h-16 rounded-full bg-red-500/10 flex items-center justify-center mx-auto mb-4">
             <span className="text-red-500 text-2xl">!</span>
           </div>
-          <h1 className="text-xl font-bold text-white mb-2">Access Denied</h1>
-          <p className="text-zinc-400">{error}</p>
+          <h1 className="text-xl font-bold text-white mb-2">{classified.title}</h1>
+          <p className="text-zinc-400 mb-2">{classified.message}</p>
+          <p className="text-zinc-500 text-sm">{classified.action}</p>
+          {classified.recoverable && (
+            <button
+              onClick={() => window.location.reload()}
+              className="mt-4 text-violet-400 hover:text-violet-300 text-sm underline"
+            >
+              Try Again
+            </button>
+          )}
         </div>
       </div>
     );
