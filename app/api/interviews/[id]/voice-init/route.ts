@@ -207,17 +207,34 @@ export async function POST(
       }
       resolvedAskedQuestions = deduped;
 
-      // DEDUP_AUTHORITY_BREACH: log when client and server askedQuestions diverge
+      // Fix 2: DEDUP_AUTHORITY_BREACH — enforce when client and server diverge significantly
       if (reconnectContext.askedQuestions?.length) {
         const clientSet = new Set(reconnectContext.askedQuestions as string[]);
         const serverSet = new Set(resolvedAskedQuestions);
-        const clientMatchesServer = [...clientSet].every((q: string) => serverSet.has(q)) && [...serverSet].every((q: string) => clientSet.has(q));
-        if (!clientMatchesServer) {
+        const clientOnly = new Set([...clientSet].filter((q: string) => !serverSet.has(q)));
+        const serverOnly = new Set([...serverSet].filter((q: string) => !clientSet.has(q)));
+        const divergenceCount = clientOnly.size + serverOnly.size;
+
+        if (divergenceCount > 0) {
           recordEvent(id, "anomaly", {
             type: "DEDUP_AUTHORITY_BREACH",
             clientCount: clientSet.size,
             serverCount: serverSet.size,
+            divergenceCount,
+            clientOnlyCount: clientOnly.size,
+            serverOnlyCount: serverOnly.size,
           }).catch(() => {});
+
+          // Severe divergence (>5 questions differ) — block reconnect
+          if (divergenceCount > 5) {
+            await releaseSessionLock(id, lockOwnerToken);
+            return Response.json({
+              error: "Session state divergence too severe for safe reconnect",
+              reason: "DEDUP_AUTHORITY_SEVERE",
+              divergenceCount,
+              recoverable: true,
+            }, { status: 409 });
+          }
         }
       }
 
@@ -244,20 +261,89 @@ export async function POST(
         } : undefined,
       });
 
-      // Memory confidence gate: warn model when memory is degraded on reconnect
-      if (serverState) {
+      // Fix 3: Memory confidence gate — BLOCK reconnect on low memory (not just warn)
+      if (serverState && isEnabled("ENTERPRISE_MEMORY_HARD_PAUSE")) {
         try {
-          const { composeMemoryPacket } = await import("@/lib/memory-orchestrator");
+          const { composeMemoryPacket, compute4FactorConfidence } = await import("@/lib/memory-orchestrator");
           const memPacket = await composeMemoryPacket(id, serverState);
+
           if (memPacket.memoryConfidence < 0.3) {
+            // HARD BLOCK: memory too degraded for reliable interview
             recordEvent(id, "anomaly", {
-              type: "LOW_MEMORY_CONFIDENCE_ON_RECONNECT",
+              type: "RECONNECT_BLOCKED_LOW_MEMORY",
               confidence: memPacket.memoryConfidence,
-              retrievalErrors: memPacket.retrievalStatus.errors,
+              retrievalErrors: memPacket.retrievalStatus?.errors,
             }).catch(() => {});
-            fullPrompt += "\n\n[SYSTEM: Memory confidence is low. DO NOT reference specific prior statements unless certain. Ask for clarification rather than assuming.]";
+            await releaseSessionLock(id, lockOwnerToken);
+            return Response.json({
+              error: "Memory confidence too low for reliable reconnect",
+              reason: "MEMORY_CONFIDENCE_LOW",
+              confidence: memPacket.memoryConfidence,
+              recoverable: true,
+            }, { status: 503 });
           }
-        } catch { /* non-fatal: memory check failed, proceed without gate */ }
+
+          if (memPacket.memoryConfidence < 0.65) {
+            // Attempt N3-style recovery: re-fetch from Postgres
+            try {
+              const freshFacts = await prisma.interviewFact.findMany({
+                where: { interviewId: id },
+                orderBy: { createdAt: "desc" },
+                take: 50,
+                select: { factType: true, content: true, confidence: true },
+              });
+              const freshSnapshot = await prisma.interviewerStateSnapshot.findFirst({
+                where: { interviewId: id },
+                orderBy: { turnIndex: "desc" },
+                select: { stateHash: true },
+              });
+              const estimatedTokens = ((serverState as unknown as Record<string, unknown>).recentTurns as Array<{content: string}> | undefined)?.reduce(
+                (sum: number, t: {content: string}) => sum + Math.ceil(t.content.length / 4), 0
+              ) ?? 0;
+              const recoveredConfidence = compute4FactorConfidence(
+                { factsOk: freshFacts.length > 0, knowledgeGraphOk: false, recentTurnsOk: estimatedTokens > 0 },
+                estimatedTokens,
+                parseInt(process.env.MEMORY_MIN_TOKEN_THRESHOLD || "2000", 10),
+                0, 0, !!freshSnapshot?.stateHash
+              );
+
+              if (recoveredConfidence >= 0.65) {
+                recordEvent(id, "memory_recovered", {
+                  previousConfidence: memPacket.memoryConfidence,
+                  recoveredConfidence,
+                  source: "reconnect_recovery",
+                }).catch(() => {});
+                fullPrompt += "\n\n[SYSTEM: Memory confidence recovered. Proceed normally but verify key facts before referencing.]";
+              } else {
+                // Recovery failed — block reconnect
+                recordEvent(id, "anomaly", {
+                  type: "RECONNECT_BLOCKED_DEGRADED_MEMORY",
+                  confidence: memPacket.memoryConfidence,
+                  recoveredConfidence,
+                }).catch(() => {});
+                await releaseSessionLock(id, lockOwnerToken);
+                return Response.json({
+                  error: "Memory confidence degraded and recovery failed",
+                  reason: "MEMORY_CONFIDENCE_DEGRADED",
+                  confidence: recoveredConfidence,
+                  recoverable: true,
+                }, { status: 503 });
+              }
+            } catch {
+              // Recovery attempt failed — proceed with warning (fail-open for recovery path)
+              fullPrompt += "\n\n[SYSTEM: Memory confidence is low. DO NOT reference specific prior statements unless certain. Ask for clarification rather than assuming.]";
+            }
+          }
+        } catch {
+          // Fail-closed: memory check failed entirely — block reconnect
+          recordEvent(id, "anomaly", { type: "RECONNECT_MEMORY_CHECK_FAILED" }).catch(() => {});
+          await releaseSessionLock(id, lockOwnerToken);
+          return Response.json({
+            error: "Memory integrity check failed",
+            reason: "MEMORY_CHECK_UNAVAILABLE",
+            recoverable: true,
+          }, { status: 503 });
+        }
       }
     }
 

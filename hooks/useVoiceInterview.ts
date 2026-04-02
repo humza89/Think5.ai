@@ -266,6 +266,9 @@ export function useVoiceInterview(
     droppedFramesRef.current = 0;
     silentFramesRef.current = 0;
     setMicIsSilent(false);
+
+    // Fix 1: Safety-net — clear recovery mutex on cleanup to prevent permanent lock
+    recoveryInFlightRef.current = false;
   }, []);
 
   // Keep refs in sync
@@ -1421,13 +1424,30 @@ export function useVoiceInterview(
           try {
             // Step 1: ALWAYS call recovery API when reconnectToken exists
             if (reconnectTokenRef.current) {
-              // Gap 2: Skip if another recovery call is already in-flight
+              // Gap 2: Skip if another recovery call is already in-flight — clean up UI state
               if (recoveryInFlightRef.current) {
-                console.log("[Voice] Recovery already in-flight — skipping duplicate call");
+                console.log("[Voice] Recovery already in-flight — waiting for completion");
+                // Don't silently swallow — schedule retry after short delay
+                reconnectTimeoutRef.current = setTimeout(() => {
+                  if (reconnectStateRef.current === "RECOVERY_PENDING" && !recoveryInFlightRef.current) {
+                    startInterview().catch(() => {
+                      reconnectStateRef.current = "FAILED";
+                      setReconnectPhase(stateToPhase(reconnectStateRef.current));
+                      setIsReconnecting(false);
+                    });
+                  }
+                }, 2000);
                 return;
               }
               recoveryInFlightRef.current = true;
               lastRecoveryCallRef.current = Date.now();
+              // Fix 1: Safety-net auto-clear timer (20s > 15s abort timeout)
+              const mutexSafetyTimeout = setTimeout(() => {
+                if (recoveryInFlightRef.current) {
+                  console.warn("[Voice] Recovery mutex auto-cleared after 20s safety timeout");
+                  recoveryInFlightRef.current = false;
+                }
+              }, 20000);
               // Gap 1: AbortController with 15s timeout
               const controller = new AbortController();
               const abortTimeout = setTimeout(() => controller.abort(), 15000);
@@ -1448,6 +1468,7 @@ export function useVoiceInterview(
                 });
               } finally {
                 clearTimeout(abortTimeout);
+                clearTimeout(mutexSafetyTimeout);
                 recoveryInFlightRef.current = false;
               }
               if (recoveryRes.ok) {
@@ -1524,19 +1545,49 @@ export function useVoiceInterview(
 
             // Step 2: Re-establish WebSocket (startInterview will check RECOVERY_CONFIRMED gate)
             await startInterview();
-            // Transition: SOCKET_OPEN → LIVE (startInterview succeeded)
-            try {
-              reconnectStateRef.current = transitionReconnectState(reconnectStateRef.current, "LIVE");
-            } catch (err) {
-              console.error(JSON.stringify({
-                event: "reconnect_state_violation",
-                from: reconnectStateRef.current,
-                to: "LIVE",
-                error: (err as Error).message,
-                severity: "warning",
-                timestamp: new Date().toISOString(),
-              }));
-              reconnectStateRef.current = "LIVE";
+            // Fix 4: Context hash verification gate — SOCKET_OPEN → CONTEXT_VERIFIED → LIVE
+            if (contextChecksumRef.current && reconnectStateRef.current === "SOCKET_OPEN") {
+              // Compute local context hash from current state
+              const localHash = [stateHashRef.current, String(ledgerVersionRef.current), String(transcriptRef.current.length)].join(":");
+              const hashMatch = localHash === contextChecksumRef.current || !contextChecksumRef.current;
+
+              if (hashMatch) {
+                try {
+                  reconnectStateRef.current = transitionReconnectState("SOCKET_OPEN", "CONTEXT_VERIFIED");
+                  reconnectStateRef.current = transitionReconnectState("CONTEXT_VERIFIED", "LIVE");
+                } catch {
+                  reconnectStateRef.current = "LIVE";
+                }
+              } else {
+                console.error(JSON.stringify({
+                  event: "CONTEXT_HASH_MISMATCH",
+                  localHash,
+                  expectedHash: contextChecksumRef.current,
+                  severity: "critical",
+                  timestamp: new Date().toISOString(),
+                }));
+                reconnectStateRef.current = "FAILED";
+                setReconnectPhase(stateToPhase(reconnectStateRef.current));
+                setIsReconnecting(false);
+                setConnectionQuality("poor");
+                onErrorRef.current?.("Context verification failed during reconnect. Please refresh and try again.");
+                return;
+              }
+            } else {
+              // No checksum available or not in SOCKET_OPEN — direct transition (backward compat)
+              try {
+                reconnectStateRef.current = transitionReconnectState(reconnectStateRef.current, "LIVE");
+              } catch (err) {
+                console.error(JSON.stringify({
+                  event: "reconnect_state_violation",
+                  from: reconnectStateRef.current,
+                  to: "LIVE",
+                  error: (err as Error).message,
+                  severity: "warning",
+                  timestamp: new Date().toISOString(),
+                }));
+                reconnectStateRef.current = "LIVE";
+              }
             }
             reconnectAttemptsRef.current = 0;
             setIsReconnecting(false);
@@ -1944,13 +1995,21 @@ export function useVoiceInterview(
     try {
       // Call recovery API first for authoritative reconciliation
       if (reconnectTokenRef.current) {
-        // Gap 2: Skip if another recovery call is already in-flight
+        // Gap 2: Skip if another recovery call is already in-flight — clean up UI
         if (recoveryInFlightRef.current) {
-          console.log("[Voice] Recovery already in-flight — skipping duplicate call");
+          console.log("[Voice] Recovery already in-flight — aborting duplicate manual reconnect");
           setIsReconnecting(false);
+          setReconnectPhase(null);
           return;
         }
         recoveryInFlightRef.current = true;
+        // Fix 1: Safety-net auto-clear timer
+        const mutexSafetyTimeout2 = setTimeout(() => {
+          if (recoveryInFlightRef.current) {
+            console.warn("[Voice] Recovery mutex auto-cleared after 20s safety timeout (manual)");
+            recoveryInFlightRef.current = false;
+          }
+        }, 20000);
         // Gap 1: AbortController with 15s timeout
         const controller = new AbortController();
         const abortTimeout = setTimeout(() => controller.abort(), 15000);
@@ -1971,6 +2030,7 @@ export function useVoiceInterview(
           });
         } finally {
           clearTimeout(abortTimeout);
+          clearTimeout(mutexSafetyTimeout2);
           recoveryInFlightRef.current = false;
         }
         if (recoveryRes.ok) {
@@ -2030,19 +2090,48 @@ export function useVoiceInterview(
       setReconnectPhase("restoring");
       await startInterview();
 
-      // Transition: SOCKET_OPEN → LIVE
-      try {
-        reconnectStateRef.current = transitionReconnectState(reconnectStateRef.current, "LIVE");
-      } catch (err) {
-        console.error(JSON.stringify({
-          event: "reconnect_state_violation",
-          from: reconnectStateRef.current,
-          to: "LIVE",
-          error: (err as Error).message,
-          severity: "warning",
-          timestamp: new Date().toISOString(),
-        }));
-        reconnectStateRef.current = "LIVE";
+      // Fix 4: Context hash verification gate — SOCKET_OPEN → CONTEXT_VERIFIED → LIVE
+      if (contextChecksumRef.current && reconnectStateRef.current === "SOCKET_OPEN") {
+        const localHash = [stateHashRef.current, String(ledgerVersionRef.current), String(transcriptRef.current.length)].join(":");
+        const hashMatch = localHash === contextChecksumRef.current || !contextChecksumRef.current;
+
+        if (hashMatch) {
+          try {
+            reconnectStateRef.current = transitionReconnectState("SOCKET_OPEN", "CONTEXT_VERIFIED");
+            reconnectStateRef.current = transitionReconnectState("CONTEXT_VERIFIED", "LIVE");
+          } catch {
+            reconnectStateRef.current = "LIVE";
+          }
+        } else {
+          console.error(JSON.stringify({
+            event: "CONTEXT_HASH_MISMATCH",
+            localHash,
+            expectedHash: contextChecksumRef.current,
+            severity: "critical",
+            timestamp: new Date().toISOString(),
+          }));
+          reconnectStateRef.current = "FAILED";
+          setReconnectPhase(stateToPhase(reconnectStateRef.current));
+          setIsReconnecting(false);
+          try { await checkpointTranscriptRef.current?.(); } catch { /* best-effort */ }
+          setFallbackToText(true);
+          onError?.("Context verification failed during reconnect. Please refresh and try again.");
+          return;
+        }
+      } else {
+        try {
+          reconnectStateRef.current = transitionReconnectState(reconnectStateRef.current, "LIVE");
+        } catch (err) {
+          console.error(JSON.stringify({
+            event: "reconnect_state_violation",
+            from: reconnectStateRef.current,
+            to: "LIVE",
+            error: (err as Error).message,
+            severity: "warning",
+            timestamp: new Date().toISOString(),
+          }));
+          reconnectStateRef.current = "LIVE";
+        }
       }
       setIsReconnecting(false);
       setReconnectPhase(null);
@@ -2083,10 +2172,11 @@ export function useVoiceInterview(
       // Gate: if we have a reconnect token, call recovery API first (fail-closed)
       const isReconnect = transcriptRef.current.length > 0;
       if (isReconnect && reconnectTokenRef.current) {
-        // Gap 2: Skip if another recovery call is already in-flight
+        // Gap 2: Skip if another recovery call is already in-flight — clean up UI
         if (recoveryInFlightRef.current) {
-          console.log("[Voice] Recovery already in-flight — skipping duplicate call");
+          console.log("[Voice] Recovery already in-flight — skipping retryVoice");
           setIsReconnecting(false);
+          setReconnectPhase(null);
           return;
         }
         recoveryInFlightRef.current = true;
@@ -2154,11 +2244,33 @@ export function useVoiceInterview(
       }
 
       await startInterview();
-      // CF4: Use proper state machine transition to LIVE
-      try {
-        reconnectStateRef.current = transitionReconnectState(reconnectStateRef.current, "LIVE");
-      } catch {
-        reconnectStateRef.current = "LIVE";
+      // Fix 4: Context hash verification gate
+      if (contextChecksumRef.current && reconnectStateRef.current === "SOCKET_OPEN") {
+        const localHash = [stateHashRef.current, String(ledgerVersionRef.current), String(transcriptRef.current.length)].join(":");
+        const hashMatch = localHash === contextChecksumRef.current || !contextChecksumRef.current;
+        if (hashMatch) {
+          try {
+            reconnectStateRef.current = transitionReconnectState("SOCKET_OPEN", "CONTEXT_VERIFIED");
+            reconnectStateRef.current = transitionReconnectState("CONTEXT_VERIFIED", "LIVE");
+          } catch {
+            reconnectStateRef.current = "LIVE";
+          }
+        } else {
+          console.error(JSON.stringify({ event: "CONTEXT_HASH_MISMATCH", severity: "critical", timestamp: new Date().toISOString() }));
+          reconnectStateRef.current = "FAILED";
+          setReconnectPhase(stateToPhase(reconnectStateRef.current));
+          setIsReconnecting(false);
+          try { await checkpointTranscriptRef.current?.(); } catch { /* best-effort */ }
+          setFallbackToText(true);
+          onError?.("Context verification failed during reconnect. Please refresh and try again.");
+          return;
+        }
+      } else {
+        try {
+          reconnectStateRef.current = transitionReconnectState(reconnectStateRef.current, "LIVE");
+        } catch {
+          reconnectStateRef.current = "LIVE";
+        }
       }
       setIsReconnecting(false);
       setReconnectPhase(null);

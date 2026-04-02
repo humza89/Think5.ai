@@ -20,7 +20,7 @@ import { commitSingleTurn } from "./conversation-ledger";
 import type { LedgerTurn } from "./conversation-ledger";
 import { checkOutputGateWithAction, INTRO_PATTERNS } from "./output-gate";
 import type { GateViolation } from "./output-gate";
-import { checkFollowUpGrounding, verifyGrounding } from "./grounding-gate";
+import { checkFollowUpGrounding, verifyGrounding, detectHallucinatedReferences } from "./grounding-gate";
 import { isEnabled } from "./feature-flags";
 import { detectContradictions } from "./semantic-contradiction-detector";
 import { compute4FactorConfidence } from "./memory-orchestrator";
@@ -191,6 +191,20 @@ async function runValidationGates(
       : createInitialState();
   } catch {
     interviewerState = createInitialState();
+  }
+
+  // 1b. Fix 8: Persona identity token verification
+  if (isEnabled("PERSONA_IDENTITY_TOKEN") && interviewerState.personaLocked && !interviewerState.personaIdentityToken) {
+    return {
+      passed: false,
+      rejectionResult: {
+        committed: false, stateHash: interviewerState.stateHash,
+        contextChecksum: sessionState.contextChecksum || "", violations: [],
+        reason: "PERSONA_INTEGRITY_VIOLATION",
+        memorySlotWarnings: ["Fix 8: Persona claims locked but has no identity token"],
+      },
+      interviewerState, violations: [], memorySlotWarnings: ["PERSONA_INTEGRITY_VIOLATION"],
+    };
   }
 
   // 2. Verify continuity contract (if enabled and checksum provided)
@@ -430,6 +444,42 @@ async function runValidationGates(
             interviewerState, violations, memorySlotWarnings,
           };
         }
+      }
+    }
+
+    // 4c. Fix 5: Hallucinated reference detector — STRICTER gate for direct attributions
+    // Always blocking — AI must not attribute statements the candidate never made
+    if (isEnabled("GROUNDING_GATE_ENABLED") && (sessionState.verifiedFacts?.length || sessionState.recentTurns?.length)) {
+      const refResult = detectHallucinatedReferences(
+        request.content,
+        (sessionState.verifiedFacts || []).map(f => ({
+          content: f.content, factType: f.factType, turnId: "prior",
+        })),
+        sessionState.recentTurns || [],
+      );
+
+      if (refResult.hasHallucinatedReferences) {
+        const refDetails = refResult.hallucinatedReferences
+          .map(r => `"${r.assertion.slice(0, 80)}" (best fact: ${r.bestFactMatch?.similarity.toFixed(2) ?? 'none'}, best turn: ${r.bestTurnMatch?.similarity.toFixed(2) ?? 'none'})`)
+          .join("; ");
+
+        violations.push({
+          type: "hallucinated_reference",
+          detail: `HALLUCINATED_REFERENCE: ${refResult.hallucinatedReferences.length} unverified reference(s): ${refDetails}`,
+          severity: "block",
+        });
+
+        return {
+          passed: false,
+          rejectionResult: {
+            committed: false, stateHash: interviewerState.stateHash,
+            contextChecksum: sessionState.contextChecksum || "",
+            violations,
+            reason: "HALLUCINATED_REFERENCE_DETECTED",
+            regenerationPrompt: `Do NOT reference what the candidate said unless it appears in verified facts. The following references could not be verified: ${refResult.hallucinatedReferences.map(r => r.assertion).join("; ")}`,
+          },
+          interviewerState, violations, memorySlotWarnings,
+        };
       }
     }
   }

@@ -38,6 +38,7 @@ vi.mock("@/lib/session-store", () => ({
   generateReconnectToken: vi.fn().mockReturnValue("server-token"),
   swapSessionLock: vi.fn().mockResolvedValue({ acquired: true, ownerToken: "lock-owner-1" }),
   acquireSessionLock: vi.fn().mockResolvedValue({ acquired: true, ownerToken: "lock-owner-1" }),
+  releaseSessionLock: vi.fn().mockResolvedValue(undefined),
   refreshSessionTTL: vi.fn().mockResolvedValue(undefined),
   recordHeartbeat: vi.fn().mockResolvedValue(undefined),
   assertDurableStore: vi.fn().mockResolvedValue(undefined),
@@ -118,6 +119,16 @@ vi.mock("@/lib/interview-tools", () => ({
 vi.mock("@sentry/nextjs", () => ({
   captureException: vi.fn(),
   addBreadcrumb: vi.fn(),
+}));
+
+vi.mock("@/lib/memory-orchestrator", () => ({
+  composeMemoryPacket: vi.fn().mockResolvedValue({
+    memoryConfidence: 0.9,
+    retrievalStatus: { errors: [] },
+    facts: [],
+    recentTurns: [],
+  }),
+  compute4FactorConfidence: vi.fn().mockReturnValue(0.9),
 }));
 
 describe("Voice-Init — Server-Authoritative askedQuestions", () => {

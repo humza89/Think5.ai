@@ -33,7 +33,7 @@ export interface OutputGateInput {
 }
 
 export interface GateViolation {
-  type: "reintroduction" | "duplicate_question" | "unsupported_claim";
+  type: "reintroduction" | "duplicate_question" | "unsupported_claim" | "hallucinated_reference";
   detail: string;
   severity: "block" | "warn";
 }
@@ -109,6 +109,19 @@ function tokenizeForDedup(text: string): string[] {
     .filter((w) => w.length > 2 && !STOP_WORDS.has(w));
 }
 
+/**
+ * Generate n-grams from token array for deeper semantic comparison.
+ * Bigrams catch "leadership experience" ≈ "experience leading" that word-level misses.
+ */
+function generateNgrams(tokens: string[], n: number): string[] {
+  if (tokens.length < n) return [];
+  const ngrams: string[] = [];
+  for (let i = 0; i <= tokens.length - n; i++) {
+    ngrams.push(tokens.slice(i, i + n).join(" "));
+  }
+  return ngrams;
+}
+
 // ── Response Sanitization ────────────────────────────────────────────
 
 /**
@@ -124,7 +137,7 @@ export function sanitizeResponse(
   // Process violations in priority order: reintroduction → unsupported claims → duplicates
   // This prevents order-dependent fragmentation
   const ordered = [...violations].sort((a, b) => {
-    const priority: Record<string, number> = { reintroduction: 0, unsupported_claim: 1, duplicate_question: 2 };
+    const priority: Record<string, number> = { reintroduction: 0, hallucinated_reference: 1, unsupported_claim: 2, duplicate_question: 3 };
     return (priority[a.type] ?? 3) - (priority[b.type] ?? 3);
   });
 
@@ -150,6 +163,19 @@ export function sanitizeResponse(
           );
           sanitized = cleanedSentences.join(" ").trim();
         }
+        break;
+      }
+      case "hallucinated_reference": {
+        // Strip the hallucinated reference sentence
+        const refSentences = sanitized.split(/(?<=[.!?])\s+/);
+        const refFiltered = refSentences.filter((sentence) => {
+          const hasRef = /you\s+(?:mentioned|said|noted|told me|stated|indicated|talked|spoke)/i.test(sentence) ||
+            /(?:earlier|previously|before).*you/i.test(sentence) ||
+            /as you (?:described|explained|shared|discussed)/i.test(sentence) ||
+            /based on (?:your|what you)/i.test(sentence);
+          return !hasRef;
+        });
+        sanitized = refFiltered.join(" ").trim();
         break;
       }
       case "duplicate_question": {
@@ -219,21 +245,56 @@ export function checkOutputGate(
           severity: "warn",
         });
       }
-      // Semantic dedup: check Jaccard similarity against previously asked question texts
+      // Semantic dedup: multi-level check against previously asked question texts
+      // Level 1: Word Jaccard ≥ 0.6 (existing)
+      // Level 2: Bigram Jaccard ≥ 0.35 (catches reworded questions)
+      // Level 3: Combined: Word Jaccard ≥ 0.4 AND Bigram Jaccard ≥ 0.25
       else if (input.askedQuestionTexts && input.askedQuestionTexts.length > 0) {
-        const questionWords = new Set(tokenizeForDedup(question.toLowerCase()));
+        const questionTokens = tokenizeForDedup(question.toLowerCase());
+        const questionWords = new Set(questionTokens);
+        const questionBigrams = new Set(generateNgrams(questionTokens, 2));
+
         for (const prevQuestion of input.askedQuestionTexts) {
-          const prevWords = new Set(tokenizeForDedup(prevQuestion.toLowerCase()));
-          const intersection = new Set([...questionWords].filter((w) => prevWords.has(w)));
-          const union = new Set([...questionWords, ...prevWords]);
-          const jaccard = union.size > 0 ? intersection.size / union.size : 0;
-          if (jaccard >= 0.6) {
+          const prevTokens = tokenizeForDedup(prevQuestion.toLowerCase());
+          const prevWords = new Set(prevTokens);
+          const prevBigrams = new Set(generateNgrams(prevTokens, 2));
+
+          // Word-level Jaccard
+          const wordIntersection = new Set([...questionWords].filter((w) => prevWords.has(w)));
+          const wordUnion = new Set([...questionWords, ...prevWords]);
+          const wordJaccard = wordUnion.size > 0 ? wordIntersection.size / wordUnion.size : 0;
+
+          // Bigram-level Jaccard
+          const bigramIntersection = new Set([...questionBigrams].filter((b) => prevBigrams.has(b)));
+          const bigramUnion = new Set([...questionBigrams, ...prevBigrams]);
+          const bigramJaccard = bigramUnion.size > 0 ? bigramIntersection.size / bigramUnion.size : 0;
+
+          // Level 1: Strong word overlap
+          if (wordJaccard >= 0.6) {
             violations.push({
               type: "duplicate_question",
-              detail: `Semantic duplicate (similarity: ${(jaccard * 100).toFixed(0)}%): "${question.slice(0, 80)}..." ≈ "${prevQuestion.slice(0, 80)}..."`,
+              detail: `Semantic duplicate (word: ${(wordJaccard * 100).toFixed(0)}%): "${question.slice(0, 80)}..." ≈ "${prevQuestion.slice(0, 80)}..."`,
               severity: "warn",
             });
-            break; // One semantic match is enough
+            break;
+          }
+          // Level 2: Strong bigram overlap (catches reworded questions)
+          if (bigramJaccard >= 0.35) {
+            violations.push({
+              type: "duplicate_question",
+              detail: `Semantic duplicate (bigram: ${(bigramJaccard * 100).toFixed(0)}%): "${question.slice(0, 80)}..." ≈ "${prevQuestion.slice(0, 80)}..."`,
+              severity: "warn",
+            });
+            break;
+          }
+          // Level 3: Combined threshold
+          if (wordJaccard >= 0.4 && bigramJaccard >= 0.25) {
+            violations.push({
+              type: "duplicate_question",
+              detail: `Semantic duplicate (combined word:${(wordJaccard * 100).toFixed(0)}%+bigram:${(bigramJaccard * 100).toFixed(0)}%): "${question.slice(0, 80)}..." ≈ "${prevQuestion.slice(0, 80)}..."`,
+              severity: "warn",
+            });
+            break;
           }
         }
       }

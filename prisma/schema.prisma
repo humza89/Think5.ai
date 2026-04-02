@@ -955,6 +955,11 @@ model InterviewReport {
   rubricVersion       String?   // SHA-256 hash of rubric JSON used
   evidenceHash        String?   // SHA-256 hash of transcript+report+recording for tamper detection
 
+  // Continuity diagnostics (Fix 10: recruiter-facing confidence labels)
+  continuityGrade        String?   // GREEN | YELLOW | RED
+  continuityIncidents    Json?     // Array of {timestamp, type, detail, severity}
+  memoryConfidenceMin    Float?    // Minimum memory confidence observed during interview
+
   // Human review governance
   reviewStatus    ReviewStatus @default(PENDING_REVIEW)
   reviewedAt      DateTime?

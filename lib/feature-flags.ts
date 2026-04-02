@@ -64,6 +64,17 @@ export const FeatureFlags = {
 
   /** N8: Enterprise source grounding — require sourceTurnIds on AI question turns */
   ENTERPRISE_SOURCE_GROUNDING_REQUIRED: envBool("FF_ENTERPRISE_SOURCE_GROUNDING_REQUIRED", false),
+
+  // ── Round 15: Enterprise Audit Full Remediation ──────────────────────
+
+  /** Fix 4: Atomic reconnect — require context hash verification before LIVE */
+  ATOMIC_RECONNECT_VERIFICATION: envBool("FF_ATOMIC_RECONNECT_VERIFICATION", true),
+
+  /** Fix 7: Context capsule protocol — server-assembled reconnect context (opt-in) */
+  CONTEXT_CAPSULE_PROTOCOL: envBool("FF_CONTEXT_CAPSULE_PROTOCOL", false),
+
+  /** Fix 8: Persona identity token — cryptographic persona lock verification (opt-in) */
+  PERSONA_IDENTITY_TOKEN: envBool("FF_PERSONA_IDENTITY_TOKEN", false),
 } as const;
 
 /**

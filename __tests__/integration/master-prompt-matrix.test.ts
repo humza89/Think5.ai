@@ -506,7 +506,7 @@ describe("Master Prompt Matrix Compliance Tests", () => {
 
     it("all flags default to true (enterprise mode) except opt-in enterprise flags", () => {
       // ENTERPRISE_SOURCE_GROUNDING_REQUIRED defaults to false (opt-in for enterprise sessions)
-      const optInFlags = new Set(["ENTERPRISE_SOURCE_GROUNDING_REQUIRED"]);
+      const optInFlags = new Set(["ENTERPRISE_SOURCE_GROUNDING_REQUIRED", "CONTEXT_CAPSULE_PROTOCOL", "PERSONA_IDENTITY_TOKEN"]);
       for (const [name, value] of Object.entries(FeatureFlags)) {
         if (optInFlags.has(name)) {
           expect(value).toBe(false);

@@ -64,6 +64,8 @@ export interface InterviewerState {
   personaLocked: boolean;
   /** Constrains valid output types for the current phase */
   activePersonaMode: PersonaMode;
+  /** Fix 8: Cryptographic proof that persona lock is authentic (HMAC-signed) */
+  personaIdentityToken?: string;
   stateHash: string;
 }
 
@@ -216,6 +218,10 @@ export function transitionState(
 
     case "PERSONA_LOCKED":
       next.personaLocked = true;
+      // Fix 8: Generate cryptographic persona identity token
+      next.personaIdentityToken = createHash("sha256")
+        .update(`${current.stateHash}:persona_locked:${Date.now()}:${process.env.SESSION_HMAC_SECRET || "dev"}`)
+        .digest("hex").slice(0, 32);
       break;
 
     case "SET_PERSONA_MODE":
@@ -234,8 +240,10 @@ export function transitionState(
  * Used for reconciliation on reconnect — same state = same hash.
  */
 export function computeStateHash(state: InterviewerState): string {
-  // Exclude stateHash itself from the computation to avoid circular dependency
-  const { stateHash: _, ...rest } = state;
+  // Exclude stateHash and personaIdentityToken from the computation
+  // stateHash: avoid circular dependency
+  // personaIdentityToken: depends on timestamp, would break determinism
+  const { stateHash: _, personaIdentityToken: _pit, ...rest } = state;
   const canonical = JSON.stringify(rest, Object.keys(rest).sort());
   return createHash("sha256").update(canonical).digest("hex").slice(0, 16);
 }

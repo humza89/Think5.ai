@@ -190,6 +190,70 @@ describe("Output Gate Integration — Ledger Replacement & Semantic Dedup", () =
     });
   });
 
+  describe("bigram dedup detection", () => {
+    it("detects reworded question via high word overlap (Level 1)", () => {
+      const input: OutputGateInput = {
+        introDone: false,
+        askedQuestionIds: [],
+        askedQuestionTexts: [
+          "What was the biggest challenge you faced at your previous company?",
+        ],
+        verifiedFacts: [],
+      };
+
+      // Paraphrased with high word overlap (>= 0.6 Jaccard)
+      const response =
+        "Tell me about the biggest challenge you encountered at your previous company?";
+      const result = checkOutputGate(response, input);
+
+      expect(
+        result.violations.some((v) => v.type === "duplicate_question")
+      ).toBe(true);
+    });
+
+    it("does not flag questions with low bigram and word overlap", () => {
+      const input: OutputGateInput = {
+        introDone: false,
+        askedQuestionIds: [],
+        askedQuestionTexts: [
+          "What was the biggest challenge you faced at your previous company?",
+        ],
+        verifiedFacts: [],
+      };
+
+      // Completely different topic — no meaningful overlap
+      const response =
+        "How do you approach designing APIs for high-throughput systems?";
+      const result = checkOutputGate(response, input);
+
+      expect(
+        result.violations.filter((v) => v.type === "duplicate_question")
+      ).toHaveLength(0);
+    });
+
+    it("catches duplicates via combined word+bigram threshold (Level 3)", () => {
+      const input: OutputGateInput = {
+        introDone: false,
+        askedQuestionIds: [],
+        askedQuestionTexts: [
+          "How did you handle scaling challenges in distributed system architecture?",
+        ],
+        verifiedFacts: [],
+      };
+
+      // Shares key content tokens ("scaling", "challenges", "distributed", "system")
+      // and bigrams like "scaling challenges", "distributed system"
+      // word Jaccard ~0.5+, bigram overlap present
+      const response =
+        "What scaling challenges did you face in distributed system design?";
+      const result = checkOutputGate(response, input);
+
+      expect(
+        result.violations.some((v) => v.type === "duplicate_question")
+      ).toBe(true);
+    });
+  });
+
   describe("end-to-end blocking flow", () => {
     it("full flow: detect violation → sanitize → return corrected response", () => {
       // Simulate what the voice route does

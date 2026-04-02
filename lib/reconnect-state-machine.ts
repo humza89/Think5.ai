@@ -11,6 +11,7 @@ export type ReconnectState =
   | "RECOVERY_PENDING"
   | "RECOVERY_CONFIRMED"
   | "SOCKET_OPEN"
+  | "CONTEXT_VERIFIED"
   | "LIVE"
   | "FAILED"
   | "RATE_LIMITED";
@@ -19,7 +20,8 @@ const VALID_TRANSITIONS: Record<ReconnectState, ReconnectState[]> = {
   DISCONNECTED: ["RECOVERY_PENDING", "RATE_LIMITED", "FAILED"],
   RECOVERY_PENDING: ["RECOVERY_CONFIRMED", "FAILED"],
   RECOVERY_CONFIRMED: ["SOCKET_OPEN", "FAILED"],
-  SOCKET_OPEN: ["LIVE", "FAILED"],
+  SOCKET_OPEN: ["CONTEXT_VERIFIED", "LIVE", "FAILED"], // Fix 4: CONTEXT_VERIFIED required when atomic reconnect enabled
+  CONTEXT_VERIFIED: ["LIVE", "FAILED"], // Fix 4: verified context hash → can go live
   LIVE: ["DISCONNECTED", "FAILED"],
   RATE_LIMITED: ["RECOVERY_PENDING", "FAILED"], // CF4: Can retry after cooldown or fail permanently
   FAILED: [], // terminal
@@ -56,6 +58,7 @@ export function stateToPhase(state: ReconnectState): ReconnectPhase {
     case "RECOVERY_PENDING": return "recovering";
     case "RECOVERY_CONFIRMED": return "restoring";
     case "SOCKET_OPEN": return "verifying";
+    case "CONTEXT_VERIFIED": return "verifying";
     case "LIVE": return "re-synced";
     case "RATE_LIMITED": return "recovery-rate-limited";
     case "FAILED": return "recovery-failed";

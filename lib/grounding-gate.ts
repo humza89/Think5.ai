@@ -303,3 +303,126 @@ export function checkFollowUpGrounding(
   // Not grounded in any source
   return { grounded: false, groundingRef: null, flag: "UNGROUNDED_FOLLOWUP" };
 }
+
+// ── Hallucinated Reference Detection ─────────────────────────────────
+
+export interface HallucinatedReferenceResult {
+  hasHallucinatedReferences: boolean;
+  hallucinatedReferences: Array<{
+    assertion: string;
+    bestFactMatch: { content: string; similarity: number } | null;
+    bestTurnMatch: { content: string; turnId: string; similarity: number } | null;
+  }>;
+  verifiedReferences: string[];
+  totalReferences: number;
+}
+
+/**
+ * Extract REFERENCE assertions — direct claims about what the candidate
+ * said, experienced, or did. These require stricter verification than
+ * general claims because they put words in the candidate's mouth.
+ */
+export function extractReferenceAssertions(text: string): string[] {
+  const assertions: string[] = [];
+
+  const referencePatterns = [
+    // Direct speech attribution
+    /you\s+(?:mentioned|said|noted|told me|stated|indicated)\s+(?:that\s+)?(.{10,150}?)(?:\.|,|;|$)/gi,
+    /(?:earlier|previously|before),?\s+you\s+(?:mentioned|said|told me|described)\s+(?:that\s+)?(.{10,150}?)(?:\.|,|;|$)/gi,
+    // Experience attribution
+    /your\s+(?:experience|work|time|role)\s+(?:at|with|as)\s+(.{3,80}?)(?:\.|,|;|$)/gi,
+    /when you (?:were|worked)\s+(?:at|with|as)\s+(.{3,80}?)(?:\.|,|;|$)/gi,
+    // Description attribution
+    /as you (?:described|explained|shared|discussed)\s+(.{10,150}?)(?:\.|,|;|$)/gi,
+    /you (?:talked|spoke)\s+about\s+(.{10,150}?)(?:\.|,|;|$)/gi,
+    // Summary attribution
+    /based on (?:your|what you)\s+(?:mentioned|said|shared|described)\s+(?:about\s+)?(.{10,100}?)(?:\.|,|;|$)/gi,
+  ];
+
+  for (const pattern of referencePatterns) {
+    let match;
+    while ((match = pattern.exec(text)) !== null) {
+      const extracted = match[1].trim();
+      const isCourtesy = COURTESY_EXCLUSIONS.some(p => p.test(match![0]));
+      if (!isCourtesy && extracted.length >= 5) {
+        assertions.push(extracted);
+      }
+    }
+  }
+
+  return [...new Set(assertions)];
+}
+
+/**
+ * Detect hallucinated references — AI claims about what the candidate
+ * said that cannot be verified against BOTH facts AND canonical turns.
+ *
+ * Uses STRICTER threshold (0.7) for turn matching than general grounding (0.5)
+ * because attributing words to a candidate is high-stakes.
+ */
+export function detectHallucinatedReferences(
+  responseText: string,
+  facts: Array<{ content: string; factType: string; turnId?: string }>,
+  recentTurns: Array<{ turnId: string; content: string }>,
+): HallucinatedReferenceResult {
+  const STRICT_THRESHOLD = 0.7;
+
+  const referenceAssertions = extractReferenceAssertions(responseText);
+
+  if (referenceAssertions.length === 0) {
+    return {
+      hasHallucinatedReferences: false,
+      hallucinatedReferences: [],
+      verifiedReferences: [],
+      totalReferences: 0,
+    };
+  }
+
+  const hallucinated: HallucinatedReferenceResult["hallucinatedReferences"] = [];
+  const verified: string[] = [];
+
+  for (const assertion of referenceAssertions) {
+    let bestFactMatch: { content: string; similarity: number } | null = null;
+    let bestTurnMatch: { content: string; turnId: string; similarity: number } | null = null;
+    let isVerified = false;
+
+    // Check against facts using existing isClaimSupported (Jaccard ≥ 0.5 + substring + number)
+    for (const fact of facts) {
+      const sim = computeSimilarity(assertion, fact.content);
+      if (!bestFactMatch || sim > bestFactMatch.similarity) {
+        bestFactMatch = { content: fact.content, similarity: sim };
+      }
+      if (isClaimSupported(assertion, fact.content)) {
+        isVerified = true;
+        break;
+      }
+    }
+
+    // If not verified by facts, check against recent canonical turns (STRICT threshold)
+    if (!isVerified) {
+      for (const turn of recentTurns) {
+        const sim = computeSimilarity(assertion, turn.content);
+        if (!bestTurnMatch || sim > bestTurnMatch.similarity) {
+          bestTurnMatch = { content: turn.content, turnId: turn.turnId, similarity: sim };
+        }
+        if (sim >= STRICT_THRESHOLD) {
+          isVerified = true;
+          break;
+        }
+      }
+    }
+
+    if (isVerified) {
+      verified.push(assertion);
+    } else {
+      hallucinated.push({ assertion, bestFactMatch, bestTurnMatch });
+    }
+  }
+
+  return {
+    hasHallucinatedReferences: hallucinated.length > 0,
+    hallucinatedReferences: hallucinated,
+    verifiedReferences: verified,
+    totalReferences: referenceAssertions.length,
+  };
+}

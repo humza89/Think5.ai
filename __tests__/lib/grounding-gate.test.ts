@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { extractAssertions, verifyGrounding, isClaimSupported } from "@/lib/grounding-gate";
+import {
+  extractAssertions,
+  verifyGrounding,
+  isClaimSupported,
+  extractReferenceAssertions,
+  detectHallucinatedReferences,
+} from "@/lib/grounding-gate";
 import type { ExtractedFact } from "@/lib/fact-extractor";
 
 describe("Grounding Gate", () => {
@@ -147,6 +153,111 @@ describe("Grounding Gate", () => {
       // Intersection: 5, Union: 6
       // Jaccard = 5/6 = 0.833 — well above 0.5
       expect(isClaimSupported(claim, fact)).toBe(true);
+    });
+  });
+
+  describe("extractReferenceAssertions", () => {
+    it("extracts direct speech attribution ('you mentioned that...')", () => {
+      const refs = extractReferenceAssertions(
+        "You mentioned that you built a distributed caching layer at Google."
+      );
+      expect(refs.length).toBeGreaterThanOrEqual(1);
+      expect(refs.some((r) => r.toLowerCase().includes("caching"))).toBe(true);
+    });
+
+    it("extracts experience attribution ('your experience at...')", () => {
+      const refs = extractReferenceAssertions(
+        "Your experience at Meta sounds very impactful."
+      );
+      expect(refs.length).toBeGreaterThanOrEqual(1);
+      expect(refs.some((r) => r.toLowerCase().includes("meta"))).toBe(true);
+    });
+
+    it("extracts 'as you described' attribution", () => {
+      const refs = extractReferenceAssertions(
+        "As you described the migration from monolith to microservices, it sounded complex."
+      );
+      expect(refs.length).toBeGreaterThanOrEqual(1);
+    });
+
+    it("extracts 'based on what you shared' attribution", () => {
+      const refs = extractReferenceAssertions(
+        "Based on what you shared about your Kubernetes deployment strategy, that's very advanced."
+      );
+      expect(refs.length).toBeGreaterThanOrEqual(1);
+    });
+
+    it("returns empty for pure questions with no references", () => {
+      const refs = extractReferenceAssertions(
+        "What technologies have you used in production?"
+      );
+      expect(refs).toHaveLength(0);
+    });
+
+    it("deduplicates repeated reference assertions", () => {
+      const refs = extractReferenceAssertions(
+        "You mentioned your work at Stripe. Earlier, you mentioned your work at Stripe as well."
+      );
+      const unique = new Set(refs);
+      expect(refs.length).toBe(unique.size);
+    });
+  });
+
+  describe("detectHallucinatedReferences", () => {
+    it("returns no hallucinations when no reference assertions exist", () => {
+      const result = detectHallucinatedReferences(
+        "What technologies have you used?",
+        [],
+        []
+      );
+      expect(result.hasHallucinatedReferences).toBe(false);
+      expect(result.hallucinatedReferences).toHaveLength(0);
+      expect(result.totalReferences).toBe(0);
+    });
+
+    it("verifies references against matching facts", () => {
+      const result = detectHallucinatedReferences(
+        "You mentioned that you led a team of 12 engineers at Google.",
+        [{ content: "I led a team of 12 engineers at Google", factType: "CLAIM" }],
+        []
+      );
+      expect(result.hasHallucinatedReferences).toBe(false);
+      expect(result.verifiedReferences.length).toBeGreaterThanOrEqual(1);
+    });
+
+    it("flags hallucinated references not found in facts or turns", () => {
+      const result = detectHallucinatedReferences(
+        "You mentioned your 15 years leading the quantum computing division at SpaceX.",
+        [{ content: "2 years frontend development at a startup", factType: "CLAIM" }],
+        [{ turnId: "t-1", content: "I do frontend work at a small startup" }]
+      );
+      expect(result.hasHallucinatedReferences).toBe(true);
+      expect(result.hallucinatedReferences.length).toBeGreaterThanOrEqual(1);
+    });
+
+    it("verifies references against recent canonical turns with strict threshold", () => {
+      const result = detectHallucinatedReferences(
+        "You mentioned that you built a distributed caching layer for the payments service.",
+        [],
+        [
+          {
+            turnId: "t-5",
+            content: "I built a distributed caching layer for the payments service at Stripe",
+          },
+        ]
+      );
+      // The strict 0.7 threshold should still match high-overlap turns
+      expect(result.hasHallucinatedReferences).toBe(false);
+      expect(result.verifiedReferences.length).toBeGreaterThanOrEqual(1);
+    });
+
+    it("rejects low-similarity turn matches below the strict 0.7 threshold", () => {
+      const result = detectHallucinatedReferences(
+        "You mentioned your PhD in quantum computing and the 15-person team you managed at SpaceX.",
+        [],
+        [{ turnId: "t-1", content: "I worked on frontend React components" }]
+      );
+      expect(result.hasHallucinatedReferences).toBe(true);
     });
   });
 });
