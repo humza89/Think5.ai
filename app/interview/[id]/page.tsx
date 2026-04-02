@@ -149,10 +149,12 @@ export default function InterviewRoom() {
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
+        setErrorStatus(res.status);
         setError(data.error || "Failed to save consent. Please try again.");
         return;
       }
     } catch {
+      setErrorStatus(null);
       setError("Network error saving consent. Please check your connection and try again.");
       return;
     }
