@@ -286,17 +286,20 @@ export async function POST(
           if (memPacket.memoryConfidence < 0.65) {
             // Attempt N3-style recovery: re-fetch from Postgres
             try {
-              const freshFacts = await prisma.interviewFact.findMany({
+              const queryTimeout = <T>(promise: Promise<T>, ms = 5000): Promise<T> =>
+                Promise.race([promise, new Promise<T>((_, reject) => setTimeout(() => reject(new Error("DB query timeout")), ms))]);
+
+              const freshFacts = await queryTimeout(prisma.interviewFact.findMany({
                 where: { interviewId: id },
                 orderBy: { createdAt: "desc" },
                 take: 50,
                 select: { factType: true, content: true, confidence: true },
-              });
-              const freshSnapshot = await prisma.interviewerStateSnapshot.findFirst({
+              }));
+              const freshSnapshot = await queryTimeout(prisma.interviewerStateSnapshot.findFirst({
                 where: { interviewId: id },
                 orderBy: { turnIndex: "desc" },
                 select: { stateHash: true },
-              });
+              }));
               const estimatedTokens = ((serverState as unknown as Record<string, unknown>).recentTurns as Array<{content: string}> | undefined)?.reduce(
                 (sum: number, t: {content: string}) => sum + Math.ceil(t.content.length / 4), 0
               ) ?? 0;

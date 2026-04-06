@@ -5,6 +5,7 @@ import { sendReportReadyEmail } from "@/lib/email/report-ready";
 import { sendCandidateFeedbackEmail } from "@/lib/email/candidate-feedback";
 import { computeEvidenceHash } from "@/lib/evidence-hash";
 import { logAIUsage } from "@/lib/ai-usage";
+import { normalizeScore, updateNormalizationParams } from "@/lib/score-normalizer";
 import * as Sentry from "@sentry/nextjs";
 
 // ── Redis deduplication lock ──────────────────────────────────────────
@@ -149,6 +150,24 @@ export async function generateReportInBackground(
       interview.integrityEvents as any[] | null,
       reportOptions
     );
+
+    // Normalize scores across sessions for fair comparison
+    const interviewType = (interview as any).type || "GENERAL";
+    const dimensionsToNormalize = [
+      { key: "overallScore", name: "overall" },
+      { key: "domainExpertise", name: "domain" },
+      { key: "communicationScore", name: "communication" },
+      { key: "problemSolving", name: "problemSolving" },
+      { key: "professionalExperience", name: "experience" },
+      { key: "thinkingJudgment", name: "thinking" },
+    ];
+    for (const dim of dimensionsToNormalize) {
+      const raw = (reportData as any)[dim.key] as number;
+      if (typeof raw === "number" && !isNaN(raw)) {
+        await updateNormalizationParams(interviewType, dim.name, raw);
+        (reportData as any)[`${dim.key}Normalized`] = await normalizeScore(raw, interviewType, dim.name);
+      }
+    }
 
     // Log AI usage for cost tracking
     // Token estimation: ~4 tokens per word, average turn ~40 words = ~160 tokens/turn

@@ -5,6 +5,8 @@
  * Detects questions about legally prohibited topics in employment interviews.
  */
 
+import { logger } from "@/lib/logger";
+
 interface ComplianceResult {
   passed: boolean;
   violations: string[];
@@ -208,7 +210,8 @@ Respond with ONLY a JSON object: {"violation": false} or {"violation": true, "to
 
     return { passed: true, violations: [] };
   } catch {
-    // On LLM failure, don't block — return passed (regex gate already cleared)
-    return { passed: true, violations: [] };
+    // Fail-closed: LLM compliance check unavailable — block to prevent potential violation
+    logger.warn("[legal-compliance] Semantic compliance check failed — blocking as precaution");
+    return { passed: false, violations: ["Semantic compliance check unavailable — blocked as precaution (fail-closed)"] };
   }
 }

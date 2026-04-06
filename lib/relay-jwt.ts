@@ -7,6 +7,7 @@
  */
 
 import * as crypto from "crypto";
+import { logger } from "@/lib/logger";
 
 const RELAY_JWT_SECRET = process.env.RELAY_JWT_SECRET;
 
@@ -22,7 +23,7 @@ interface RelaySessionPayload {
  * Lightweight implementation — no jsonwebtoken dependency in main app.
  */
 export function signRelayToken(interviewId: string, candidateId: string): string {
-  console.log(`[relay-jwt] Signing token, secret length=${RELAY_JWT_SECRET?.length ?? 0}`);
+  logger.debug(`[relay-jwt] Signing token, secret length=${RELAY_JWT_SECRET?.length ?? 0}`);
   if (!RELAY_JWT_SECRET) {
     throw new Error("RELAY_JWT_SECRET is not configured");
   }

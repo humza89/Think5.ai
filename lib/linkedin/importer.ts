@@ -3,6 +3,7 @@ import { importFromRapidAPI } from "./provider-rapidapi";
 import { importFromFreshLinkedIn } from "./provider-fresh-linkedin";
 import { importFromRockAPIs } from "./provider-rockapis";
 import { scrapeLinkedInProfile } from "../linkedin-scraper";
+import { logger } from "@/lib/logger";
 
 export type LinkedInProfileData = {
   candidate: {
@@ -78,24 +79,24 @@ export async function importLinkedInProfile(
 ): Promise<LinkedInProfileData> {
   // Normalize the URL first
   const normalizedUrl = normalizeLinkedInUrl(url);
-  console.log(`🔗 Normalized LinkedIn URL: ${url} → ${normalizedUrl}`);
+  logger.debug(`🔗 Normalized LinkedIn URL: ${url} → ${normalizedUrl}`);
 
   const provider = (
     process.env.LINKEDIN_IMPORT_PROVIDER || "mock"
   ).toLowerCase();
 
-  console.log(`🔍 LinkedIn import using provider: ${provider}`);
+  logger.debug(`🔍 LinkedIn import using provider: ${provider}`);
 
   // RockAPIs Real-Time LinkedIn Scraper (recommended - you're subscribed!)
   if (provider === "rockapis" || provider === "rock-apis") {
-    console.log("✅ Using RockAPIs Real-Time LinkedIn Scraper for real LinkedIn data");
+    logger.debug("✅ Using RockAPIs Real-Time LinkedIn Scraper for real LinkedIn data");
     try {
       return await importFromRockAPIs(normalizedUrl);
     } catch (error: any) {
       console.error("❌ RockAPIs import failed:", error.message);
 
       // Fall back to mock data so the user can still add candidates
-      console.log("⚠️  Falling back to mock data");
+      logger.debug("⚠️  Falling back to mock data");
       const mockData = await scrapeLinkedInProfile(normalizedUrl);
       return {
         candidate: {
@@ -129,7 +130,7 @@ export async function importLinkedInProfile(
 
   // Fresh LinkedIn Profile Data (recommended)
   if (provider === "fresh-linkedin" || provider === "freshlinkedin") {
-    console.log("✅ Using Fresh LinkedIn Profile Data API for real LinkedIn data");
+    logger.debug("✅ Using Fresh LinkedIn Profile Data API for real LinkedIn data");
     try {
       return await importFromFreshLinkedIn(normalizedUrl);
     } catch (error: any) {
@@ -141,7 +142,7 @@ export async function importLinkedInProfile(
       }
 
       // Fall back to mock data so the user can still add candidates
-      console.log("⚠️  Falling back to mock data");
+      logger.debug("⚠️  Falling back to mock data");
       const mockData = await scrapeLinkedInProfile(normalizedUrl);
       return {
         candidate: {
@@ -175,7 +176,7 @@ export async function importLinkedInProfile(
 
   // RapidAPI (deprecated - suspended)
   if (provider === "rapidapi") {
-    console.log("✅ Using RapidAPI for real LinkedIn data");
+    logger.debug("✅ Using RapidAPI for real LinkedIn data");
     try {
       return await importFromRapidAPI(normalizedUrl);
     } catch (error: any) {
@@ -187,7 +188,7 @@ export async function importLinkedInProfile(
       }
 
       // Fall back to mock data so the user can still add candidates
-      console.log("⚠️  Falling back to mock data");
+      logger.debug("⚠️  Falling back to mock data");
       const mockData = await scrapeLinkedInProfile(normalizedUrl);
       return {
         candidate: {
@@ -233,7 +234,7 @@ export async function importLinkedInProfile(
   }
 
   // Mock fallback
-  console.log("Using mock LinkedIn data");
+  logger.debug("Using mock LinkedIn data");
   const mockData = await scrapeLinkedInProfile(url);
 
   return {

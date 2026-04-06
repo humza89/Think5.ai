@@ -23,7 +23,13 @@ const apiLatency = new Trend("api_latency", true);
 
 // Configuration
 const BASE_URL = __ENV.BASE_URL || "http://localhost:3000";
-const API_TOKEN = __ENV.API_TOKEN || "test-token";
+// REQUIRED: Set API_TOKEN env var to a real auth token for accurate load testing.
+// Without a real token, tests bypass auth middleware and don't exercise rate limiting/CSRF.
+// Generate: node -e "const jwt=require('jsonwebtoken');console.log(jwt.sign({sub:'load-test',role:'admin'},process.env.SUPABASE_JWT_SECRET,{expiresIn:'1h'}))"
+const API_TOKEN = __ENV.API_TOKEN;
+if (!API_TOKEN) {
+  console.warn("⚠️  API_TOKEN not set — load test will bypass auth middleware. Set API_TOKEN for realistic testing.");
+}
 
 export const options = {
   scenarios: {

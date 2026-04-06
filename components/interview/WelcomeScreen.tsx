@@ -57,6 +57,13 @@ export function WelcomeScreen({
   const [consentProctoring, setConsentProctoring] = useState<boolean>(false);
   const [consentPrivacy, setConsentPrivacy] = useState<boolean>(false);
   const [artifactAcknowledged, setArtifactAcknowledged] = useState<boolean>(!templateConfig);
+  const [showAccommodations, setShowAccommodations] = useState(false);
+  const [accommodations, setAccommodations] = useState({
+    extendedTime: false,
+    textOnly: false,
+    captioning: false,
+    screenReader: false,
+  });
 
   const allConsented = consentRecording && consentProctoring && consentPrivacy && artifactAcknowledged;
   const screenShareReady = !screenShareRequired || screenShareActive;
@@ -250,6 +257,41 @@ export function WelcomeScreen({
               </p>
             </div>
           </div>
+        </div>
+
+        {/* Accommodations */}
+        <div className="space-y-3 pt-4 border-t border-zinc-800">
+          <button
+            type="button"
+            className="flex items-center gap-2 text-sm font-medium text-zinc-400 hover:text-zinc-200 transition-colors"
+            onClick={() => setShowAccommodations(!showAccommodations)}
+            aria-expanded={showAccommodations}
+            aria-controls="accommodations-panel"
+          >
+            <svg className={`w-4 h-4 transition-transform ${showAccommodations ? "rotate-90" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+            Request Accommodations
+          </button>
+          {showAccommodations && (
+            <div id="accommodations-panel" className="space-y-3 pl-6" role="group" aria-label="Accommodation options">
+              <p className="text-xs text-zinc-500">We are committed to providing equal access. Select any accommodations you need:</p>
+              <label className="flex items-center gap-3 text-sm text-zinc-300 cursor-pointer">
+                <input type="checkbox" checked={accommodations.extendedTime} onChange={(e) => setAccommodations(prev => ({ ...prev, extendedTime: e.target.checked }))} className="rounded border-zinc-600" />
+                <span>Extended time (50% more time)</span>
+              </label>
+              <label className="flex items-center gap-3 text-sm text-zinc-300 cursor-pointer">
+                <input type="checkbox" checked={accommodations.textOnly} onChange={(e) => setAccommodations(prev => ({ ...prev, textOnly: e.target.checked }))} className="rounded border-zinc-600" />
+                <span>Text-only mode (no voice)</span>
+              </label>
+              <label className="flex items-center gap-3 text-sm text-zinc-300 cursor-pointer">
+                <input type="checkbox" checked={accommodations.captioning} onChange={(e) => setAccommodations(prev => ({ ...prev, captioning: e.target.checked }))} className="rounded border-zinc-600" />
+                <span>Live captions</span>
+              </label>
+              <label className="flex items-center gap-3 text-sm text-zinc-300 cursor-pointer">
+                <input type="checkbox" checked={accommodations.screenReader} onChange={(e) => setAccommodations(prev => ({ ...prev, screenReader: e.target.checked }))} className="rounded border-zinc-600" />
+                <span>Screen reader optimized</span>
+              </label>
+            </div>
+          )}
         </div>
 
         {/* Recording Consent */}

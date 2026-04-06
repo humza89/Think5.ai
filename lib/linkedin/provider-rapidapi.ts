@@ -1,6 +1,7 @@
 import { z } from "zod";
 import slugify from "slugify";
 import { storeRemoteImageToCdn } from "../asset-store";
+import { logger } from "@/lib/logger";
 
 const RAPIDAPI_HOST = process.env.RAPIDAPI_HOST || "linkedin-data-api.p.rapidapi.com";
 const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY;
@@ -70,7 +71,7 @@ async function fetchRapidAPI(linkedinUrl: string) {
   }
 
   const url = `https://${RAPIDAPI_HOST}/get-profile-data-by-url?url=${encodeURIComponent(linkedinUrl)}`;
-  console.log(`📡 Calling RapidAPI: ${url}`);
+  logger.debug(`📡 Calling RapidAPI: ${url}`);
 
   const response = await fetch(url, {
     method: "GET",
@@ -87,7 +88,7 @@ async function fetchRapidAPI(linkedinUrl: string) {
   }
 
   const jsonData = await response.json();
-  console.log("📦 RapidAPI Response:", JSON.stringify(jsonData, null, 2));
+  logger.debug("📦 RapidAPI Response:", JSON.stringify(jsonData, null, 2));
 
   // Check if the response indicates an error or requires subscription
   if (jsonData.message && jsonData.message.includes("subscribe")) {

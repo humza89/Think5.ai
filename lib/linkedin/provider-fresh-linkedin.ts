@@ -18,6 +18,7 @@
 import { z } from "zod";
 import slugify from "slugify";
 import https from "https";
+import { logger } from "@/lib/logger";
 
 const RAPIDAPI_HOST = process.env.RAPIDAPI_HOST || "fresh-linkedin-profile-data.p.rapidapi.com";
 const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY;
@@ -94,7 +95,7 @@ async function fetchFreshLinkedInAPI(linkedinUrl: string): Promise<z.infer<typeo
   });
 
   const path = `/enrich-lead?${params.toString()}`;
-  console.log(`📡 Calling Fresh LinkedIn API (Enrich Lead): ${linkedinUrl}`);
+  logger.debug(`📡 Calling Fresh LinkedIn API (Enrich Lead): ${linkedinUrl}`);
 
   // CRITICAL: Use native https module instead of fetch()
   // fetch() returns cached/incomplete data, https.request() returns fresh data
@@ -130,7 +131,7 @@ async function fetchFreshLinkedInAPI(linkedinUrl: string): Promise<z.infer<typeo
 
         try {
           const jsonData = JSON.parse(bodyString);
-          console.log("📦 Fresh LinkedIn API Response:", JSON.stringify(jsonData, null, 2));
+          logger.debug("📦 Fresh LinkedIn API Response:", JSON.stringify(jsonData, null, 2));
 
           // Check if the response indicates an error or requires subscription
           if (jsonData.message && jsonData.message.includes("subscribe")) {

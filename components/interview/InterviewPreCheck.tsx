@@ -242,7 +242,7 @@ export function InterviewPreCheck({ onComplete, interviewId, accessToken }: PreC
                     </Button>
                   )}
                   <p className="text-xs text-center text-muted-foreground">
-                    By starting, you consent to being recorded and agree to our proctoring rules.
+                    Your consent preferences from the previous step will apply.
                   </p>
                 </div>
               )}

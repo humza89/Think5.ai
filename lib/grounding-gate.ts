@@ -46,6 +46,15 @@ const COURTESY_EXCLUSIONS = [
   /you can (?:take|feel)/i,
   /you want to (?:add|share|ask)/i,
   /you(?:'d| would) prefer/i,
+  /you seem (?:quite )?comfortable with/i,
+  /it sounds like you (?:have|are)/i,
+  /that(?:'s| is) a great point/i,
+  /i appreciate you sharing/i,
+  /thank you for explaining/i,
+  /that makes sense/i,
+  /i understand/i,
+  /from what you(?:'ve| have) shared/i,
+  /building on what you said/i,
 ];
 
 export function extractAssertions(text: string): string[] {

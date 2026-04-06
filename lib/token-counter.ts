@@ -7,6 +7,16 @@
 const tokenCache = new Map<string, { count: number; expiresAt: number }>();
 const CACHE_TTL_MS = 300000; // 5 minutes
 
+function simpleHash(str: string): string {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash |= 0;
+  }
+  return hash.toString(36);
+}
+
 /**
  * Count tokens for a text string using the Gemini countTokens API.
  * Falls back to character-based estimation if the API is unavailable.
@@ -16,7 +26,7 @@ export async function countTokens(
   model = "gemini-1.5-pro"
 ): Promise<number> {
   // Check cache first (same text always has same token count)
-  const cacheKey = `${model}:${text.length}:${text.slice(0, 100)}`;
+  const cacheKey = `${model}:${text.length}:${simpleHash(text)}`;
   const cached = tokenCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) {
     return cached.count;

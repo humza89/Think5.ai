@@ -1173,6 +1173,10 @@ export function useVoiceInterview(
 
       // 2. Set up audio context for playback
       const audioContext = new AudioContext({ sampleRate: 24000 });
+      // Safari requires explicit resume after user gesture
+      if (audioContext.state === "suspended") {
+        await audioContext.resume();
+      }
       audioContextRef.current = audioContext;
       nextPlayTimeRef.current = 0; // Fresh timing for new context
 

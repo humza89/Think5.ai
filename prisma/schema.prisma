@@ -5,6 +5,8 @@ generator client {
   provider = "prisma-client-js"
 }
 
+// Connection pooling: Handled by PgBouncer via DATABASE_URL (Supabase pooler).
+// DIRECT_URL bypasses pooler for migrations. See: https://www.prisma.io/docs/orm/prisma-client/setup-and-configuration/databases-connections/pgbouncer
 datasource db {
   provider  = "postgresql"
   url       = env("DATABASE_URL")
@@ -734,6 +736,8 @@ model Interview {
   @@index([jobId])
   @@index([mode])
   @@index([reconnectToken])
+  @@index([completedAt])
+  @@index([companyId])
 }
 
 // ============================================

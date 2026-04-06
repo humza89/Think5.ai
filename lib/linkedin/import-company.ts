@@ -1,6 +1,7 @@
 import { z } from "zod";
 import slugify from "slugify";
 import https from "https";
+import { logger } from "@/lib/logger";
 
 const RAPIDAPI_HOST = process.env.RAPIDAPI_HOST || "fresh-linkedin-profile-data.p.rapidapi.com";
 const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY;
@@ -94,7 +95,7 @@ async function searchPeopleAtCompany(companyUrl: string): Promise<any> {
   }
 
   const path = `/search-people`;
-  console.log(`📡 Searching for people at company: ${companyUrl}`);
+  logger.debug(`📡 Searching for people at company: ${companyUrl}`);
 
   return new Promise((resolve, reject) => {
     const options = {
@@ -128,7 +129,7 @@ async function searchPeopleAtCompany(companyUrl: string): Promise<any> {
 
         try {
           const jsonData = JSON.parse(bodyString);
-          console.log("📦 LinkedIn People Search Response:", JSON.stringify(jsonData, null, 2).substring(0, 500));
+          logger.debug("📦 LinkedIn People Search Response:", JSON.stringify(jsonData, null, 2).substring(0, 500));
           resolve(jsonData);
         } catch (error) {
           console.error(`❌ Failed to parse response:`, bodyString);
@@ -148,7 +149,7 @@ async function searchPeopleAtCompany(companyUrl: string): Promise<any> {
       limit: 1
     };
 
-    console.log("📤 Search payload:", JSON.stringify(searchPayload));
+    logger.debug("📤 Search payload:", JSON.stringify(searchPayload));
     req.write(JSON.stringify(searchPayload));
     req.end();
   });
@@ -169,7 +170,7 @@ async function fetchProfileForCompanyData(profileUrl: string): Promise<z.infer<t
   });
 
   const path = `/enrich-lead?${params.toString()}`;
-  console.log(`📡 Fetching profile for company data: ${profileUrl}`);
+  logger.debug(`📡 Fetching profile for company data: ${profileUrl}`);
 
   return new Promise((resolve, reject) => {
     const options = {
@@ -202,7 +203,7 @@ async function fetchProfileForCompanyData(profileUrl: string): Promise<z.infer<t
 
         try {
           const jsonData = JSON.parse(bodyString);
-          console.log("📦 Profile Company Data:", JSON.stringify(jsonData.data?.company_description?.substring(0, 100), null, 2));
+          logger.debug("📦 Profile Company Data:", JSON.stringify(jsonData.data?.company_description?.substring(0, 100), null, 2));
           const parsed = ProfileCompanySchema.parse(jsonData);
           resolve(parsed);
         } catch (error) {
@@ -230,7 +231,7 @@ async function fetchLinkedInCompanyData(linkedinUrl: string) {
     throw new Error("Invalid LinkedIn company URL format. Expected format: linkedin.com/company/username");
   }
 
-  console.log(`🔍 Fetching company data from LinkedIn: ${linkedinUrl}`);
+  logger.debug(`🔍 Fetching company data from LinkedIn: ${linkedinUrl}`);
 
   // Step 1: Search for people at this company
   const searchResults = await searchPeopleAtCompany(linkedinUrl);
@@ -241,7 +242,7 @@ async function fetchLinkedInCompanyData(linkedinUrl: string) {
 
   // Step 2: Get the first employee's LinkedIn URL
   const firstEmployee = searchResults.data[0];
-  console.log(`✅ Found employee: ${firstEmployee.full_name || firstEmployee.name || 'Unknown'}`);
+  logger.debug(`✅ Found employee: ${firstEmployee.full_name || firstEmployee.name || 'Unknown'}`);
 
   if (!firstEmployee.linkedin_url) {
     throw new Error("Employee profile does not have a LinkedIn URL");
@@ -254,7 +255,7 @@ async function fetchLinkedInCompanyData(linkedinUrl: string) {
     throw new Error("Failed to extract company data from employee profile");
   }
 
-  console.log(`✅ Extracted company data: ${profileData.data.company || 'Unknown'}`);
+  logger.debug(`✅ Extracted company data: ${profileData.data.company || 'Unknown'}`);
 
   return profileData.data;
 }
@@ -264,7 +265,7 @@ export async function importLinkedInCompany(
 ): Promise<LinkedInCompanyData> {
   // Normalize the URL first
   const normalizedUrl = normalizeLinkedInCompanyUrl(url);
-  console.log(`🔗 Normalized LinkedIn Company URL: ${url} → ${normalizedUrl}`);
+  logger.debug(`🔗 Normalized LinkedIn Company URL: ${url} → ${normalizedUrl}`);
 
   const companyData = await fetchLinkedInCompanyData(normalizedUrl);
 

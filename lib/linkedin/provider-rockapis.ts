@@ -1,6 +1,7 @@
 import { z } from "zod";
 import slugify from "slugify";
 import { storeRemoteImageToCdn } from "../asset-store";
+import { logger } from "@/lib/logger";
 
 const RAPIDAPI_HOST = process.env.RAPIDAPI_HOST || "linkedin-api8.p.rapidapi.com";
 const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY;
@@ -98,7 +99,7 @@ async function fetchRockAPIsLinkedIn(linkedinUrl: string) {
   }
 
   const url = `https://${RAPIDAPI_HOST}/get-profile-data-by-url?url=${encodeURIComponent(linkedinUrl)}`;
-  console.log(`📡 Calling RockAPIs LinkedIn API: ${url}`);
+  logger.debug(`📡 Calling RockAPIs LinkedIn API: ${url}`);
 
   const response = await fetch(url, {
     method: "GET",
@@ -115,7 +116,7 @@ async function fetchRockAPIsLinkedIn(linkedinUrl: string) {
   }
 
   const jsonData = await response.json();
-  console.log("📦 RockAPIs Response:", JSON.stringify(jsonData, null, 2));
+  logger.debug("📦 RockAPIs Response:", JSON.stringify(jsonData, null, 2));
 
   // Check API response structure
   if (!jsonData.success) {

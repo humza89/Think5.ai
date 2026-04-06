@@ -59,7 +59,7 @@ const ReportDataSchema = z.object({
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 
-export const SCORER_MODEL_VERSION = "gemini-1.5-pro";
+export const SCORER_MODEL_VERSION = process.env.SCORER_MODEL_VERSION || "gemini-1.5-pro";
 
 interface TranscriptEntry {
   role: "interviewer" | "candidate";
@@ -379,31 +379,67 @@ Minimum score is 0. If 3+ paste or devtools events, add a meta-flag: {type: "hig
     .replace("{hypotheses}", hypothesesSection)
     .replace("{jobContext}", jobContextSection) + integritySection;
 
-  const result = await model.generateContent(prompt);
-  const response = result.response;
-  const text = response.text();
-
-  // Parse JSON from response (handle potential markdown wrapping)
-  let jsonStr = text.trim();
-  if (jsonStr.startsWith("```json")) {
-    jsonStr = jsonStr.slice(7);
-  } else if (jsonStr.startsWith("```")) {
-    jsonStr = jsonStr.slice(3);
-  }
-  if (jsonStr.endsWith("```")) {
-    jsonStr = jsonStr.slice(0, -3);
-  }
-  jsonStr = jsonStr.trim();
-
-  let parsedJson;
-  try {
-     parsedJson = JSON.parse(jsonStr);
-  } catch (e) {
-     throw new Error("Failed to parse LLM output as JSON");
+  // Single-call helper: generate + parse + validate
+  async function singleScoringCall(): Promise<InterviewReportData> {
+    const result = await model.generateContent(prompt);
+    const text = result.response.text();
+    let jsonStr = text.trim();
+    if (jsonStr.startsWith("```json")) jsonStr = jsonStr.slice(7);
+    else if (jsonStr.startsWith("```")) jsonStr = jsonStr.slice(3);
+    if (jsonStr.endsWith("```")) jsonStr = jsonStr.slice(0, -3);
+    jsonStr = jsonStr.trim();
+    const parsed = JSON.parse(jsonStr);
+    return ReportDataSchema.parse(parsed) as InterviewReportData;
   }
 
-  // Enterprise Zod strict validation
-  const reportData = ReportDataSchema.parse(parsedJson) as InterviewReportData;
+  // Consensus scoring: N parallel calls, average numeric scores
+  const consensusEnabled = process.env.SCORING_CONSENSUS_ENABLED !== "false";
+  const consensusCount = parseInt(process.env.SCORING_CONSENSUS_COUNT || "2", 10);
+
+  let reportData: InterviewReportData;
+
+  if (consensusEnabled && consensusCount >= 2) {
+    const calls = Array.from({ length: consensusCount }, () =>
+      singleScoringCall().catch(() => null)
+    );
+    const results = (await Promise.all(calls)).filter(Boolean) as InterviewReportData[];
+
+    if (results.length === 0) {
+      throw new Error("All consensus scoring calls failed");
+    }
+
+    if (results.length === 1) {
+      reportData = results[0];
+    } else {
+      // Check if overall scores diverge by >10 points — tiebreaker needed
+      const scores = results.map(r => r.overallScore ?? 0);
+      const maxDiff = Math.max(...scores) - Math.min(...scores);
+      if (maxDiff > 10) {
+        const tiebreaker = await singleScoringCall().catch(() => null);
+        if (tiebreaker) results.push(tiebreaker);
+      }
+
+      // Average numeric fields across all results
+      reportData = { ...results[0] };
+      const numericKeys = [
+        "overallScore", "domainExpertise", "clarityStructure", "problemSolving",
+        "communicationScore", "measurableImpact", "integrityScore",
+        "professionalExperience", "roleFit", "culturalFit", "thinkingJudgment", "jobMatchScore",
+      ];
+      for (const key of numericKeys) {
+        const values = results.map(r => (r as any)[key]).filter((v: any) => typeof v === "number" && !isNaN(v));
+        if (values.length > 0) {
+          (reportData as any)[key] = Math.round(values.reduce((a: number, b: number) => a + b, 0) / values.length);
+        }
+      }
+    }
+  } else {
+    try {
+      reportData = await singleScoringCall();
+    } catch {
+      throw new Error("Failed to parse LLM output as JSON");
+    }
+  }
 
   // Validate and clamp all scores
   reportData.overallScore = clampScore(reportData.overallScore, 0, 100);

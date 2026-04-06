@@ -32,16 +32,19 @@ class PCMCaptureProcessor extends AudioWorkletProcessor {
       this._buffer[this._bufferIndex++] = channelData[i];
 
       if (this._bufferIndex >= this._buffer.length) {
-        // Convert Float32 to Int16 PCM
+        // Convert Float32 to Int16 PCM and calculate RMS for silence detection
         const pcm16 = new Int16Array(this._buffer.length);
+        let sumSquares = 0;
         for (let j = 0; j < this._buffer.length; j++) {
           const s = Math.max(-1, Math.min(1, this._buffer[j]));
           pcm16[j] = s < 0 ? s * 0x8000 : s * 0x7fff;
+          sumSquares += s * s;
         }
+        const rms = Math.sqrt(sumSquares / this._buffer.length);
 
-        // Post the PCM buffer to the main thread
+        // Post the PCM buffer with RMS metadata to the main thread
         this.port.postMessage(
-          { type: "pcm", buffer: pcm16.buffer },
+          { type: "pcm", buffer: pcm16.buffer, rms: rms, isSilent: rms < 0.01 },
           [pcm16.buffer]
         );
 
