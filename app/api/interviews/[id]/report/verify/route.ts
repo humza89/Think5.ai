@@ -22,10 +22,16 @@ export async function GET(
             overallScore: true,
             recommendation: true,
             summary: true,
+            technicalSkills: true,
+            softSkills: true,
             domainExpertise: true,
             problemSolving: true,
             communicationScore: true,
             integrityScore: true,
+            riskSignals: true,
+            hypothesisOutcomes: true,
+            jobMatchScore: true,
+            evidenceHighlights: true,
           },
         },
       },
@@ -42,18 +48,25 @@ export async function GET(
       });
     }
 
-    const currentHash = computeEvidenceHash(
+    const { signature: currentHash } = computeEvidenceHash(
       interview.transcript,
       {
         overallScore: interview.report.overallScore,
         recommendation: interview.report.recommendation,
         summary: interview.report.summary,
+        technicalSkills: interview.report.technicalSkills,
+        softSkills: interview.report.softSkills,
         domainExpertise: interview.report.domainExpertise,
         problemSolving: interview.report.problemSolving,
         communicationScore: interview.report.communicationScore,
         integrityScore: interview.report.integrityScore,
+        riskSignals: interview.report.riskSignals,
+        hypothesisOutcomes: interview.report.hypothesisOutcomes,
+        jobMatchScore: interview.report.jobMatchScore,
+        evidenceHighlights: interview.report.evidenceHighlights,
       },
-      interview.recordingUrl
+      interview.recordingUrl,
+      id
     );
 
     const verified = currentHash === interview.report.evidenceHash;

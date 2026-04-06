@@ -137,6 +137,229 @@ export async function runBiasAuditAnalysis(options: {
   };
 }
 
+// ── Intersectional Bias Audit (2K) ───────────────────────────────────
+
+export interface WilsonInterval {
+  lower: number;
+  upper: number;
+  point: number;
+}
+
+export interface IntersectionalGroupStats {
+  dimensions: string[];       // e.g. ["gender", "ethnicity"]
+  group: string;              // e.g. "female_hispanic"
+  count: number;
+  passRate: number;
+  passCount: number;
+  confidenceInterval: WilsonInterval;
+}
+
+export interface IntersectionalResult {
+  dimensionPair: [string, string];
+  groups: IntersectionalGroupStats[];
+  adverseImpactRatio: number;
+  adverseImpactDetected: boolean;
+}
+
+export interface TrendComparison {
+  group: string;
+  dimension: string;
+  currentPassRate: number;
+  baselinePassRate: number | null; // null if no baseline data
+  delta: number | null;
+}
+
+export interface IntersectionalBiasAuditAnalysis extends BiasAuditAnalysis {
+  intersectionalResults: IntersectionalResult[];
+  confidenceIntervals: Record<string, WilsonInterval>; // keyed by "dimension:group"
+  trendComparisons: TrendComparison[];
+}
+
+/**
+ * Wilson score confidence interval for a binomial proportion.
+ * Returns lower and upper bounds at the given z-level (default 1.96 for 95% CI).
+ */
+function wilsonInterval(successes: number, total: number, z = 1.96): WilsonInterval {
+  if (total === 0) return { lower: 0, upper: 0, point: 0 };
+
+  const pHat = successes / total;
+  const z2 = z * z;
+  const denominator = 1 + z2 / total;
+  const center = pHat + z2 / (2 * total);
+  const margin = z * Math.sqrt((pHat * (1 - pHat) + z2 / (4 * total)) / total);
+
+  return {
+    lower: Math.max(0, Math.round(((center - margin) / denominator) * 1000) / 1000),
+    upper: Math.min(1, Math.round(((center + margin) / denominator) * 1000) / 1000),
+    point: Math.round(pHat * 1000) / 1000,
+  };
+}
+
+export async function runIntersectionalBiasAudit(options: {
+  startDate: Date;
+  endDate: Date;
+}): Promise<IntersectionalBiasAuditAnalysis> {
+  // Run the standard bias audit first
+  const baseResult = await runBiasAuditAnalysis(options);
+
+  // Fetch records with demographics for intersectional analysis
+  const records = await generateBiasAuditExport({
+    startDate: options.startDate,
+    endDate: options.endDate,
+    includeDemographics: true,
+  });
+
+  const withDemographics = records.filter(
+    (r) => r.demographicData && Object.keys(r.demographicData).length > 0
+  );
+
+  // Collect all demographic dimensions
+  const dimensions = new Set<string>();
+  for (const record of withDemographics) {
+    if (record.demographicData) {
+      for (const key of Object.keys(record.demographicData)) {
+        dimensions.add(key);
+      }
+    }
+  }
+
+  const dimensionList = Array.from(dimensions);
+  const intersectionalResults: IntersectionalResult[] = [];
+  const confidenceIntervals: Record<string, WilsonInterval> = {};
+
+  // Single-dimension confidence intervals
+  for (const result of baseResult.results) {
+    for (const group of result.groups) {
+      const ci = wilsonInterval(group.passCount, group.count);
+      confidenceIntervals[`${result.dimension}:${group.group}`] = ci;
+    }
+  }
+
+  // Multi-factor analysis: for each pair of demographic dimensions
+  for (let i = 0; i < dimensionList.length; i++) {
+    for (let j = i + 1; j < dimensionList.length; j++) {
+      const dimA = dimensionList[i];
+      const dimB = dimensionList[j];
+
+      const groups = new Map<string, { passes: number; total: number }>();
+
+      for (const record of withDemographics) {
+        const valA = record.demographicData?.[dimA];
+        const valB = record.demographicData?.[dimB];
+        if (!valA || typeof valA !== "string" || !valB || typeof valB !== "string") continue;
+
+        const key = `${valA}_${valB}`;
+        if (!groups.has(key)) {
+          groups.set(key, { passes: 0, total: 0 });
+        }
+
+        const group = groups.get(key)!;
+        group.total++;
+        if (record.recommendation === "YES" || record.recommendation === "STRONG_YES") {
+          group.passes++;
+        }
+      }
+
+      if (groups.size < 2) continue;
+
+      const groupStats: IntersectionalGroupStats[] = [];
+      let maxPassRate = 0;
+      let minPassRate = 1;
+
+      for (const [name, data] of groups) {
+        const passRate = data.total > 0 ? data.passes / data.total : 0;
+        const ci = wilsonInterval(data.passes, data.total);
+
+        if (data.total >= 5) {
+          maxPassRate = Math.max(maxPassRate, passRate);
+          minPassRate = Math.min(minPassRate, passRate);
+        }
+
+        groupStats.push({
+          dimensions: [dimA, dimB],
+          group: name,
+          count: data.total,
+          passRate: Math.round(passRate * 1000) / 1000,
+          passCount: data.passes,
+          confidenceInterval: ci,
+        });
+
+        confidenceIntervals[`${dimA}+${dimB}:${name}`] = ci;
+      }
+
+      const adverseImpactRatio = maxPassRate > 0
+        ? Math.round((minPassRate / maxPassRate) * 1000) / 1000
+        : 1;
+
+      intersectionalResults.push({
+        dimensionPair: [dimA, dimB],
+        groups: groupStats,
+        adverseImpactRatio,
+        adverseImpactDetected: adverseImpactRatio < 0.8,
+      });
+    }
+  }
+
+  // Trend analysis placeholder: compare current period vs baseline (last 90 days)
+  const trendComparisons: TrendComparison[] = [];
+  const baselineStart = new Date(options.startDate);
+  baselineStart.setDate(baselineStart.getDate() - 90);
+  const baselineEnd = new Date(options.startDate);
+  baselineEnd.setDate(baselineEnd.getDate() - 1);
+
+  // Only compute trends if baseline period is valid
+  if (baselineStart < baselineEnd) {
+    const baselineRecords = await generateBiasAuditExport({
+      startDate: baselineStart,
+      endDate: baselineEnd,
+      includeDemographics: true,
+    });
+
+    const baselineWithDemo = baselineRecords.filter(
+      (r) => r.demographicData && Object.keys(r.demographicData).length > 0
+    );
+
+    for (const result of baseResult.results) {
+      for (const group of result.groups) {
+        // Compute baseline pass rate for this dimension:group
+        const baselineGroup = baselineWithDemo.filter((r) => {
+          const val = r.demographicData?.[result.dimension];
+          return typeof val === "string" && val === group.group;
+        });
+
+        const baselineTotal = baselineGroup.length;
+        const baselinePasses = baselineGroup.filter(
+          (r) => r.recommendation === "YES" || r.recommendation === "STRONG_YES"
+        ).length;
+
+        const baselinePassRate = baselineTotal >= 5
+          ? Math.round((baselinePasses / baselineTotal) * 1000) / 1000
+          : null;
+
+        trendComparisons.push({
+          group: group.group,
+          dimension: result.dimension,
+          currentPassRate: group.passRate,
+          baselinePassRate,
+          delta: baselinePassRate != null
+            ? Math.round((group.passRate - baselinePassRate) * 1000) / 1000
+            : null,
+        });
+      }
+    }
+  }
+
+  return {
+    ...baseResult,
+    adverseImpactDetected:
+      baseResult.adverseImpactDetected ||
+      intersectionalResults.some((r) => r.adverseImpactDetected),
+    intersectionalResults,
+    confidenceIntervals,
+    trendComparisons,
+  };
+}
+
 // ── Bias Audit Export ─────────────────────────────────────────────────
 
 export async function generateBiasAuditExport(options?: { startDate?: Date; endDate?: Date; includeDemographics?: boolean }): Promise<BiasAuditRecord[]> {

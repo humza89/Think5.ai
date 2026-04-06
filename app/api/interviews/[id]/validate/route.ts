@@ -64,7 +64,19 @@ export async function POST(
   const { id } = await params;
   try {
     const body = await request.json();
-    const { accessToken, consentRecording, consentProctoring, consentPrivacy } = body;
+    const { consentRecording, consentProctoring, consentPrivacy } = body;
+
+    // Accept token from body (backward compat) or HttpOnly session cookie (secure)
+    let accessToken = body.accessToken as string | undefined;
+    if (!accessToken) {
+      const sessionCookie = request.cookies.get("interview-session")?.value;
+      if (sessionCookie) {
+        const [cookieId, cookieToken] = sessionCookie.split(":");
+        if (cookieId === id && cookieToken) {
+          accessToken = cookieToken;
+        }
+      }
+    }
 
     if (!accessToken) {
       return NextResponse.json(

@@ -121,10 +121,19 @@ export function extractAssertions(text: string): string[] {
  * Verify that AI assertions are supported by extracted facts.
  * Returns a GroundingResult indicating which claims pass and which don't.
  */
+/**
+ * Verify that AI-generated claims are grounded in known facts.
+ * @param responseText - The AI response to verify
+ * @param facts - Tier 1 facts extracted from interview turns
+ * @param resumeFacts - Optional Tier 0 facts extracted from the candidate's resume
+ */
 export function verifyGrounding(
   responseText: string,
-  facts: ExtractedFact[]
+  facts: ExtractedFact[],
+  resumeFacts?: ExtractedFact[]
 ): GroundingResult {
+  // Merge interview facts with resume facts for cross-validation
+  const allFacts = resumeFacts ? [...facts, ...resumeFacts] : facts;
   const assertions = extractAssertions(responseText);
 
   if (assertions.length === 0) {
@@ -143,14 +152,14 @@ export function verifyGrounding(
   const provenance: ClaimProvenance[] = [];
 
   for (const assertion of assertions) {
-    let bestMatch: { factContent: string; factType: string; similarity: number } | null = null;
+    let bestMatch: { factContent: string; factType: string; similarity: number; turnId?: string } | null = null;
     let bestSimilarity = 0;
 
-    for (const fact of facts) {
+    for (const fact of allFacts) {
       const sim = computeSimilarity(assertion, fact.content);
       if (sim > bestSimilarity) {
         bestSimilarity = sim;
-        bestMatch = { factContent: fact.content, factType: fact.factType, similarity: sim };
+        bestMatch = { factContent: fact.content, factType: fact.factType, similarity: sim, turnId: fact.turnId };
       }
     }
 

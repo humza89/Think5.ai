@@ -38,21 +38,39 @@ export function InterviewPreCheck({ onComplete, interviewId, accessToken }: PreC
     }
 
     try {
+      // Latency test
       const startTime = performance.now();
-      // Fetch a small chunk of data from Next Server to assess real latency
       const res = await fetch("/api/v1/health?speedtest=true", { cache: 'no-store' });
       const endTime = performance.now();
       const latency = endTime - startTime;
-      
-      if (res.ok && latency < 600) { // 600ms latency threshold for acceptable audio websocket performance
-         setNetwork("pass");
-      } else {
+
+      if (!res.ok || latency >= 600) {
          setNetwork("fail");
          toast.error(latency >= 600 ? "Connection latency too high for Voice AI." : "Bandwidth checks failed.");
          setIsChecking(false);
          return;
       }
-    } catch (e) {
+
+      // Bandwidth test — download response body and measure throughput
+      const body = await res.arrayBuffer();
+      const bandwidthStartTime = performance.now();
+      // Fetch a second time to measure download speed (first may be cached)
+      const bwRes = await fetch("/api/v1/health?speedtest=true&bw=1", { cache: 'no-store' });
+      const bwBody = await bwRes.arrayBuffer();
+      const bwEndTime = performance.now();
+      const downloadTimeMs = bwEndTime - bandwidthStartTime;
+      const bytesDownloaded = bwBody.byteLength || body.byteLength;
+      const kbps = bytesDownloaded > 0 ? (bytesDownloaded * 8) / (downloadTimeMs / 1000) / 1000 : 0;
+
+      if (kbps > 0 && kbps < 100) { // Minimum 100kbps for 24kHz PCM audio streaming
+        setNetwork("fail");
+        toast.error("Internet speed too slow for voice interviews. Please use a faster connection.");
+        setIsChecking(false);
+        return;
+      }
+
+      setNetwork("pass");
+    } catch {
       setNetwork("fail");
       toast.error("Network connection unstable or blocked by firewall.");
       setIsChecking(false);
@@ -63,7 +81,11 @@ export function InterviewPreCheck({ onComplete, interviewId, accessToken }: PreC
     try {
       const mediaStream = await navigator.mediaDevices.getUserMedia({
         video: true,
-        audio: true,
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
       });
       setStream(mediaStream);
       

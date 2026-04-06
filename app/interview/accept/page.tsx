@@ -94,8 +94,9 @@ function AcceptInvitationContent() {
         return;
       }
 
-      const { interviewId, accessToken } = await res.json();
-      router.push(`/interview/${interviewId}?token=${accessToken}`);
+      const { interviewId } = await res.json();
+      // Cookie is set by the API — redirect without token in URL
+      router.push(`/interview/${interviewId}`);
     } catch {
       setError("Failed to accept invitation. Please try again.");
       setAccepting(false);

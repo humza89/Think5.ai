@@ -152,7 +152,7 @@ export function useVoiceInterview(
   const checkpointTimerRef = useRef<NodeJS.Timeout | null>(null);
   const questionCountRef = useRef(0);
   const candidateNameRef = useRef("");
-  const processorRef = useRef<ScriptProcessorNode | null>(null);
+  const processorRef = useRef<ScriptProcessorNode | AudioWorkletNode | null>(null);
   const reconnectAttemptsRef = useRef(0);
   // Adaptive reconnect limits based on WebSocket close code
   const getMaxReconnectAttempts = (code: number): number => {
@@ -217,11 +217,13 @@ export function useVoiceInterview(
   // ── Audio Resource Cleanup Helper ────────────────────────────────────
   // Called before reconnect and on unmount to prevent resource leaks
   const cleanupAudioResources = useCallback(() => {
-    // 1. Disconnect and destroy ScriptProcessorNode
+    // 1. Disconnect and destroy audio processor (AudioWorklet or ScriptProcessorNode)
     if (processorRef.current) {
       try {
         processorRef.current.disconnect();
-        processorRef.current.onaudioprocess = null;
+        if ("onaudioprocess" in processorRef.current) {
+          (processorRef.current as ScriptProcessorNode).onaudioprocess = null;
+        }
       } catch { /* already disconnected */ }
       processorRef.current = null;
     }
@@ -1191,6 +1193,7 @@ export function useVoiceInterview(
             channelCount: 1,
             echoCancellation: true,
             noiseSuppression: true,
+            autoGainControl: true,
           },
         });
         mediaStreamRef.current = micStream;
@@ -1212,7 +1215,7 @@ export function useVoiceInterview(
               // Re-attach listener to new track
               const newTrack = newStream.getAudioTracks()[0];
               if (newTrack) newTrack.onended = handleTrackEnded;
-              // Reconnect ScriptProcessorNode input
+              // Reconnect audio processor input (AudioWorklet or ScriptProcessorNode)
               if (audioContextRef.current && processorRef.current) {
                 const source = audioContextRef.current.createMediaStreamSource(newStream);
                 source.connect(processorRef.current);
@@ -1251,7 +1254,7 @@ export function useVoiceInterview(
 
           const setupMsg: Record<string, unknown> = {
             setup: {
-              model: model || "models/gemini-2.5-flash-native-audio-latest",
+              model: model || process.env.NEXT_PUBLIC_GEMINI_LIVE_MODEL_VERSION || "models/gemini-2.5-flash-preview-native-audio-dialog",
               generationConfig: {
                 responseModalities: ["AUDIO"],
                 speechConfig: {
@@ -1700,24 +1703,46 @@ export function useVoiceInterview(
       }
 
       // 7. Start mic audio capture → WebSocket
-      // TODO [F11]: Migrate from ScriptProcessorNode (deprecated) to AudioWorklet.
-      // AudioWorklet requires a separate worker file and MessagePort communication.
-      // Deferred: not blocking enterprise readiness, but should be done for long-term support.
+      // Uses AudioWorklet (modern, non-deprecated) with ScriptProcessorNode fallback
       const source = audioContext.createMediaStreamSource(micStream);
-      const processor = audioContext.createScriptProcessor(4096, 1, 1);
-      processorRef.current = processor;
       audioProcessorErrorCountRef.current = 0; // F2: Reset error counter on new processor
 
-      processor.onaudioprocess = (e) => {
-        try { // F2: Error boundary — catch exceptions in audio processor
+      // Helper: shared audio send logic (used by both AudioWorklet and ScriptProcessorNode paths)
+      const sendPcmToWebSocket = (pcm16Buffer: ArrayBuffer) => {
         if (!isMicEnabledRef.current) return;
         const ws2 = wsRef.current;
         if (!ws2 || ws2.readyState !== WebSocket.OPEN) return;
 
-        const inputData = e.inputBuffer.getChannelData(0);
+        // Convert Int16 PCM ArrayBuffer to base64
+        const bytes = new Uint8Array(pcm16Buffer);
+        let binary = "";
+        for (let i = 0; i < bytes.length; i++) {
+          binary += String.fromCharCode(bytes[i]);
+        }
+        const base64 = btoa(binary);
 
-        // ── Silence detection (only when AI is listening) ──
-        // Skip during AI speaking/thinking — candidate is naturally quiet
+        // Backpressure: bounded ring buffer
+        const queue = audioQueueRef.current;
+        if (queue.length >= 50) {
+          queue.shift();
+          droppedFramesRef.current += 1;
+        }
+        queue.push(base64);
+
+        // Drain queue
+        while (queue.length > 0) {
+          const chunk = queue.shift()!;
+          ws2.send(JSON.stringify({
+            realtimeInput: {
+              mediaChunks: [{ mimeType: "audio/pcm;rate=24000", data: chunk }],
+            },
+          }));
+          lastSendTimeRef.current = Date.now();
+        }
+      };
+
+      // Shared silence detection logic
+      const detectSilence = (inputData: Float32Array) => {
         if (aiStateRef.current === "listening") {
           let sumSquares = 0;
           for (let i = 0; i < inputData.length; i++) {
@@ -1726,7 +1751,7 @@ export function useVoiceInterview(
           const rms = Math.sqrt(sumSquares / inputData.length);
           if (rms < 0.005) {
             silentFramesRef.current += 1;
-            if (silentFramesRef.current >= 30 && !micIsSilent) { // ~3s of silence
+            if (silentFramesRef.current >= 30 && !micIsSilent) {
               setMicIsSilent(true);
             }
           } else {
@@ -1735,68 +1760,67 @@ export function useVoiceInterview(
             }
             silentFramesRef.current = 0;
           }
-        } else {
-          // Reset counter during AI turns — don't accumulate
-          silentFramesRef.current = 0;
-          if (micIsSilent) setMicIsSilent(false);
-        }
-
-        // ── Backpressure: enqueue frames when WebSocket buffer is overloaded ──
-        const pcm16 = float32ToPCM16(inputData);
-        const base64 = arrayBufferToBase64(pcm16.buffer as ArrayBuffer);
-
-        if (ws2.bufferedAmount > 100_000) { // 100KB threshold
-          // Enqueue instead of dropping — bounded ring buffer (max 50 frames ≈ 8.5s at 170ms/frame)
-          if (audioQueueRef.current.length >= 50) {
-            audioQueueRef.current.shift(); // Drop oldest frame
-            droppedFramesRef.current += 1;
-          }
-          audioQueueRef.current.push(base64);
-          if (audioQueueRef.current.length === 10) {
-            setConnectionQuality("fair");
-          } else if (droppedFramesRef.current >= 50) {
-            setConnectionQuality("poor");
-            console.warn("[Voice] Audio queue overflow — network severely congested");
-          }
-          return;
-        }
-
-        // WS is clear — send current frame
-        const sendFrame = (data: string) => {
-          ws2.send(JSON.stringify({
-            realtimeInput: {
-              mediaChunks: [{
-                mimeType: "audio/pcm;rate=24000",
-                data,
-              }],
-            },
-          }));
-        };
-
-        // Flush queued frames first (up to 5 per cycle to avoid burst)
-        let flushed = 0;
-        while (audioQueueRef.current.length > 0 && flushed < 5 && ws2.bufferedAmount < 100_000) {
-          sendFrame(audioQueueRef.current.shift()!);
-          flushed++;
-        }
-        if (flushed > 0 && audioQueueRef.current.length === 0) {
-          droppedFramesRef.current = 0;
-          setConnectionQuality("good");
-        }
-
-        sendFrame(base64);
-        lastSendTimeRef.current = Date.now();
-        } catch (err) { // F2: Error boundary catch
-          audioProcessorErrorCountRef.current += 1;
-          console.error("[Voice] Audio processor error:", err);
-          if (audioProcessorErrorCountRef.current >= 2) {
-            onError?.("Audio processing issue detected. Your mic may need attention.");
-          }
         }
       };
 
-      source.connect(processor);
-      processor.connect(audioContext.destination);
+      // Try AudioWorklet first, fall back to ScriptProcessorNode for older browsers
+      if (audioContext.audioWorklet) {
+        try {
+          await audioContext.audioWorklet.addModule("/audio-worklet-processor.js");
+          const workletNode = new AudioWorkletNode(audioContext, "pcm-capture-processor");
+          processorRef.current = workletNode;
+
+          workletNode.port.onmessage = (event) => {
+            if (event.data.type === "pcm") {
+              sendPcmToWebSocket(event.data.buffer);
+            }
+          };
+
+          source.connect(workletNode);
+          workletNode.connect(audioContext.destination);
+          console.log("[Voice] AudioWorklet processor initialized");
+        } catch (workletError) {
+          console.warn("[Voice] AudioWorklet failed, falling back to ScriptProcessorNode:", workletError);
+          // Fall through to ScriptProcessorNode below
+          processorRef.current = null;
+        }
+      }
+
+      // Fallback: ScriptProcessorNode (deprecated but universally supported)
+      if (!processorRef.current) {
+        const processor = audioContext.createScriptProcessor(4096, 1, 1);
+        processorRef.current = processor;
+
+        processor.onaudioprocess = (e) => {
+          try {
+            if (!isMicEnabledRef.current) return;
+            const ws2 = wsRef.current;
+            if (!ws2 || ws2.readyState !== WebSocket.OPEN) return;
+
+            const inputData = e.inputBuffer.getChannelData(0);
+            detectSilence(inputData);
+
+            // Convert Float32 to Int16 PCM
+            const pcm16 = new Int16Array(inputData.length);
+            for (let i = 0; i < inputData.length; i++) {
+              const s = Math.max(-1, Math.min(1, inputData[i]));
+              pcm16[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
+            }
+            sendPcmToWebSocket(pcm16.buffer);
+          } catch (processorError) {
+            audioProcessorErrorCountRef.current += 1;
+            if (audioProcessorErrorCountRef.current <= 3) {
+              console.error("[Voice] Audio processor error:", processorError);
+            }
+          }
+        };
+
+        source.connect(processor);
+        processor.connect(audioContext.destination);
+        console.log("[Voice] ScriptProcessorNode fallback initialized");
+      }
+
+      // Audio processor is already connected above (AudioWorklet or ScriptProcessorNode fallback)
 
       // 8. Start adaptive checkpoint timer
       // First 5 minutes: 15s intervals (opening context is critical)

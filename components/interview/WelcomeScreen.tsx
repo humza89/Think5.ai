@@ -253,8 +253,8 @@ export function WelcomeScreen({
         </div>
 
         {/* Recording Consent */}
-        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 mb-6 space-y-4">
-          <h3 className="text-zinc-200 font-medium mb-1 flex items-center gap-2">
+        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 mb-6 space-y-4" role="group" aria-labelledby="consent-heading">
+          <h3 id="consent-heading" className="text-zinc-200 font-medium mb-1 flex items-center gap-2">
             <ShieldCheck className="w-4 h-4 text-violet-400" />
             Consent &amp; Acknowledgements
           </h3>
@@ -263,9 +263,11 @@ export function WelcomeScreen({
               type="checkbox"
               checked={consentRecording}
               onChange={(e) => setConsentRecording(e.target.checked)}
+              aria-label="Consent to video and audio recording"
+              aria-describedby="consent-recording-desc"
               className="mt-0.5 h-4 w-4 rounded border-zinc-600 bg-zinc-800 text-violet-600 focus:ring-violet-500 focus:ring-offset-0 accent-violet-600"
             />
-            <span className="text-sm text-zinc-400 group-hover:text-zinc-300 transition-colors">
+            <span id="consent-recording-desc" className="text-sm text-zinc-400 group-hover:text-zinc-300 transition-colors">
               I consent to being recorded (video and audio) during this interview
             </span>
           </label>
@@ -274,9 +276,11 @@ export function WelcomeScreen({
               type="checkbox"
               checked={consentProctoring}
               onChange={(e) => setConsentProctoring(e.target.checked)}
+              aria-label="Consent to integrity monitoring"
+              aria-describedby="consent-proctoring-desc"
               className="mt-0.5 h-4 w-4 rounded border-zinc-600 bg-zinc-800 text-violet-600 focus:ring-violet-500 focus:ring-offset-0 accent-violet-600"
             />
-            <span className="text-sm text-zinc-400 group-hover:text-zinc-300 transition-colors">
+            <span id="consent-proctoring-desc" className="text-sm text-zinc-400 group-hover:text-zinc-300 transition-colors">
               I consent to integrity monitoring (tab switches, paste detection, webcam, and fullscreen tracking) for assessment purposes
             </span>
           </label>
@@ -285,9 +289,11 @@ export function WelcomeScreen({
               type="checkbox"
               checked={consentPrivacy}
               onChange={(e) => setConsentPrivacy(e.target.checked)}
+              aria-label="Agree to Privacy Policy"
+              aria-describedby="consent-privacy-desc"
               className="mt-0.5 h-4 w-4 rounded border-zinc-600 bg-zinc-800 text-violet-600 focus:ring-violet-500 focus:ring-offset-0 accent-violet-600"
             />
-            <span className="text-sm text-zinc-400 group-hover:text-zinc-300 transition-colors">
+            <span id="consent-privacy-desc" className="text-sm text-zinc-400 group-hover:text-zinc-300 transition-colors">
               I have read and agree to the Privacy Policy
             </span>
           </label>

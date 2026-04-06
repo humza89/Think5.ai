@@ -2,12 +2,16 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { randomUUID } from "crypto";
 
+const SESSION_COOKIE_NAME = "interview-session";
+const SESSION_MAX_AGE = 7200; // 2 hours
+
 /**
  * POST /api/interviews/accept
  *
  * Accepts an invitation token, creates an Interview if needed,
  * updates the invitation status to ACCEPTED, and returns the
- * interview ID + access token for redirect.
+ * interview ID. Sets an HttpOnly session cookie for secure access
+ * so the access token never appears in the URL.
  */
 export async function POST(request: NextRequest) {
   try {
@@ -68,10 +72,19 @@ export async function POST(request: NextRequest) {
         });
       }
 
-      return NextResponse.json({
+      const res = NextResponse.json({
         interviewId: invitation.interview.id,
         accessToken: existingToken,
       });
+      // Set HttpOnly session cookie so token doesn't need to be in the URL
+      res.cookies.set(SESSION_COOKIE_NAME, `${invitation.interview.id}:${existingToken}`, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "strict",
+        path: "/",
+        maxAge: SESSION_MAX_AGE,
+      });
+      return res;
     }
 
     // Create the interview from the invitation
@@ -105,10 +118,19 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    return NextResponse.json({
+    const res = NextResponse.json({
       interviewId: interview.id,
       accessToken: interview.accessToken,
     });
+    // Set HttpOnly session cookie so token doesn't need to be in the URL
+    res.cookies.set(SESSION_COOKIE_NAME, `${interview.id}:${interview.accessToken}`, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
+      path: "/",
+      maxAge: SESSION_MAX_AGE,
+    });
+    return res;
   } catch (error) {
     console.error("Invitation acceptance error:", error);
     return NextResponse.json({ error: "Failed to accept invitation" }, { status: 500 });

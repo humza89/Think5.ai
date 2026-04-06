@@ -1,12 +1,45 @@
 // C6: Sanitize user-generated content before prompt injection
 // Strips patterns that could be interpreted as prompt instructions
+// Hardened: NFKC normalization, prompt keyword stripping, whitespace collapse
 export function sanitizeForPrompt(text: string, maxLength = 500): string {
-  return text
-    .replace(/[<>{}[\]]/g, "") // Strip XML/JSON delimiters
-    .replace(/```/g, "") // Strip code fences
-    .replace(/\n{3,}/g, "\n\n") // Collapse excessive newlines
-    .replace(/#{1,6}\s/g, "") // Strip markdown headings (could look like prompt sections)
-    .slice(0, maxLength); // Hard limit per field
+  // Step 1: NFKC unicode normalization to prevent homoglyph/encoding attacks
+  let sanitized = text.normalize("NFKC");
+
+  // Step 1.5: Strip invisible unicode characters (zero-width spaces, BOM, directional overrides, soft hyphens)
+  sanitized = sanitized.replace(/[\u200B-\u200F\u2028-\u202F\uFEFF\u00AD\u2060-\u2064\u2066-\u2069]/g, "");
+
+  // Step 2: Strip XML/JSON delimiters and code fences
+  sanitized = sanitized
+    .replace(/[<>{}[\]]/g, "")
+    .replace(/```/g, "")
+    .replace(/#{1,6}\s/g, "");
+
+  // Step 3: Strip prompt injection keywords (case-insensitive)
+  const promptKeywords = [
+    /\bSystem\s*:/gi,
+    /\bInstructions\s*:/gi,
+    /\bIgnore\s+above\b/gi,
+    /\bIgnore\s+previous\b/gi,
+    /\bAssistant\s*:/gi,
+    /\bHuman\s*:/gi,
+    /\bYou\s+are\s+now\b/gi,
+    /\bForget\s+everything\b/gi,
+    /\bNew\s+instructions\s*:/gi,
+    /\bIMPORTANT\s*:/gi,
+    /\bOverride\s*:/gi,
+  ];
+  for (const pattern of promptKeywords) {
+    sanitized = sanitized.replace(pattern, "");
+  }
+
+  // Step 4: Collapse excessive whitespace
+  sanitized = sanitized
+    .replace(/\n{3,}/g, "\n\n")
+    .replace(/[ \t]{3,}/g, "  ")
+    .trim();
+
+  // Step 5: Hard limit per field
+  return sanitized.slice(0, maxLength);
 }
 
 // H1: Shared legal compliance block — single source of truth
@@ -29,6 +62,13 @@ If a candidate raises these topics, redirect: "I appreciate you sharing that. Le
 If a question you are about to ask could be perceived as probing a prohibited topic, STOP and rephrase or skip it entirely.
 </MANDATORY_LEGAL_COMPLIANCE>`;
 
+const LANGUAGE_NAMES: Record<string, string> = {
+  en: "English", es: "Spanish", pt: "Portuguese", zh: "Chinese (Mandarin)",
+  hi: "Hindi", fr: "French", de: "German", ja: "Japanese", ko: "Korean",
+  ar: "Arabic", it: "Italian", nl: "Dutch", ru: "Russian", pl: "Polish",
+  tr: "Turkish", vi: "Vietnamese", th: "Thai", id: "Indonesian",
+};
+
 export interface AriaPromptConfig {
   interviewType: "TECHNICAL" | "BEHAVIORAL" | "DOMAIN_EXPERT" | "LANGUAGE" | "CASE_STUDY";
   candidateName: string;
@@ -38,6 +78,7 @@ export interface AriaPromptConfig {
   candidateExperience?: number | null;
   resumeText?: string | null;
   targetQuestions?: number;
+  language?: string; // ISO 639-1 language code (default: "en")
 }
 
 const TYPE_INSTRUCTIONS: Record<string, string> = {
@@ -147,7 +188,7 @@ ${TYPE_INSTRUCTIONS[interviewType] || TYPE_INSTRUCTIONS.TECHNICAL}
 - Be encouraging but neutral — don't indicate if an answer was right or wrong.
 - If a candidate says "I don't know", acknowledge it positively and move on.
 - Use the candidate's resume and skills to personalize questions — reference their specific technologies, past projects, or companies.
-- Each response you give should be 2-4 sentences maximum (question + brief context). Keep it conversational, not lecture-like.`;
+- Each response you give should be 2-4 sentences maximum (question + brief context). Keep it conversational, not lecture-like.${config.language && config.language !== "en" ? `\n\n## LANGUAGE\nConduct this entire interview in ${LANGUAGE_NAMES[config.language] || config.language}. Ask all questions, give all instructions, and evaluate all responses in ${LANGUAGE_NAMES[config.language] || config.language}. Only use English for technical terms that have no standard translation.` : ""}`;
 }
 
 /**

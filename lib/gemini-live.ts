@@ -215,8 +215,9 @@ function buildSetupMessage(config: GeminiLiveConfig) {
   }));
 
   const setup: Record<string, unknown> = {
-    model: "models/gemini-2.5-flash-native-audio-latest",
+    model: process.env.GEMINI_LIVE_MODEL_VERSION || "models/gemini-2.5-flash-preview-native-audio-dialog",
     generationConfig: {
+      temperature: 0.7,
       responseModalities: ["AUDIO"],
       speechConfig: {
         voiceConfig: {

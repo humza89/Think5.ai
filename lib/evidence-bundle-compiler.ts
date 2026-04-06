@@ -85,18 +85,25 @@ export async function compileEvidenceBundle(
   };
 
   // Compute integrity hash of the full bundle
-  const integrityHash = computeEvidenceHash(
+  const { signature: integrityHash } = computeEvidenceHash(
     interview.transcript,
     {
       overallScore: report.overallScore,
       recommendation: report.recommendation,
       summary: report.summary,
+      technicalSkills: report.technicalSkills,
+      softSkills: report.softSkills,
       domainExpertise: report.domainExpertise,
       problemSolving: report.problemSolving,
       communicationScore: report.communicationScore,
       integrityScore: report.integrityScore,
+      riskSignals: report.riskSignals,
+      hypothesisOutcomes: report.hypothesisOutcomes,
+      jobMatchScore: report.jobMatchScore,
+      evidenceHighlights: report.evidenceHighlights,
     },
-    interview.recordingUrl
+    interview.recordingUrl,
+    interviewId
   );
 
   // Upsert first-class EvidenceBundle record

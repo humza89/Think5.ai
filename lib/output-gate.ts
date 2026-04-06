@@ -7,12 +7,16 @@
  * - Unsupported claims (against verified facts)
  *
  * Two modes:
- * - Warn-only (default): log + record, don't block
- * - Blocking (FF_OUTPUT_GATE_BLOCKING): sanitize or reject violating content
+ * - Blocking (default): sanitize or reject violating content
+ * - Warn-only (OUTPUT_GATE_MODE=warn): log + record, don't block
  */
 
 import { hashQuestion } from "./interviewer-state";
 import { extractAssertions, isClaimSupported } from "./grounding-gate";
+
+// ── Blocking Default ────────────────────────────────────────────────
+// Blocking is ON by default. Set OUTPUT_GATE_MODE=warn to disable.
+export const OUTPUT_GATE_BLOCKING = process.env.OUTPUT_GATE_MODE !== "warn";
 
 // ── Types ────────────────────────────────────────────────────────────
 

@@ -1,0 +1,220 @@
+<audit>
+  <role>
+    <title>Senior Principal Engineer and Enterprise AI Systems Architect</title>
+    <experience>15+ years building mission-critical, real-time AI systems</experience>
+    <expertise>Voice AI, conversational systems, enterprise SaaS platforms</expertise>
+    <benchmark>Intimately familiar with Micro1 and Mercor AI interview platform standards</benchmark>
+  </role>
+
+  <objective>
+    Conduct an exhaustive, brutally honest enterprise-readiness audit of this AI interview system.
+    Score each section as PASS, PARTIAL, or FAIL.
+    Do not give the benefit of the doubt — if something could break in production under load, it is a FAIL.
+  </objective>
+
+  <benchmarks>
+    <competitor name="Micro1">
+      <strength>AI-powered technical assessments with real-time code evaluation</strength>
+      <strength>Automated skill verification with anti-cheat detection</strength>
+      <strength>Sub-2-second response latency in voice interviews</strength>
+      <strength>Structured scoring rubrics with statistical normalization</strength>
+      <strength>Candidate experience with minimal friction (single-link access)</strength>
+      <strength>Multi-language support with accent-resilient ASR</strength>
+      <strength>Deterministic question sequencing with adaptive difficulty</strength>
+    </competitor>
+    <competitor name="Mercor">
+      <strength>End-to-end hiring pipeline (screen, interview, match, hire)</strength>
+      <strength>AI interviewer with natural conversational flow</strength>
+      <strength>Real-time candidate ranking with confidence intervals</strength>
+      <strength>Bias detection and fairness auditing</strength>
+      <strength>Enterprise SSO and compliance (SOC2, GDPR)</strength>
+      <strength>Recruiter dashboards with actionable insights</strength>
+      <strength>Scalable to 10,000+ concurrent interviews</strength>
+    </competitor>
+  </benchmarks>
+
+  <sections>
+
+    <section id="1" name="Voice and Real-Time Reliability">
+      <description>Evaluate the complete voice interview pipeline from browser to AI model and back.</description>
+      <checks>
+        <check>End-to-end latency: First byte of AI response under 2 seconds after candidate stops speaking</check>
+        <check>WebSocket connection stability: Auto-reconnect with state preservation</check>
+        <check>Audio quality: Echo cancellation, noise suppression, gain control</check>
+        <check>Graceful degradation: What happens when voice fails? Fallback to text?</check>
+        <check>Concurrent session capacity: Can it handle 100+ simultaneous interviews?</check>
+        <check>Browser compatibility: Chrome, Safari, Firefox, Edge — all tested?</check>
+        <check>Mobile support: Does voice work on iOS Safari and Android Chrome?</check>
+        <check>Network resilience: Works on 3G/slow connections? Handles packet loss?</check>
+        <check>Recording integrity: Is the full conversation recorded and verifiable?</check>
+        <check>Reconnection: If candidate disconnects for 30s, can they resume seamlessly?</check>
+      </checks>
+      <bar>Zero dropped interviews. Candidate never has to restart. AI never talks over the candidate.</bar>
+    </section>
+
+    <section id="2" name="Conversational Intelligence">
+      <description>Evaluate how natural, intelligent, and adaptive the AI interviewer is.</description>
+      <checks>
+        <check>Does the AI ask relevant follow-up questions based on candidate answers?</check>
+        <check>Does the AI avoid repeating questions already answered?</check>
+        <check>Does the AI remember context from earlier in the conversation?</check>
+        <check>Can the AI handle unexpected answers gracefully (tangents, clarifications)?</check>
+        <check>Does the AI maintain a consistent persona throughout?</check>
+        <check>Does the AI adapt difficulty based on candidate performance?</check>
+        <check>Can the AI handle multi-turn technical discussions?</check>
+        <check>Does the AI avoid hallucinating — never references things the candidate did not say?</check>
+        <check>Does the AI properly probe vague answers instead of accepting them?</check>
+        <check>Is the conversation natural or does it feel scripted/robotic?</check>
+        <check>Does the AI handle silence appropriately (wait vs prompt)?</check>
+        <check>Can the AI conduct interviews in multiple languages?</check>
+      </checks>
+      <bar>Indistinguishable from a skilled human interviewer in conversational flow. Candidates should not feel like they are talking to a bot.</bar>
+    </section>
+
+    <section id="3" name="Assessment and Scoring Integrity">
+      <description>Evaluate how interviews are scored, validated, and reported.</description>
+      <checks>
+        <check>Is scoring rubric-based with clear criteria, not vibes?</check>
+        <check>Are scores reproducible? Same answers produce same score (plus or minus 5%)?</check>
+        <check>Is evidence cited for every score? (transcript references)</check>
+        <check>Are there anti-gaming measures? (detecting rehearsed/GPT answers)</check>
+        <check>Is there bias detection? (scoring variance across demographics)</check>
+        <check>Are confidence intervals provided with scores?</check>
+        <check>Is the scoring model versioned? Can you trace which model scored what?</check>
+        <check>Are edge cases handled? (candidate who only answers yes/no)</check>
+        <check>Is there human review capability for borderline cases?</check>
+        <check>Are scores normalized across different interview sessions?</check>
+        <check>Is there integrity verification? (proctoring, tab-switch detection)</check>
+        <check>Can the system detect if someone else is feeding answers?</check>
+      </checks>
+      <bar>Legally defensible scoring. Explainable AI decisions. No black-box assessments.</bar>
+    </section>
+
+    <section id="4" name="Candidate Experience">
+      <description>Evaluate the end-to-end candidate journey.</description>
+      <checks>
+        <check>Single-link access — no account creation required?</check>
+        <check>Works on any device without app installation?</check>
+        <check>Clear instructions before interview starts?</check>
+        <check>Estimated duration shown upfront?</check>
+        <check>Graceful error messages (not technical jargon)?</check>
+        <check>Can candidate pause and resume?</check>
+        <check>Accessibility: Screen reader support? Keyboard navigation?</check>
+        <check>Accommodations: Extra time, captions, text-only mode?</check>
+        <check>Post-interview: Does candidate get feedback or just silence?</check>
+        <check>Data privacy: Clear consent flow? GDPR-compliant data handling?</check>
+        <check>Load time: Interview page loads in under 3 seconds?</check>
+        <check>Professional look and feel? Branded for the hiring company?</check>
+      </checks>
+      <bar>NPS greater than 70 from candidates. Zero candidates abandoned due to technical issues.</bar>
+    </section>
+
+    <section id="5" name="Recruiter and Hiring Manager Experience">
+      <description>Evaluate the tools available to the hiring side.</description>
+      <checks>
+        <check>Dashboard with at-a-glance interview status and results?</check>
+        <check>Ability to customize interview templates per role?</check>
+        <check>Bulk invite candidates (CSV upload, ATS integration)?</check>
+        <check>Real-time notifications when interviews complete?</check>
+        <check>Shareable report links with access controls?</check>
+        <check>Comparative candidate ranking within a role?</check>
+        <check>Filtering and search across completed interviews?</check>
+        <check>Export capabilities (PDF reports, CSV data)?</check>
+        <check>Interview reliability/confidence indicators visible?</check>
+        <check>Audit trail: Who viewed what report, when?</check>
+        <check>Team collaboration: Multiple reviewers per candidate?</check>
+        <check>ATS integration: Greenhouse, Lever, Workday, Ashby?</check>
+      </checks>
+      <bar>Recruiter makes a hiring decision in under 5 minutes after reading the report. Zero back-and-forth needed.</bar>
+    </section>
+
+    <section id="6" name="Security and Compliance">
+      <description>Evaluate enterprise security posture.</description>
+      <checks>
+        <check>SOC 2 Type II compliance (or path to it)?</check>
+        <check>GDPR: Right to erasure, data portability, consent management?</check>
+        <check>SSO: SAML/OIDC integration for enterprise clients?</check>
+        <check>Role-based access control (RBAC)?</check>
+        <check>Data encryption at rest and in transit?</check>
+        <check>PII handling: Is candidate data properly isolated?</check>
+        <check>Data retention policies: Auto-delete after configurable period?</check>
+        <check>Penetration testing: Recent results available?</check>
+        <check>API authentication: JWT/OAuth2 with proper token rotation?</check>
+        <check>Rate limiting on all public endpoints?</check>
+        <check>Audit logging: Every action traced to a user?</check>
+        <check>Secrets management: No hardcoded keys, proper env var handling?</check>
+        <check>OWASP Top 10: SQL injection, XSS, CSRF all covered?</check>
+        <check>Recording storage: Encrypted, access-controlled, retention-managed?</check>
+      </checks>
+      <bar>Enterprise procurement team approves without security questionnaire escalation.</bar>
+    </section>
+
+    <section id="7" name="Scalability and Infrastructure">
+      <description>Evaluate production readiness at scale.</description>
+      <checks>
+        <check>Database: Connection pooling, query optimization, index coverage?</check>
+        <check>Caching: Redis/equivalent for session state and hot data?</check>
+        <check>CDN: Static assets served from edge?</check>
+        <check>Auto-scaling: Handles traffic spikes without manual intervention?</check>
+        <check>Monitoring: Error tracking, latency dashboards, alerting?</check>
+        <check>Uptime SLA: 99.9%+ achievable with current architecture?</check>
+        <check>Disaster recovery: Backups, failover, RTO/RPO defined?</check>
+        <check>Load testing: Validated at 10x current peak?</check>
+        <check>Cost efficiency: Optimized AI model usage (not burning tokens)?</check>
+        <check>Multi-region: Can serve candidates globally with low latency?</check>
+      </checks>
+      <bar>Zero downtime during business hours. P95 API latency under 500ms.</bar>
+    </section>
+
+    <section id="8" name="AI Model and Prompt Engineering">
+      <description>Evaluate the AI backbone quality.</description>
+      <checks>
+        <check>Model selection appropriate for task? (not over/under-powered)</check>
+        <check>Prompt engineering: Structured, versioned, tested?</check>
+        <check>Guardrails: AI cannot go off-topic, be offensive, or leak system prompts?</check>
+        <check>Temperature/sampling: Deterministic enough for consistent interviews?</check>
+        <check>Token budget management: Interviews do not hit context limits?</check>
+        <check>Model fallback: If primary model is down, what happens?</check>
+        <check>Evaluation: Are AI outputs systematically evaluated for quality?</check>
+        <check>Prompt injection protection: Candidate cannot jailbreak the interviewer?</check>
+        <check>Hallucination rate: Measured and tracked over time?</check>
+        <check>Response quality: Grammatically correct, professional tone?</check>
+      </checks>
+      <bar>AI interviewer passes the "would a VP of Engineering trust this?" test.</bar>
+    </section>
+
+  </sections>
+
+  <output-format>
+    <per-section>
+      <field name="grade">PASS | PARTIAL | FAIL</field>
+      <field name="score">X/10</field>
+      <field name="what-works">List of things working well</field>
+      <field name="p0-critical">Must fix before enterprise sales</field>
+      <field name="p1-important">Fix within 30 days</field>
+      <field name="p2-nice-to-have">Roadmap items</field>
+      <field name="code-issues">Specific file paths and line numbers with issue descriptions</field>
+    </per-section>
+    <final-verdict>
+      <field name="overall-score">X/100</field>
+      <field name="micro1-parity">X%</field>
+      <field name="mercor-parity">X%</field>
+      <field name="top-5-blockers">Top 5 blockers to enterprise sales</field>
+      <field name="effort-estimate">Estimated engineer-weeks to reach enterprise-ready</field>
+      <field name="prioritized-fix-list">Recommended prioritized fix list with specific file paths</field>
+    </final-verdict>
+  </output-format>
+
+  <rules>
+    <rule>Read every file in the codebase that is relevant. Do not guess.</rule>
+    <rule>Test actual behavior, not just code presence. Does it work or just exist?</rule>
+    <rule>Be specific — cite file paths and line numbers for every finding.</rule>
+    <rule>Compare against what Micro1 and Mercor actually deliver, not aspirational features.</rule>
+    <rule>If you cannot verify something, mark it as UNVERIFIED, not PASS.</rule>
+    <rule>Check all validation gates, error handling paths, and edge cases in the code.</rule>
+    <rule>Verify that feature flags are correctly wired and defaults are production-safe.</rule>
+    <rule>Examine test coverage — untested enterprise features are a FAIL.</rule>
+    <rule>Review the database schema for missing indexes, orphaned relations, and data integrity gaps.</rule>
+    <rule>Assess whether reconnection, memory, and state management actually work end-to-end, not just in isolation.</rule>
+  </rules>
+</audit>

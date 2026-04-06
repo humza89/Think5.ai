@@ -10,9 +10,10 @@ import { prisma } from "@/lib/prisma";
 
 // ── Configuration ────────────────────────────────────────────────────
 
-const SLO_MAX_RESET_RATE = parseFloat(process.env.CONTINUITY_SLO_MAX_RESET_RATE || "0.0");
-const SLO_MAX_REPEATED_INTRO_RATE = parseFloat(process.env.CONTINUITY_SLO_MAX_REPEATED_INTRO_RATE || "0.0");
-const SLO_MAX_HALLUCINATION_RATE = parseFloat(process.env.CONTINUITY_SLO_MAX_HALLUCINATION_RATE || "0.0");
+// Production defaults: enabled with safe thresholds (override via env vars)
+const SLO_MAX_RESET_RATE = parseFloat(process.env.CONTINUITY_SLO_MAX_RESET_RATE || "0.05");
+const SLO_MAX_REPEATED_INTRO_RATE = parseFloat(process.env.CONTINUITY_SLO_MAX_REPEATED_INTRO_RATE || "0.03");
+const SLO_MAX_HALLUCINATION_RATE = parseFloat(process.env.CONTINUITY_SLO_MAX_HALLUCINATION_RATE || "0.02");
 const SLO_WINDOW_MINUTES = parseInt(process.env.CONTINUITY_SLO_WINDOW_MINUTES || "60", 10);
 const SLO_MIN_SAMPLE_SIZE = parseInt(process.env.CONTINUITY_SLO_MIN_SAMPLE_SIZE || "10", 10);
 

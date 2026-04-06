@@ -6,7 +6,17 @@ import { createSupabaseAdminClient } from "@/lib/supabase-server";
 // GET /api/admin - Admin overview stats
 export async function GET(request: NextRequest) {
   try {
-    await requireRole(["admin"]);
+    const { profile } = await requireRole(["admin"]);
+
+    // Company-scoped admin: look up recruiter record to get companyId
+    // Platform admins (no recruiter record) see everything
+    const recruiter = await prisma.recruiter.findFirst({
+      where: { email: profile.email },
+      select: { companyId: true },
+    });
+    const companyFilter = recruiter?.companyId
+      ? { companyId: recruiter.companyId }
+      : {};
 
     const supabase = await createSupabaseAdminClient();
 
@@ -19,12 +29,16 @@ export async function GET(request: NextRequest) {
       profilesResult,
       roleCounts,
     ] = await Promise.all([
-      prisma.job.count(),
-      prisma.candidate.count(),
-      prisma.interview.count(),
-      prisma.application.count(),
+      prisma.job.count({ where: companyFilter }),
+      prisma.candidate.count({ where: { recruiter: companyFilter.companyId ? { companyId: companyFilter.companyId } : undefined } }),
+      prisma.interview.count({ where: companyFilter }),
+      prisma.application.count({ where: { job: companyFilter.companyId ? { companyId: companyFilter.companyId } : undefined } }),
       prisma.candidate.count({
-        where: { onboardingCompleted: true, onboardingStatus: "PENDING_APPROVAL" },
+        where: {
+          onboardingCompleted: true,
+          onboardingStatus: "PENDING_APPROVAL",
+          ...(companyFilter.companyId ? { recruiter: { companyId: companyFilter.companyId } } : {}),
+        },
       }),
       // Get recent user profiles from Supabase
       (async () => {

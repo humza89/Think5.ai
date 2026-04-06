@@ -8,6 +8,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireRole, handleAuthError } from "@/lib/auth";
+import { logActivity } from "@/lib/activity-log";
 
 async function resolveAdminCompanyId(userId: string): Promise<string | null> {
   const recruiter = await prisma.recruiter.findFirst({
@@ -95,10 +96,56 @@ export async function PATCH(req: NextRequest) {
       }
     }
 
+    // Validate threshold consistency
+    const requireReview = updateData.requireReviewBelow as number | null | undefined;
+    const autoPublish = updateData.autoPublishAbove as number | null | undefined;
+    if (
+      requireReview != null &&
+      autoPublish != null &&
+      requireReview >= autoPublish
+    ) {
+      return NextResponse.json(
+        { error: "requireReviewBelow must be less than autoPublishAbove" },
+        { status: 400 }
+      );
+    }
+
+    // Also check against existing values if only one field is being updated
+    if (requireReview != null || autoPublish != null) {
+      const existing = await prisma.governancePolicy.findUnique({
+        where: { companyId },
+        select: { requireReviewBelow: true, autoPublishAbove: true },
+      });
+
+      const effectiveReview = requireReview ?? existing?.requireReviewBelow;
+      const effectivePublish = autoPublish ?? existing?.autoPublishAbove;
+
+      if (
+        effectiveReview != null &&
+        effectivePublish != null &&
+        effectiveReview >= effectivePublish
+      ) {
+        return NextResponse.json(
+          { error: "requireReviewBelow must be less than autoPublishAbove" },
+          { status: 400 }
+        );
+      }
+    }
+
     const policy = await prisma.governancePolicy.upsert({
       where: { companyId },
       create: { companyId, ...updateData },
       update: updateData,
+    });
+
+    // Audit trail: log every policy change
+    await logActivity({
+      userId: user.id,
+      userRole: "admin",
+      action: "governance.policy_updated",
+      entityType: "GovernancePolicy",
+      entityId: policy.id,
+      metadata: { updatedFields: Object.keys(updateData), newValues: updateData },
     });
 
     return NextResponse.json({ policy });

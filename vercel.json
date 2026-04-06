@@ -1,4 +1,19 @@
 {
+  "regions": ["iad1", "sfo1", "lhr1", "hnd1"],
+  "functions": {
+    "app/api/interviews/*/voice-init/route.ts": {
+      "memory": 1024,
+      "maxDuration": 60
+    },
+    "app/api/interviews/*/voice/route.ts": {
+      "memory": 512,
+      "maxDuration": 30
+    },
+    "app/api/interviews/*/voice/turn-commit/route.ts": {
+      "memory": 1024,
+      "maxDuration": 30
+    }
+  },
   "crons": [
     {
       "path": "/api/cron/retention",
@@ -7,6 +22,10 @@
     {
       "path": "/api/cron/report-retry",
       "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/cron/fragment-cleanup",
+      "schedule": "0 */6 * * *"
     }
   ]
 }

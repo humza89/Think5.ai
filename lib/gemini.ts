@@ -294,7 +294,14 @@ export async function generateInterviewReport(
     throw new Error("Transcript has no valid entries after filtering");
   }
 
-  const model = genAI.getGenerativeModel({ model: SCORER_MODEL_VERSION });
+  const model = genAI.getGenerativeModel({
+    model: SCORER_MODEL_VERSION,
+    generationConfig: {
+      temperature: 0.15,
+      topK: 40,
+      topP: 0.95,
+    },
+  });
 
   // Format transcript for the prompt
   const formattedTranscript = validTranscript

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { CheckCircle, Loader2 } from "lucide-react";
 
 interface InterviewCompleteProps {
@@ -8,38 +8,97 @@ interface InterviewCompleteProps {
   accessToken: string;
 }
 
+type ReportStage = "generating" | "scoring" | "compiling" | "complete" | "failed";
+
 export function InterviewComplete({
   interviewId,
   accessToken,
 }: InterviewCompleteProps) {
   const [reportReady, setReportReady] = useState(false);
+  const [stage, setStage] = useState<ReportStage>("generating");
+  const [timedOut, setTimedOut] = useState(false);
+  const eventSourceRef = useRef<EventSource | null>(null);
 
-  // Poll for report status every 5s
+  // Try SSE first, fall back to polling
   useEffect(() => {
     if (reportReady) return;
 
-    const interval = setInterval(async () => {
-      try {
-        const res = await fetch(
-          `/api/interviews/${interviewId}/report-status`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ accessToken }),
-          }
-        );
-        if (res.ok) {
-          const data = await res.json();
-          if (data.ready) {
-            setReportReady(true);
-          }
-        }
-      } catch {
-        // Silently retry on next interval
-      }
-    }, 5000);
+    // Attempt Server-Sent Events connection
+    const sseUrl = `/api/interviews/${interviewId}/report-stream?token=${accessToken}`;
+    let usePolling = false;
 
-    return () => clearInterval(interval);
+    try {
+      const es = new EventSource(sseUrl);
+      eventSourceRef.current = es;
+
+      es.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data.stage) setStage(data.stage as ReportStage);
+          if (data.stage === "complete") {
+            setReportReady(true);
+            es.close();
+          }
+          if (data.stage === "failed") {
+            es.close();
+          }
+        } catch {
+          // Ignore parse errors
+        }
+      };
+
+      es.onerror = () => {
+        es.close();
+        usePolling = true;
+        startPolling();
+      };
+    } catch {
+      usePolling = true;
+      startPolling();
+    }
+
+    // 5-minute timeout
+    const timeout = setTimeout(() => {
+      setTimedOut(true);
+      eventSourceRef.current?.close();
+    }, 5 * 60 * 1000);
+
+    // Polling fallback
+    let pollInterval: ReturnType<typeof setInterval> | null = null;
+
+    function startPolling() {
+      if (pollInterval) return;
+      pollInterval = setInterval(async () => {
+        try {
+          const res = await fetch(
+            `/api/interviews/${interviewId}/report-status`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ accessToken }),
+            }
+          );
+          if (res.ok) {
+            const data = await res.json();
+            if (data.ready) {
+              setReportReady(true);
+              if (pollInterval) clearInterval(pollInterval);
+            }
+            if (data.stage) setStage(data.stage as ReportStage);
+          }
+        } catch {
+          // Retry on next interval
+        }
+      }, 10000); // 10s interval for polling (less aggressive than 5s)
+    }
+
+    if (usePolling) startPolling();
+
+    return () => {
+      clearTimeout(timeout);
+      eventSourceRef.current?.close();
+      if (pollInterval) clearInterval(pollInterval);
+    };
   }, [interviewId, accessToken, reportReady]);
 
   return (
@@ -61,16 +120,28 @@ export function InterviewComplete({
         </p>
 
         {/* Status */}
-        {!reportReady && (
+        {!reportReady && !timedOut && (
           <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 mb-6">
             <div className="flex items-center justify-center gap-3">
               <Loader2 className="w-5 h-5 text-violet-400 animate-spin" />
               <span className="text-zinc-300">
-                Generating your assessment...
+                {stage === "generating" && "Generating your assessment..."}
+                {stage === "scoring" && "Scoring your responses..."}
+                {stage === "compiling" && "Compiling your report..."}
+                {stage === "failed" && "Report generation encountered an issue."}
               </span>
             </div>
             <p className="text-zinc-500 text-sm mt-3">
               This may take a minute. Your detailed report is being prepared.
+            </p>
+          </div>
+        )}
+
+        {timedOut && !reportReady && (
+          <div className="bg-zinc-900 border border-amber-500/30 rounded-xl p-6 mb-6">
+            <p className="text-zinc-300 text-sm">
+              Your assessment is taking longer than expected. You can safely close
+              this window — your recruiter will notify you when results are ready.
             </p>
           </div>
         )}

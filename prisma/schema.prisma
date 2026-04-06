@@ -321,6 +321,9 @@ model Candidate {
   approvalActions       ApprovalAction[]
   deletionRequests      DataDeletionRequest[]
 
+  // Embedding freshness tracking
+  embeddingUpdatedAt DateTime?
+
   createdAt        DateTime        @default(now())
   updatedAt        DateTime        @updatedAt
 
@@ -329,6 +332,7 @@ model Candidate {
   @@index([ariaInterviewed])
   @@index([email])
   @@index([onboardingStatus])
+  @@unique([email, recruiterId])
 }
 
 model Note {
@@ -383,6 +387,7 @@ model Client {
   hmMemberships    HiringManagerMembership[]
   webhookEndpoints WebhookEndpoint[]
   governancePolicy GovernancePolicy?
+  atsIntegrations  ATSIntegration[]
   // Cost governance
   monthlyAiBudgetUsd Float?  // Per-company monthly AI budget cap (USD)
   createdAt        DateTime @default(now())
@@ -617,6 +622,7 @@ model Interview {
 
   // Voice interview fields
   voiceProvider     String?         @default("text-sse") // "gemini-live" | "text-sse"
+  language          String          @default("en") // Interview language (ISO 639-1)
   recordingUrl      String?         // R2 signed URL for video/audio recording
   recordingFormat   String?         @default("webm")
   recordingSize     Int?            // bytes
@@ -931,10 +937,13 @@ model InterviewReport {
 
   // Evidence & confidence (Phase 1)
   confidenceLevel        String? // HIGH/MEDIUM/LOW
+  confidenceIntervals    Json?   // { [dimension]: { low: number, high: number } }
   headline               String? // One-line summary for recruiter quick scan
   riskSignals            Json?   // [{type, severity, evidence, confidence}]
   hypothesisOutcomes     Json?   // [{hypothesis, outcome, evidence}]
   evidenceHighlights     Json?   // [{type, summary, transcriptRange, mediaTimestamp}]
+  qaScore                Float?  // Quality assurance score for this report
+  qaScoreDetails         Json?   // Detailed QA breakdown (dimensions, flags, etc.)
   rubricSnapshot         Json?   // Frozen rubric used for scoring (audit)
 
   // Job-fit addendum (JOB_FIT/HYBRID modes)
@@ -981,6 +990,8 @@ model InterviewReport {
   views           ReportShareView[]
 
   createdAt       DateTime  @default(now())
+
+  @@index([reviewStatus, createdAt])
 }
 
 // ============================================
@@ -1015,6 +1026,8 @@ model InterviewTemplate {
   readinessCheckRequired Boolean @default(false)
   // Screen share requirement
   screenShareRequired    Boolean @default(false)
+  // Conversational intelligence tuning
+  maxTopicDepth          Int     @default(3) // Max follow-up depth per topic (default 3, up to 5 for deep dives)
 
   // Approval workflow
   approvedBy      String?       // userId of the admin who approved
@@ -1438,21 +1451,28 @@ model Message {
 // ============================================
 
 model ActivityLog {
-  id          String   @id @default(uuid())
-  userId      String
-  userRole    String
-  action      String   // e.g. "application.created", "interview.completed", "candidate.status_changed"
-  entityType  String   // e.g. "Application", "Interview", "Candidate"
-  entityId    String
-  metadata    Json?    // Additional context
-  ipAddress   String?
+  id              String   @id @default(uuid())
+  userId          String
+  userRole        String
+  action          String   // e.g. "application.created", "interview.completed", "candidate.status_changed"
+  entityType      String   // e.g. "Application", "Interview", "Candidate"
+  entityId        String
+  metadata        Json?    // Additional context
+  ipAddress       String?
+  sessionId       String?  // Supabase session correlation
+  requestPath     String?  // API endpoint path
+  requestMethod   String?  // HTTP method (GET, POST, etc.)
+  responseStatus  Int?     // HTTP response status code
+  userAgent       String?  // Browser/client user agent
 
-  createdAt   DateTime @default(now())
+  createdAt       DateTime @default(now())
 
   @@index([userId])
   @@index([entityType])
   @@index([action])
   @@index([createdAt])
+  @@index([userId, createdAt])
+  @@index([entityType, createdAt])
 }
 
 // ============================================
@@ -1602,17 +1622,28 @@ model RetentionPolicy {
 }
 
 model SSOConfig {
-  id          String   @id @default(uuid())
-  companyId   String   @unique
-  company     Client   @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  provider    String   // "saml" | "oidc"
-  metadataUrl String?
-  entityId    String?
-  certificate String?  @db.Text
-  domain      String   // email domain for auto-routing
-  enabled     Boolean  @default(false)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id            String   @id @default(uuid())
+  companyId     String   @unique
+  company       Client   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  provider      String   // "saml" | "oidc"
+  metadataUrl   String?
+  entityId      String?  // SAML entity ID
+  certificate   String?  @db.Text // SAML X.509 certificate
+  domain        String   // email domain for auto-routing
+  enabled       Boolean  @default(false)
+  // OIDC fields
+  clientId      String?  // OIDC client ID
+  clientSecret  String?  // OIDC client secret (encrypted at rest via Supabase)
+  issuerUrl     String?  // OIDC issuer URL (e.g. https://login.microsoftonline.com/{tenant}/v2.0)
+  callbackUrl   String?  // Redirect URL after authentication
+  scopes        String   @default("openid profile email") // OIDC scopes
+  // SAML fields
+  ssoUrl        String?  // SAML SSO endpoint
+  sloUrl        String?  // SAML single logout URL
+  nameIdFormat  String?  @default("urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress")
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   @@index([domain])
 }
@@ -1684,7 +1715,36 @@ model GovernancePolicy {
   canSuppressReport   String[] @default(["admin"])
   requireReviewBelow  Float?   // Auto-require human review if AI score below this
   autoPublishAbove    Float?   // Auto-publish reports above this threshold
+  activeModelVersion  String?              // Currently active scorer model version
+  scoringTemperature  Float    @default(0.15) // LLM temperature for scoring
+  modelABTestEnabled  Boolean  @default(false) // Whether A/B testing between model versions is active
+  modelABTestSplit    Float    @default(0.0)   // Fraction of traffic routed to challenger model (0.0-1.0)
   enforced            Boolean  @default(true)
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
+}
+
+// ============================================
+// ATS Integration — External System Connections
+// ============================================
+
+model ATSIntegration {
+  id            String   @id @default(uuid())
+  companyId     String
+  company       Client   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  provider      String   // "greenhouse" | "lever" | "workday" | "ashby"
+  apiKey        String   // Encrypted API key
+  webhookSecret String?  // For webhook signature verification
+  baseUrl       String?  // Custom API base URL (for self-hosted)
+  config        Json?    // Provider-specific config (field mappings, etc.)
+  enabled       Boolean  @default(true)
+  lastSyncAt    DateTime?
+  syncStatus    String?  // "idle" | "syncing" | "error"
+  syncError     String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([companyId, provider])
+  @@index([companyId])
+  @@index([provider])
 }

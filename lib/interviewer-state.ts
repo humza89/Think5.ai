@@ -184,9 +184,10 @@ export function transitionState(
 
     case "TOPIC_DEPTH_INCREMENT": {
       const currentDepth = next.topicDepthCounters[event.topic] || 0;
+      const maxDepth = (event as { maxTopicDepth?: number }).maxTopicDepth || 3;
       next.topicDepthCounters = {
         ...next.topicDepthCounters,
-        [event.topic]: Math.min(currentDepth + 1, 3), // Max 3 follow-ups per topic
+        [event.topic]: Math.min(currentDepth + 1, maxDepth),
       };
       break;
     }

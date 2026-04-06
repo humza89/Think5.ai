@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireRole, handleAuthError } from "@/lib/auth";
 
@@ -102,6 +103,106 @@ export async function GET(request: NextRequest) {
       distribution,
       byModel: modelStats,
       byType: typeStats,
+    });
+  } catch (error) {
+    const { error: message, status } = handleAuthError(error);
+    return NextResponse.json({ error: message }, { status });
+  }
+}
+
+// ── POST: Submit calibration correction ──────────────────────────────
+
+const calibrationCorrectionSchema = z.object({
+  interviewId: z.string().uuid(),
+  dimension: z.string().min(1),
+  correctedScore: z.number().min(0).max(100),
+  reason: z.string().min(1),
+});
+
+export async function POST(request: NextRequest) {
+  try {
+    const session = await requireRole(["admin"]);
+
+    const body = await request.json();
+    const parsed = calibrationCorrectionSchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: "Invalid input", details: parsed.error.flatten() },
+        { status: 400 }
+      );
+    }
+
+    const { interviewId, dimension, correctedScore, reason } = parsed.data;
+
+    // Fetch the original report to compute drift
+    const report = await prisma.interviewReport.findFirst({
+      where: { interviewId },
+      select: {
+        id: true,
+        overallScore: true,
+        domainExpertise: true,
+        problemSolving: true,
+        communicationScore: true,
+        clarityStructure: true,
+        measurableImpact: true,
+        professionalExperience: true,
+        roleFit: true,
+        culturalFit: true,
+        thinkingJudgment: true,
+      },
+    });
+
+    if (!report) {
+      return NextResponse.json(
+        { error: "Interview report not found" },
+        { status: 404 }
+      );
+    }
+
+    // Resolve original score for the specified dimension
+    const dimensionScoreMap: Record<string, number | null> = {
+      overall: report.overallScore,
+      domainExpertise: report.domainExpertise,
+      problemSolving: report.problemSolving,
+      communicationScore: report.communicationScore,
+      clarityStructure: report.clarityStructure,
+      measurableImpact: report.measurableImpact,
+      professionalExperience: report.professionalExperience,
+      roleFit: report.roleFit,
+      culturalFit: report.culturalFit,
+      thinkingJudgment: report.thinkingJudgment,
+    };
+
+    const originalScore = dimensionScoreMap[dimension] ?? null;
+    const drift = originalScore != null ? correctedScore - originalScore : null;
+
+    // Store the correction as an ActivityLog entry
+    const correction = await prisma.activityLog.create({
+      data: {
+        action: "scoring.calibration_correction",
+        performedBy: (session as { userId?: string }).userId ?? "admin",
+        metadata: {
+          interviewId,
+          reportId: report.id,
+          dimension,
+          originalScore,
+          correctedScore,
+          drift,
+          reason,
+          correctedAt: new Date().toISOString(),
+        },
+      },
+    });
+
+    return NextResponse.json({
+      id: correction.id,
+      interviewId,
+      dimension,
+      originalScore,
+      correctedScore,
+      drift,
+      reason,
+      createdAt: correction.createdAt,
     });
   } catch (error) {
     const { error: message, status } = handleAuthError(error);

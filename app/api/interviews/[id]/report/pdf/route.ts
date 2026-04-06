@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { requireInterviewAccess, handleAuthError } from "@/lib/auth";
 import { renderToBuffer } from "@react-pdf/renderer";
 import { ReportPDF } from "@/lib/pdf/report-pdf";
+import { logActivity } from "@/lib/activity-log";
 import React from "react";
 
 export async function GET(
@@ -65,12 +66,29 @@ export async function GET(
       }) as any
     );
 
-    const filename = `${interview.candidate.fullName.replace(/\s+/g, "_")}_Interview_Report.pdf`;
+    const timestamp = new Date().toISOString().slice(0, 10);
+    const filename = `${interview.candidate.fullName.replace(/\s+/g, "_")}_Interview_Report_${timestamp}.pdf`;
+
+    // Audit trail: log every PDF download
+    await logActivity({
+      userId: "pdf-export",
+      userRole: "system",
+      action: "report.pdf_downloaded",
+      entityType: "InterviewReport",
+      entityId: report.id,
+      metadata: {
+        interviewId: id,
+        candidateName: interview.candidate.fullName,
+        reportVersion: report.updatedAt?.toISOString(),
+      },
+    }).catch(() => {}); // Non-blocking
 
     return new Response(new Uint8Array(pdfBuffer), {
       headers: {
         "Content-Type": "application/pdf",
         "Content-Disposition": `attachment; filename="${filename}"`,
+        "X-Report-Version": report.updatedAt?.toISOString() || "unknown",
+        "X-Report-Confidential": "true",
       },
     });
   } catch (error) {

@@ -46,6 +46,8 @@ interface VoiceInterviewRoomProps {
   jobTitle: string;
   accessToken: string;
   durationMinutes?: number;
+  companyName?: string | null;
+  companyLogo?: string | null;
 }
 
 // ── Component ──────────────────────────────────────────────────────────
@@ -56,6 +58,8 @@ export function VoiceInterviewRoom({
   jobTitle,
   accessToken,
   durationMinutes = 30,
+  companyName,
+  companyLogo,
 }: VoiceInterviewRoomProps) {
   const router = useRouter();
 
@@ -567,7 +571,17 @@ export function VoiceInterviewRoom({
             </div>
           )}
 
-          {/* Recording indicator — top left */}
+          {/* Company branding — top left when present */}
+          {companyName && (
+            <div className="absolute top-4 left-4 z-30 flex items-center gap-2 rounded-full bg-black/60 backdrop-blur-sm px-3 py-1.5">
+              {companyLogo && (
+                <img src={companyLogo} alt={companyName} className="h-5 w-5 rounded-full object-cover" />
+              )}
+              <span className="text-xs text-white/80 font-medium">{companyName}</span>
+            </div>
+          )}
+
+          {/* Recording indicator — top left (shifts right when branding present) */}
           {interviewState === "IN_PROGRESS" && (
             <div className="absolute top-4 left-4 z-20 flex items-center gap-2 rounded-full bg-black/60 backdrop-blur-sm px-3 py-1.5">
               <span className="relative flex h-2.5 w-2.5">

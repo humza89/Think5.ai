@@ -477,18 +477,25 @@ export async function generateReportInBackground(
 
     // P1.3: Compute evidence hash for tamper detection
     try {
-      const evidenceHash = computeEvidenceHash(
+      const { signature: evidenceHash } = computeEvidenceHash(
         interview.transcript,
         {
           overallScore: reportData.overallScore,
           recommendation: reportData.recommendation,
           summary: reportData.summary,
+          technicalSkills: reportData.technicalSkills,
+          softSkills: reportData.softSkills,
           domainExpertise: reportData.domainExpertise,
           problemSolving: reportData.problemSolving,
           communicationScore: reportData.communicationScore,
           integrityScore: finalIntegrityScore,
+          riskSignals: reportData.riskSignals,
+          hypothesisOutcomes: reportData.hypothesisOutcomes,
+          jobMatchScore: reportData.jobMatchScore,
+          evidenceHighlights: reportData.evidenceHighlights,
         },
-        (updateData.recordingUrl as string) || null
+        (updateData.recordingUrl as string) || null,
+        interviewId
       );
       await prisma.interviewReport.update({
         where: { interviewId },
