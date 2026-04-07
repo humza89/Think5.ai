@@ -8,6 +8,7 @@
 
 import { randomUUID, createHmac, createHash, timingSafeEqual } from "crypto";
 import { recordSLOEvent } from "@/lib/slo-monitor";
+import { logger } from "@/lib/logger";
 
 // HMAC secret for signing reconnect tokens — required in production
 // Lazy-initialized to avoid crashing at build time (Next.js collects page data in production mode)
@@ -17,7 +18,7 @@ function getHmacSecret(): string {
   _hmacSecret = process.env.SESSION_HMAC_SECRET || null;
   if (!_hmacSecret) {
     if (process.env.NODE_ENV === "production" && !process.env.NEXT_PHASE) {
-      console.error("[session-store] WARNING: SESSION_HMAC_SECRET not set in production — using random fallback");
+      logger.error("[session-store] WARNING: SESSION_HMAC_SECRET not set in production — using random fallback");
     }
     _hmacSecret = randomUUID(); // Dev fallback; production should always set the env var
   }
@@ -42,7 +43,7 @@ async function getRedis() {
     if (isProduction()) {
       throw new Error("Redis unavailable in production — UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN must be set");
     }
-    console.warn("Upstash Redis not configured. Using in-memory session fallback (dev/test only).");
+    logger.warn("Upstash Redis not configured. Using in-memory session fallback (dev/test only).");
     return null;
   }
 
@@ -55,7 +56,7 @@ async function getRedis() {
     if (isProduction()) {
       throw new Error(`Redis initialization failed in production: ${err}`);
     }
-    console.warn("Failed to initialize Redis client. Using in-memory fallback (dev/test only).");
+    logger.warn("Failed to initialize Redis client. Using in-memory fallback (dev/test only).");
     return null;
   }
 }
@@ -156,7 +157,7 @@ export async function saveSessionState(
   // Session no longer stores transcript — canonical ledger in Postgres is authoritative.
   // Redis payload should stay well under 50KB (only pointers, scores, and enterprise memory).
   if (sizeBytes > 100_000) {
-    console.warn(JSON.stringify({ event: "session_state_oversized", interviewId, sizeKB: Math.round(sizeBytes / 1024), severity: "warning", timestamp: new Date().toISOString() }));
+    logger.warn(JSON.stringify({ event: "session_state_oversized", interviewId, sizeKB: Math.round(sizeBytes / 1024), severity: "warning", timestamp: new Date().toISOString() }));
   }
 
   const redis = await getRedis();
@@ -173,7 +174,7 @@ export async function saveSessionState(
         lastErr = err;
         if (attempt < maxRetries) {
           const delay = retryBaseMs * Math.pow(3, attempt); // 100, 300, 900ms
-          console.warn(JSON.stringify({ event: "session_save_retry", interviewId, attempt: attempt + 1, maxAttempts: maxRetries + 1, delayMs: delay, error: (err as Error)?.message, severity: "warning", timestamp: new Date().toISOString() }));
+          logger.warn(JSON.stringify({ event: "session_save_retry", interviewId, attempt: attempt + 1, maxAttempts: maxRetries + 1, delayMs: delay, error: (err as Error)?.message, severity: "warning", timestamp: new Date().toISOString() }));
           await new Promise((r) => setTimeout(r, delay));
         }
       }
@@ -181,7 +182,7 @@ export async function saveSessionState(
 
     // All retries exhausted
     if (isProduction()) {
-      console.error(JSON.stringify({
+      logger.error(JSON.stringify({
         event: "SESSION_PERSIST_FAILURE",
         interviewId,
         attempts: maxRetries + 1,
@@ -192,12 +193,12 @@ export async function saveSessionState(
       recordSLOEvent("session.save.failure_rate", false).catch(() => {});
       throw new Error(`Session save failed for ${interviewId} — Redis write failure after ${maxRetries + 1} attempts`);
     }
-    console.error(JSON.stringify({ event: "session_save_fallback", interviewId, attempts: maxRetries + 1, error: (lastErr as Error)?.message, severity: "error", timestamp: new Date().toISOString() }));
+    logger.error(JSON.stringify({ event: "session_save_fallback", interviewId, attempts: maxRetries + 1, error: (lastErr as Error)?.message, severity: "error", timestamp: new Date().toISOString() }));
     memoryStore.set(key, serialized);
     memoryExpiry.set(key, Date.now() + SESSION_TTL_SECONDS * 1000);
   } else {
     if (isProduction()) {
-      console.error(JSON.stringify({
+      logger.error(JSON.stringify({
         event: "SESSION_PERSIST_FAILURE",
         interviewId,
         attempts: 0,
@@ -235,14 +236,14 @@ export async function getSessionState(
         lastErr = err;
         if (attempt < maxRetries) {
           const delay = retryBaseMs * Math.pow(3, attempt);
-          console.warn(JSON.stringify({ event: "session_read_retry", interviewId, attempt: attempt + 1, maxAttempts: maxRetries + 1, delayMs: delay, error: (err as Error)?.message, severity: "warning", timestamp: new Date().toISOString() }));
+          logger.warn(JSON.stringify({ event: "session_read_retry", interviewId, attempt: attempt + 1, maxAttempts: maxRetries + 1, delayMs: delay, error: (err as Error)?.message, severity: "warning", timestamp: new Date().toISOString() }));
           await new Promise((r) => setTimeout(r, delay));
         }
       }
     }
 
     // All read retries exhausted — log but don't throw (read path falls through to memory)
-    console.error(JSON.stringify({ event: "session_read_failure", interviewId, attempts: maxRetries + 1, error: (lastErr as Error)?.message, severity: "error", timestamp: new Date().toISOString() }));
+    logger.error(JSON.stringify({ event: "session_read_failure", interviewId, attempts: maxRetries + 1, error: (lastErr as Error)?.message, severity: "error", timestamp: new Date().toISOString() }));
     if (isProduction()) {
       recordSLOEvent("session.read.failure_rate", false).catch(() => {});
     }
@@ -255,7 +256,7 @@ export async function getSessionState(
   if (expiresAt && Date.now() > expiresAt) {
     memoryStore.delete(key);
     memoryExpiry.delete(key);
-    console.log(JSON.stringify({ event: "session_memory_expired", interviewId, severity: "info", timestamp: new Date().toISOString() }));
+    logger.info(JSON.stringify({ event: "session_memory_expired", interviewId, severity: "info", timestamp: new Date().toISOString() }));
     return null;
   }
   return JSON.parse(data);
@@ -391,7 +392,7 @@ export async function refreshSessionTTL(interviewId: string): Promise<void> {
     try {
       await redis.expire(key, SESSION_TTL_SECONDS);
     } catch (err) {
-      console.warn(JSON.stringify({ event: "session_ttl_refresh_failure", interviewId, error: (err as Error)?.message, severity: "warning", timestamp: new Date().toISOString() }));
+      logger.warn(JSON.stringify({ event: "session_ttl_refresh_failure", interviewId, error: (err as Error)?.message, severity: "warning", timestamp: new Date().toISOString() }));
     }
   }
   // Refresh in-memory TTL
@@ -453,10 +454,10 @@ export async function tryRestoreSession(
     const data = await redis.get(key);
     if (!data) return null;
     const state = typeof data === "string" ? JSON.parse(data) : data as SessionState;
-    console.log(JSON.stringify({ event: "session_restored", interviewId, lastActiveAt: state.lastActiveAt, severity: "info", timestamp: new Date().toISOString() }));
+    logger.info(JSON.stringify({ event: "session_restored", interviewId, lastActiveAt: state.lastActiveAt, severity: "info", timestamp: new Date().toISOString() }));
     return state;
   } catch (err) {
-    console.warn(JSON.stringify({ event: "session_restore_failure", interviewId, error: (err as Error)?.message, severity: "warning", timestamp: new Date().toISOString() }));
+    logger.warn(JSON.stringify({ event: "session_restore_failure", interviewId, error: (err as Error)?.message, severity: "warning", timestamp: new Date().toISOString() }));
     return null;
   }
 }
@@ -472,7 +473,7 @@ export async function recordHeartbeat(interviewId: string): Promise<void> {
       await redis.set(`voice-heartbeat:${interviewId}`, Date.now().toString(), { ex: 30 });
     } catch (err) {
       // H6/R5: Don't let heartbeat failures crash the request — log and continue
-      console.warn(JSON.stringify({ event: "heartbeat_record_failure", interviewId, error: (err as Error)?.message, severity: "warning", timestamp: new Date().toISOString() }));
+      logger.warn(JSON.stringify({ event: "heartbeat_record_failure", interviewId, error: (err as Error)?.message, severity: "warning", timestamp: new Date().toISOString() }));
     }
   }
 }
@@ -560,7 +561,7 @@ export async function swapSessionLock(
     const acquired = result === 1;
     return { acquired, ownerToken: acquired ? token : "" };
   } catch (err) {
-    console.warn(JSON.stringify({ event: "lock_swap_failure", interviewId, error: (err as Error)?.message, severity: "warning", timestamp: new Date().toISOString() }));
+    logger.warn(JSON.stringify({ event: "lock_swap_failure", interviewId, error: (err as Error)?.message, severity: "warning", timestamp: new Date().toISOString() }));
     // Hard failure: no non-atomic fallback to prevent race conditions
     return { acquired: false, ownerToken: "" };
   }
@@ -697,10 +698,10 @@ export async function reconstructSessionFromLedger(
       interviewerState: interviewerStateJson,
     };
 
-    console.log(JSON.stringify({ event: "session_reconstructed", interviewId, turnCount: snapshot.turnCount, questionCount, severity: "info", timestamp: new Date().toISOString() }));
+    logger.info(JSON.stringify({ event: "session_reconstructed", interviewId, turnCount: snapshot.turnCount, questionCount, severity: "info", timestamp: new Date().toISOString() }));
     return reconstructed;
   } catch (err) {
-    console.error(JSON.stringify({ event: "session_reconstruction_failure", interviewId, error: (err as Error)?.message, severity: "error", timestamp: new Date().toISOString() }));
+    logger.error(JSON.stringify({ event: "session_reconstruction_failure", interviewId, error: (err as Error)?.message, severity: "error", timestamp: new Date().toISOString() }));
     return null;
   }
 }

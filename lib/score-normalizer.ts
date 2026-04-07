@@ -56,7 +56,7 @@ async function getParams(interviewType: string, dimensionName: string): Promise<
         return parsed;
       }
     } catch (err) {
-      logger.debug("[score-normalizer] Redis read failed, using in-memory fallback", err);
+      logger.debug("[score-normalizer] Redis read failed, using in-memory fallback", err as Record<string, unknown>);
     }
   }
 
@@ -78,7 +78,7 @@ async function setParams(interviewType: string, dimensionName: string, params: N
     try {
       await redis.set(redisKey(interviewType, dimensionName), JSON.stringify(params));
     } catch (err) {
-      logger.debug("[score-normalizer] Redis write failed", err);
+      logger.debug("[score-normalizer] Redis write failed", err as Record<string, unknown>);
     }
   }
 }

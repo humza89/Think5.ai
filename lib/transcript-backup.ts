@@ -1,5 +1,7 @@
 "use client";
 
+import { logger } from "@/lib/logger";
+
 /**
  * IndexedDB-backed transcript backup for voice interviews.
  * Provides data loss prevention when server checkpoints fail.
@@ -105,7 +107,7 @@ export async function backupTranscript(
     if (consecutiveFailures >= 2 && backupErrorCallback) {
       backupErrorCallback(errorMsg);
     }
-    console.warn(`[TranscriptBackup] Write failed (${consecutiveFailures} consecutive):`, err);
+    logger.warn(`[TranscriptBackup] Write failed (${consecutiveFailures} consecutive): ` + String(err));
   }
 }
 

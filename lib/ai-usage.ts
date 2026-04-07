@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { logger } from "@/lib/logger";
 
 type AIOperation =
   | "plan_generation"
@@ -63,18 +64,18 @@ export async function logAIUsage(input: UsageLogInput): Promise<void> {
     if (logCounter % 10 === 0 && input.companyId) {
       detectAnomalousUsage(input.companyId).then((result) => {
         if (result.anomalous) {
-          console.warn(
+          logger.warn(
             `[AI Anomaly] Company ${input.companyId}: $${result.currentDailySpend.toFixed(2)} today vs $${result.avgDailySpend.toFixed(2)} avg (${result.ratio.toFixed(1)}x)`
           );
         }
       }).catch((err) => {
         // M6/R5: Report anomaly detection failures instead of swallowing
-        console.warn("[AI Anomaly] Detection failed:", err);
+        logger.warn("[AI Anomaly] Detection failed: " + String(err));
       });
     }
   } catch (error) {
     // Non-blocking — don't fail operations for usage logging
-    console.error("AI usage logging failed:", error);
+    logger.error("AI usage logging failed", { error });
   }
 }
 
@@ -113,11 +114,11 @@ export async function checkBudgetThreshold(companyId: string, options?: {
     const utilizationPercent = threshold > 0 ? Math.round((currentSpend / threshold) * 100) : 0;
 
     if (overBudget) {
-      console.warn(
+      logger.warn(
         `[AI Budget Alert] Company ${companyId} has exceeded monthly budget: $${currentSpend.toFixed(2)} / $${threshold} (${utilizationPercent}%)`
       );
     } else if (utilizationPercent >= 80) {
-      console.warn(
+      logger.warn(
         `[AI Budget Warning] Company ${companyId} approaching budget: $${currentSpend.toFixed(2)} / $${threshold} (${utilizationPercent}%)`
       );
     }

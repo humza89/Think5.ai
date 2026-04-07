@@ -27,6 +27,13 @@ if (useMockDb) {
         dbUrl;
     }
 
+    // Ensure connection pool limit is set for serverless environments
+    // PgBouncer handles pooling externally; Prisma pool should be small per-instance
+    if (dbUrl && !dbUrl.includes("connection_limit")) {
+      const separator = dbUrl.includes("?") ? "&" : "?";
+      dbUrl += `${separator}connection_limit=${process.env.PRISMA_CONNECTION_LIMIT || "10"}`;
+    }
+
     prismaInstance = globalForPrisma.prisma ?? new PrismaClient({
       datasources: {
         db: {

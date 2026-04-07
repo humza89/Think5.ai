@@ -27,6 +27,7 @@ import { compute4FactorConfidence } from "./memory-orchestrator";
 import { recordSLOEvent, enforceSessionSLO } from "./slo-monitor";
 import { recordEvent } from "./interview-timeline";
 import { extractFactsImmediate } from "./fact-extractor";
+import { logger } from "@/lib/logger";
 
 // ── Types ────────────────────────────────────────────────────────────
 
@@ -327,7 +328,7 @@ async function runValidationGates(
       }
     } catch (err) {
       // FIX-5: Fail-closed — computation error → confidence=0.0 → hard block
-      console.error("[SessionBrain] Memory confidence computation failed:", err);
+      logger.error("[SessionBrain] Memory confidence computation failed", { error: err });
       memoryConfidence = 0.0;
       return {
         passed: false,
@@ -497,7 +498,7 @@ async function runValidationGates(
       const contradictions = detectContradictions(newFact, existingFacts);
       const contradictionMs = Date.now() - contradictionStart;
       if (contradictionMs > CONTRADICTION_TIMEOUT_MS) {
-        console.warn(`[SessionBrain] Contradiction detection slow: ${contradictionMs}ms (threshold: ${CONTRADICTION_TIMEOUT_MS}ms)`);
+        logger.warn(`[SessionBrain] Contradiction detection slow: ${contradictionMs}ms (threshold: ${CONTRADICTION_TIMEOUT_MS}ms)`);
       }
       recordSLOEvent("memory.contradiction.detection_rate", true).catch(() => {});
 
@@ -537,7 +538,7 @@ async function runValidationGates(
     } catch (err) {
       // FIX-6: Fail-closed — contradiction gate unavailable → block turn
       const contradictionMs = Date.now() - contradictionStart;
-      console.error(`[SessionBrain] Contradiction detection failed after ${contradictionMs}ms — blocking turn:`, err);
+      logger.error(`[SessionBrain] Contradiction detection failed after ${contradictionMs}ms — blocking turn`, { error: err });
       recordSLOEvent("memory.contradiction.detection_rate", false).catch(() => {});
       return {
         passed: false,
@@ -710,7 +711,7 @@ export async function atomicTurnCommit(
         select: { memoryChecksum: true },
       });
       if (prevTurn?.memoryChecksum && prevTurn.memoryChecksum !== sessionState.lastMemoryChecksum) {
-        console.warn(`[SessionBrain] N5: Memory integrity break — session=${sessionState.lastMemoryChecksum}, stored=${prevTurn.memoryChecksum}`);
+        logger.warn(`[SessionBrain] N5: Memory integrity break — session=${sessionState.lastMemoryChecksum}, stored=${prevTurn.memoryChecksum}`);
         return {
           committed: false,
           stateHash: gates.interviewerState.stateHash,
@@ -845,7 +846,7 @@ export async function atomicTurnCommit(
         const invalidSourceTurnIds = request.sourceTurnIds.filter((id) => !validTurnIds.has(id));
 
         if (invalidSourceTurnIds.length > 0) {
-          console.warn(`[SessionBrain] N8: Invalid sourceTurnIds rejected: ${invalidSourceTurnIds.join(", ")}`);
+          logger.warn(`[SessionBrain] N8: Invalid sourceTurnIds rejected: ${invalidSourceTurnIds.join(", ")}`);
           // N8 ENFORCEMENT: roll back the entire transaction
           throw new Error(`INVALID_SOURCE_TURN_IDS: ${invalidSourceTurnIds.join(", ")}`);
         }
@@ -921,7 +922,7 @@ export async function atomicTurnCommit(
     }
 
     // Transaction failed — ALL writes rolled back (including ledger commit)
-    console.error(`[SessionBrain] Atomic transaction failed for ${interviewId}:`, err);
+    logger.error(`[SessionBrain] Atomic transaction failed for ${interviewId}`, { error: err });
     recordSLOEvent("session.atomic_commit.success_rate", false).catch(() => {});
     return {
       committed: false,

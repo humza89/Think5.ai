@@ -15,6 +15,7 @@
 import type { InterviewerState, FollowUpItem, Contradiction, PendingClarification } from "./interviewer-state";
 import { createInitialState, deserializeState } from "./interviewer-state";
 import type { SessionState, CandidateProfile } from "./session-store";
+import { logger } from "@/lib/logger";
 
 // ── Types ────────────────────────────────────────────────────────────
 
@@ -342,7 +343,7 @@ export async function composeMemoryPacket(
   const milestoneTokens = manifestTurns.filter(t => t.source === "milestone").reduce((sum, t) => sum + t.tokenEstimate, 0);
   const unresolvedTokens = manifestTurns.filter(t => t.source === "unresolved").reduce((sum, t) => sum + t.tokenEstimate, 0);
   const recentTokens = manifestTurns.filter(t => t.source === "recent").reduce((sum, t) => sum + t.tokenEstimate, 0);
-  console.log(JSON.stringify({
+  logger.info(JSON.stringify({
     event: "memory_budget_allocation",
     interviewId,
     tierA_milestone: { turns: manifestTurns.filter(t => t.source === "milestone").length, tokens: milestoneTokens },

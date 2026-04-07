@@ -122,24 +122,24 @@ async function searchPeopleAtCompany(companyUrl: string): Promise<any> {
         const bodyString = body.toString();
 
         if (res.statusCode && res.statusCode >= 400) {
-          console.error(`❌ LinkedIn People Search API HTTP Error ${res.statusCode}:`, bodyString);
+          logger.error(`LinkedIn People Search API HTTP Error ${res.statusCode}`, { body: bodyString });
           reject(new Error(`LinkedIn People Search API error ${res.statusCode}: ${bodyString}`));
           return;
         }
 
         try {
           const jsonData = JSON.parse(bodyString);
-          logger.debug("📦 LinkedIn People Search Response:", JSON.stringify(jsonData, null, 2).substring(0, 500));
+          logger.debug("📦 LinkedIn People Search Response", { data: JSON.stringify(jsonData, null, 2).substring(0, 500) });
           resolve(jsonData);
         } catch (error) {
-          console.error(`❌ Failed to parse response:`, bodyString);
+          logger.error("Failed to parse response", { body: bodyString });
           reject(error);
         }
       });
     });
 
     req.on('error', function (error) {
-      console.error('❌ LinkedIn People Search API Request Error:', error);
+      logger.error("LinkedIn People Search API Request Error", { error });
       reject(error);
     });
 
@@ -149,7 +149,7 @@ async function searchPeopleAtCompany(companyUrl: string): Promise<any> {
       limit: 1
     };
 
-    logger.debug("📤 Search payload:", JSON.stringify(searchPayload));
+    logger.debug("📤 Search payload", { data: JSON.stringify(searchPayload) });
     req.write(JSON.stringify(searchPayload));
     req.end();
   });
@@ -196,14 +196,14 @@ async function fetchProfileForCompanyData(profileUrl: string): Promise<z.infer<t
         const bodyString = body.toString();
 
         if (res.statusCode && res.statusCode >= 400) {
-          console.error(`❌ LinkedIn Profile API HTTP Error ${res.statusCode}:`, bodyString);
+          logger.error(`LinkedIn Profile API HTTP Error ${res.statusCode}`, { body: bodyString });
           reject(new Error(`LinkedIn Profile API error ${res.statusCode}: ${bodyString}`));
           return;
         }
 
         try {
           const jsonData = JSON.parse(bodyString);
-          logger.debug("📦 Profile Company Data:", JSON.stringify(jsonData.data?.company_description?.substring(0, 100), null, 2));
+          logger.debug("📦 Profile Company Data", { data: jsonData.data?.company_description?.substring(0, 100) });
           const parsed = ProfileCompanySchema.parse(jsonData);
           resolve(parsed);
         } catch (error) {
@@ -213,7 +213,7 @@ async function fetchProfileForCompanyData(profileUrl: string): Promise<z.infer<t
     });
 
     req.on('error', function (error) {
-      console.error('❌ LinkedIn Profile API Request Error:', error);
+      logger.error("LinkedIn Profile API Request Error", { error });
       reject(error);
     });
 

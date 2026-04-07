@@ -28,8 +28,10 @@ const BASE_URL = __ENV.BASE_URL || "http://localhost:3000";
 // Generate: node -e "const jwt=require('jsonwebtoken');console.log(jwt.sign({sub:'load-test',role:'admin'},process.env.SUPABASE_JWT_SECRET,{expiresIn:'1h'}))"
 const API_TOKEN = __ENV.API_TOKEN;
 if (!API_TOKEN) {
-  console.warn("⚠️  API_TOKEN not set — load test will bypass auth middleware. Set API_TOKEN for realistic testing.");
+  throw new Error("API_TOKEN env var is required. Generate one with: node -e \"const jwt=require('jsonwebtoken');console.log(jwt.sign({sub:'load-test',role:'admin'},process.env.SUPABASE_JWT_SECRET,{expiresIn:'1h'}))\"");
 }
+// CSRF token for state-changing requests
+const CSRF_TOKEN = __ENV.CSRF_TOKEN || "";
 
 export const options = {
   scenarios: {

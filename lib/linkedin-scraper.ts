@@ -1,5 +1,6 @@
 import axios from "axios";
 import * as cheerio from "cheerio";
+import { logger } from "@/lib/logger";
 
 export interface LinkedInData {
   fullName: string;
@@ -33,7 +34,7 @@ export async function scrapeLinkedInProfile(
       currentCompany: "Tech Company",
     };
 
-    console.warn(
+    logger.warn(
       "LinkedIn scraping is using mock data. Integrate a real LinkedIn scraping API for production."
     );
 
@@ -56,7 +57,7 @@ export async function scrapeLinkedInProfile(
     };
     */
   } catch (error) {
-    console.error("Error scraping LinkedIn:", error);
+    logger.error("Error scraping LinkedIn", { error });
     throw new Error("Failed to fetch LinkedIn data");
   }
 }

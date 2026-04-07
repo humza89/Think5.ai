@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
 import { deleteRecording } from "@/lib/media-storage";
 import { logActivity } from "@/lib/activity-log";
+import { logger } from "@/lib/logger";
 
 export async function getDefaultRetentionPolicy() {
   return prisma.retentionPolicy.findFirst({ where: { isDefault: true } });
@@ -30,7 +31,7 @@ export async function applyRetentionPolicies() {
       try {
         await deleteRecording(recording.id);
       } catch (err) {
-        console.error(`Failed to delete R2 recordings for interview ${recording.id}:`, err);
+        logger.error(`Failed to delete R2 recordings for interview ${recording.id}`, { error: err });
       }
     }
 

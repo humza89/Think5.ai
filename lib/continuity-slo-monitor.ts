@@ -7,6 +7,7 @@
  */
 
 import { prisma } from "@/lib/prisma";
+import { logger } from "@/lib/logger";
 
 // ── Configuration ────────────────────────────────────────────────────
 
@@ -131,7 +132,7 @@ export async function shouldBlockVoiceMode(): Promise<{ blocked: boolean; reason
     return { blocked: false };
   } catch (err) {
     // Fail-closed: if SLO check fails, block voice mode to prevent unmonitored sessions
-    console.error("[ContinuitySLO] Failed to check SLO status — fail-closed:", err);
+    logger.error("[ContinuitySLO] Failed to check SLO status — fail-closed", { error: err });
     return { blocked: true, reason: "SLO_CHECK_UNAVAILABLE: continuity monitor failed — fail-closed" };
   }
 }

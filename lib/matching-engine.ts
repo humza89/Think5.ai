@@ -4,6 +4,7 @@ import {
   cosineSimilarity,
   generateMatchReasoning,
 } from "./openai";
+import { logger } from "@/lib/logger";
 
 export async function generateCandidateEmbedding(candidateId: string) {
   const candidate = await prisma.candidate.findUnique({
@@ -168,9 +169,9 @@ export async function generateMatchesForRole(roleId: string) {
         matches.push(match);
       }
     } catch (error) {
-      console.error(
-        `Error matching candidate ${candidate.id} to role ${roleId}:`,
-        error
+      logger.error(
+        `Error matching candidate ${candidate.id} to role ${roleId}`,
+        { error }
       );
     }
   }
@@ -222,9 +223,9 @@ export async function generateMatchesForCandidate(candidateId: string) {
         matches.push(match);
       }
     } catch (error) {
-      console.error(
-        `Error matching candidate ${candidateId} to role ${role.id}:`,
-        error
+      logger.error(
+        `Error matching candidate ${candidateId} to role ${role.id}`,
+        { error }
       );
     }
   }

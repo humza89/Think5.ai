@@ -53,6 +53,13 @@ function AcceptInvitationContent() {
       return;
     }
 
+    // Security: Remove token from URL to prevent it appearing in browser history
+    if (typeof window !== "undefined" && window.history.replaceState) {
+      const url = new URL(window.location.href);
+      url.searchParams.delete("token");
+      window.history.replaceState({}, "", url.toString());
+    }
+
     async function validateToken() {
       try {
         const res = await fetch(`/api/auth/invite?token=${encodeURIComponent(token!)}`);

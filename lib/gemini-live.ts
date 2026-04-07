@@ -217,7 +217,7 @@ function buildSetupMessage(config: GeminiLiveConfig) {
   const setup: Record<string, unknown> = {
     model: process.env.GEMINI_LIVE_MODEL_VERSION || "models/gemini-2.5-flash-preview-native-audio-dialog",
     generationConfig: {
-      temperature: parseFloat(process.env.GEMINI_LIVE_TEMPERATURE || "0.7"),
+      temperature: config.generationConfig?.temperature ?? parseFloat(process.env.GEMINI_LIVE_TEMPERATURE || "0.7"),
       responseModalities: ["AUDIO"],
       speechConfig: {
         voiceConfig: {

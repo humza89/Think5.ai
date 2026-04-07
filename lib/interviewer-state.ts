@@ -9,6 +9,7 @@
  */
 
 import { createHash } from "crypto";
+import { logger } from "@/lib/logger";
 
 // ── Types ────────────────────────────────────────────────────────────
 
@@ -138,7 +139,7 @@ export function transitionState(
       const toIdx = getStepIndex(event.step);
       if (toIdx < fromIdx) {
         // Backward transition rejected — keep current step
-        console.warn(`[InterviewerState] Rejected backward transition: ${current.currentStep} → ${event.step}`);
+        logger.warn(`[InterviewerState] Rejected backward transition: ${current.currentStep} → ${event.step}`);
         break;
       }
       next.currentStep = event.step;

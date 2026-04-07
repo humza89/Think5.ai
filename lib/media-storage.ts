@@ -19,6 +19,7 @@ import {
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import * as Sentry from "@sentry/nextjs";
+import { logger } from "@/lib/logger";
 
 // ── Configuration ──────────────────────────────────────────────────────
 
@@ -172,9 +173,9 @@ export async function finalizeRecording(
       mergeSuccess = true;
       break;
     } catch (err) {
-      console.error(
-        `[Recording Merge] Attempt ${attempt}/${MAX_MERGE_RETRIES} failed for interview ${interviewId}:`,
-        err
+      logger.error(
+        `[Recording Merge] Attempt ${attempt}/${MAX_MERGE_RETRIES} failed for interview ${interviewId}`,
+        { error: err }
       );
       if (attempt < MAX_MERGE_RETRIES) {
         // Exponential backoff: 1s, 2s, 4s
@@ -189,7 +190,7 @@ export async function finalizeRecording(
       tags: { component: "recording_merge" },
       extra: { interviewId, totalChunks, totalSize },
     });
-    console.error(
+    logger.error(
       `[Recording Merge] CRITICAL: All ${MAX_MERGE_RETRIES} merge attempts failed for interview ${interviewId}. ` +
       `Playback will use first chunk only. Total chunks: ${totalChunks}, total size: ${totalSize} bytes.`
     );
@@ -223,7 +224,7 @@ async function mergeRecordingChunks(
         buffers.push(Buffer.from(bytes));
       }
     } catch (err) {
-      console.error(`[Recording Merge] Missing chunk ${i}/${totalChunks} for interview ${interviewId}:`, err);
+      logger.error(`[Recording Merge] Missing chunk ${i}/${totalChunks} for interview ${interviewId}`, { error: err });
     }
   }
 

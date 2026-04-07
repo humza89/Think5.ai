@@ -5,6 +5,8 @@
  * for local development.
  */
 
+import { logger } from "@/lib/logger";
+
 export interface RateLimitConfig {
   maxRequests: number;
   windowMs: number;
@@ -119,7 +121,7 @@ export async function checkRateLimit(
         resetAt,
       };
     } catch (error) {
-      console.error("Redis rate limit error, falling back to in-memory:", error);
+      logger.error("Redis rate limit error, falling back to in-memory", { error });
       return checkRateLimitInMemory(key, config);
     }
   }

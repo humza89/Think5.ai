@@ -1,6 +1,7 @@
 import { createSupabaseServerClient } from '@/lib/supabase-server';
 import { prisma } from '@/lib/prisma';
 import type { UserRole } from '@/types/supabase';
+import { logger } from "@/lib/logger";
 
 export class AuthError extends Error {
   constructor(
@@ -312,6 +313,6 @@ export function handleAuthError(error: unknown) {
   } catch {
     // Sentry not available
   }
-  console.error("Internal server error:", error);
+  logger.error("Internal server error", { error });
   return { error: "Internal server error", status: 500 };
 }

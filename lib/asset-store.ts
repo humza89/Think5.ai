@@ -3,6 +3,7 @@ import { createHash } from "crypto";
 import { writeFile, mkdir } from "fs/promises";
 import { existsSync } from "fs";
 import path from "path";
+import { logger } from "@/lib/logger";
 
 const mode = process.env.ASSET_STORE || "local";
 const bucket = process.env.S3_BUCKET || "";
@@ -52,7 +53,7 @@ export async function storeRemoteImageToCdn(opts: {
 
     return `/uploads/${filename}`;
   } catch (error) {
-    console.error("Error storing image:", error);
+    logger.error("Error storing image", { error });
     return null;
   }
 }

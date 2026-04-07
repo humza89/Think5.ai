@@ -93,7 +93,7 @@ export async function importLinkedInProfile(
     try {
       return await importFromRockAPIs(normalizedUrl);
     } catch (error: any) {
-      console.error("❌ RockAPIs import failed:", error.message);
+      logger.error("❌ RockAPIs import failed: " + error.message);
 
       // Fall back to mock data so the user can still add candidates
       logger.debug("⚠️  Falling back to mock data");
@@ -134,11 +134,11 @@ export async function importLinkedInProfile(
     try {
       return await importFromFreshLinkedIn(normalizedUrl);
     } catch (error: any) {
-      console.error("❌ Fresh LinkedIn import failed:", error.message);
+      logger.error("❌ Fresh LinkedIn import failed: " + error.message);
 
       // Check if it's a subscription error
       if (error.message.includes("subscribe")) {
-        console.error("💡 Please subscribe to Fresh LinkedIn Profile Data at https://rapidapi.com/");
+        logger.error("💡 Please subscribe to Fresh LinkedIn Profile Data at https://rapidapi.com/");
       }
 
       // Fall back to mock data so the user can still add candidates
@@ -180,11 +180,11 @@ export async function importLinkedInProfile(
     try {
       return await importFromRapidAPI(normalizedUrl);
     } catch (error: any) {
-      console.error("❌ RapidAPI import failed:", error.message);
+      logger.error("❌ RapidAPI import failed: " + error.message);
 
       // Check if it's a subscription error
       if (error.message.includes("subscribe")) {
-        console.error("💡 Please subscribe to the LinkedIn Data API at https://rapidapi.com/");
+        logger.error("💡 Please subscribe to the LinkedIn Data API at https://rapidapi.com/");
       }
 
       // Fall back to mock data so the user can still add candidates
@@ -222,7 +222,7 @@ export async function importLinkedInProfile(
 
   // Proxycurl (deprecated - service shut down)
   if (provider === "proxycurl") {
-    console.warn("⚠️  Proxycurl has shut down. Please use 'rapidapi' instead.");
+    logger.warn("⚠️  Proxycurl has shut down. Please use 'rapidapi' instead.");
     return await importFromProxycurl(normalizedUrl);
   }
 

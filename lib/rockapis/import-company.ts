@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { storeRemoteImageToCdn } from "@/lib/asset-store";
 import slugify from "slugify";
+import { logger } from "@/lib/logger";
 
 const ROCKAPIS_API_KEY = process.env.ROCKAPIS_API_KEY;
 
@@ -82,7 +83,7 @@ async function fetchRockAPIsCompanyData(linkedinUrl: string): Promise<any> {
   }
 
   const apiUrl = `https://api.rockapis.com/v1/linkedin/company?url=${encodeURIComponent(linkedinUrl)}`;
-  console.log(`📡 Calling RockAPIs Company Profile API for URL: ${linkedinUrl}`);
+  logger.info(`📡 Calling RockAPIs Company Profile API for URL: ${linkedinUrl}`);
 
   const response = await fetch(apiUrl, {
     method: 'GET',
@@ -94,12 +95,12 @@ async function fetchRockAPIsCompanyData(linkedinUrl: string): Promise<any> {
 
   if (!response.ok) {
     const errorText = await response.text();
-    console.error(`❌ RockAPIs API HTTP Error ${response.status}:`, errorText);
+    logger.error(`❌ RockAPIs API HTTP Error ${response.status}: ` + errorText);
     throw new Error(`RockAPIs API error ${response.status}: ${errorText}`);
   }
 
   const jsonData = await response.json();
-  console.log("📦 RockAPIs Company API Response:", JSON.stringify(jsonData, null, 2));
+  logger.info("📦 RockAPIs Company API Response: " + JSON.stringify(jsonData, null, 2));
 
   return jsonData;
 }
@@ -112,7 +113,7 @@ export async function importCompanyFromRockAPIs(
 ): Promise<RockAPIsCompanyData> {
   // Normalize the LinkedIn URL
   const normalizedUrl = normalizeLinkedInCompanyUrl(linkedinUrl);
-  console.log(`🔗 Normalized LinkedIn Company URL: ${linkedinUrl} → ${normalizedUrl}`);
+  logger.info(`🔗 Normalized LinkedIn Company URL: ${linkedinUrl} → ${normalizedUrl}`);
 
   // Fetch company data from RockAPIs
   const rockAPIsResponse = await fetchRockAPIsCompanyData(normalizedUrl);
@@ -121,7 +122,7 @@ export async function importCompanyFromRockAPIs(
   const parsedResponse = RockAPIsCompanySchema.safeParse(rockAPIsResponse);
 
   if (!parsedResponse.success) {
-    console.error("❌ Invalid RockAPIs response format:", parsedResponse.error);
+    logger.error("❌ Invalid RockAPIs response format: " + JSON.stringify(parsedResponse.error));
     throw new Error("Invalid response format from RockAPIs");
   }
 
@@ -174,7 +175,7 @@ export async function importCompanyFromRockAPIs(
         keyHint: `logos/${slug}`,
       });
     } catch (error) {
-      console.error("Failed to store company logo in CDN:", error);
+      logger.error("Failed to store company logo in CDN", { error });
       // Continue without logo rather than failing completely
     }
   }

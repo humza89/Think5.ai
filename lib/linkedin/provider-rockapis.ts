@@ -111,17 +111,17 @@ async function fetchRockAPIsLinkedIn(linkedinUrl: string) {
 
   if (!response.ok) {
     const error = await response.text();
-    console.error(`❌ RockAPIs HTTP Error ${response.status}:`, error);
+    logger.error(`RockAPIs HTTP Error ${response.status}`, { error });
     throw new Error(`RockAPIs error ${response.status}: ${error}`);
   }
 
   const jsonData = await response.json();
-  logger.debug("📦 RockAPIs Response:", JSON.stringify(jsonData, null, 2));
+  logger.debug("📦 RockAPIs Response", { data: JSON.stringify(jsonData, null, 2) });
 
   // Check API response structure
   if (!jsonData.success) {
     const message = jsonData.message || "Unknown error";
-    console.error(`❌ RockAPIs returned success=false: ${message}`);
+    logger.error(`RockAPIs returned success=false: ${message}`);
     throw new Error(`RockAPIs error: ${message}`);
   }
 

@@ -21,7 +21,7 @@ interface WelcomeScreenProps {
   interviewType: string;
   webcamActive: boolean;
   onRequestWebcam: () => void;
-  onStart: (consent: { consentRecording: boolean; consentProctoring: boolean; consentPrivacy: boolean }) => void;
+  onStart: (consent: { consentRecording: boolean; consentProctoring: boolean; consentPrivacy: boolean; accommodations?: { extendedTime: boolean; textOnly: boolean; captioning: boolean; screenReader: boolean } }) => void;
   isStarting: boolean;
   screenShareRequired?: boolean;
   screenShareActive?: boolean;
@@ -354,7 +354,7 @@ export function WelcomeScreen({
 
         {/* Start button */}
         <Button
-          onClick={() => onStart({ consentRecording, consentProctoring, consentPrivacy })}
+          onClick={() => onStart({ consentRecording, consentProctoring, consentPrivacy, accommodations: showAccommodations ? accommodations : undefined })}
           disabled={isStarting || !allConsented || !screenShareReady}
           className="w-full h-12 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 text-white font-semibold text-base disabled:opacity-50 disabled:cursor-not-allowed"
         >

@@ -18,6 +18,8 @@ import { isValidTransition } from "@/lib/interview-state-machine";
 import { acquireSessionLock, swapSessionLock, releaseSessionLock, saveSessionState, getSessionState, generateReconnectToken, assertDurableStore } from "@/lib/session-store";
 import { recordSLOEvent } from "@/lib/slo-monitor";
 import { classifyError } from "@/lib/error-classification";
+import { acquireSessionSlot, releaseSessionSlot } from "@/lib/concurrent-session-limiter";
+import { logger } from "@/lib/logger";
 import { isMaintenanceMode, getMaintenanceMessage, maintenanceResponse } from "@/lib/maintenance-mode";
 import { recordEvent } from "@/lib/interview-timeline";
 import { isEnabled } from "@/lib/feature-flags";
@@ -162,6 +164,7 @@ export async function POST(
       candidateSkills: interview.candidate.skills as string[] | undefined,
       candidateExperience: interview.candidate.experienceYears,
       resumeText: interview.candidate.resumeText,
+      language: interview.language || "en",
     });
 
     let fullPrompt = basePrompt;
@@ -304,10 +307,10 @@ export async function POST(
                 (sum: number, t: {content: string}) => sum + Math.ceil(t.content.length / 4), 0
               ) ?? 0;
               const recoveredConfidence = compute4FactorConfidence(
-                { factsOk: freshFacts.length > 0, knowledgeGraphOk: false, recentTurnsOk: estimatedTokens > 0 },
+                { factsOk: (freshFacts as any[]).length > 0, knowledgeGraphOk: false, recentTurnsOk: estimatedTokens > 0 },
                 estimatedTokens,
                 parseInt(process.env.MEMORY_MIN_TOKEN_THRESHOLD || "2000", 10),
-                0, 0, !!freshSnapshot?.stateHash
+                0, 0, !!(freshSnapshot as any)?.stateHash
               );
 
               if (recoveredConfidence >= 0.65) {
@@ -353,11 +356,20 @@ export async function POST(
     // Get tool definitions
     const tools = getInterviewTools();
 
+    // Enforce concurrent session limit
+    const slotAcquired = await acquireSessionSlot(id);
+    if (!slotAcquired) {
+      return Response.json(
+        { error: "System is at capacity. Please try again in a few minutes.", code: "CAPACITY_LIMIT" },
+        { status: 503 }
+      );
+    }
+
     // Update interview status to IN_PROGRESS
     const currentStatus = interview.status;
     if (currentStatus !== "IN_PROGRESS") {
       if (!isValidTransition(currentStatus, "IN_PROGRESS")) {
-        console.warn(`[${id}] Invalid voice init status transition: ${currentStatus} → IN_PROGRESS`);
+        logger.warn(`[${id}] Invalid voice init status transition: ${currentStatus} → IN_PROGRESS`);
       }
       await prisma.interview.update({
         where: { id },

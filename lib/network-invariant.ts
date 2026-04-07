@@ -14,6 +14,8 @@
  * enforce this contract across the codebase.
  */
 
+import { logger } from "@/lib/logger";
+
 // ── Allowed usages of connectionQuality ──────────────────────────────
 
 /**
@@ -47,7 +49,7 @@ export function assertNetworkInvariant(
   if (!isAllowed) {
     const msg = `[NetworkInvariant] VIOLATION: connectionQuality="${connectionQuality}" accessed in disallowed context="${context}". ` +
       `connectionQuality must NEVER influence logic paths. Allowed contexts: ${ALLOWED_CONNECTION_QUALITY_CONTEXTS.join(", ")}`;
-    console.error(msg);
+    logger.error(msg);
     if (process.env.NODE_ENV !== "production") {
       throw new Error(msg);
     }

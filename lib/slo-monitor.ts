@@ -5,6 +5,8 @@
  * real-time compliance metrics for interview-critical paths.
  */
 
+import { logger } from "@/lib/logger";
+
 // Lazy Redis init (same pattern as session-store.ts)
 let redisClient: any = null;
 
@@ -209,7 +211,7 @@ export async function recordSLOEvent(
     // Set TTL to 48 hours to cover the SLO window plus buffer
     await redis.expire(key, 48 * 3600);
   } catch (err) {
-    console.warn(`[SLO] Failed to record event for ${sloName}:`, err);
+    logger.warn(`[SLO] Failed to record event for ${sloName}: ` + String(err));
   }
 }
 
@@ -296,7 +298,7 @@ export async function getSLOStatus(sloName: string): Promise<SLOStatus | null> {
       breached: current < def.target,
     };
   } catch (err) {
-    console.warn(`[SLO] Failed to get status for ${sloName}:`, err);
+    logger.warn(`[SLO] Failed to get status for ${sloName}: ` + String(err));
     return null;
   }
 }
@@ -340,7 +342,7 @@ export async function persistSLOSnapshot(): Promise<void> {
 
     await redis.set(`slo-snapshot:${dateKey}`, JSON.stringify(snapshot), { ex: 90 * 86400 });
   } catch (err) {
-    console.warn("[SLO] Failed to persist snapshot:", err);
+    logger.warn("[SLO] Failed to persist snapshot: " + String(err));
   }
 }
 
@@ -430,6 +432,6 @@ export async function checkAndAlertSLOs(): Promise<void> {
       });
     }
   } catch (err) {
-    console.error("[SLO] Alert check failed:", err);
+    logger.error("[SLO] Alert check failed", { error: err });
   }
 }

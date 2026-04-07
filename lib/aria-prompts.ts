@@ -1,3 +1,5 @@
+import { logger } from "@/lib/logger";
+
 // C6: Sanitize user-generated content before prompt injection
 // Strips patterns that could be interpreted as prompt instructions
 // Hardened: NFKC normalization, prompt keyword stripping, whitespace collapse
@@ -275,7 +277,7 @@ ${candidateContext}
 ${TYPE_INSTRUCTIONS[interviewType] || TYPE_INSTRUCTIONS.TECHNICAL}
 ${mlGuidance}
 ## CORE RULES
-- ALWAYS speak and respond in English only. Regardless of the candidate's language, keep the entire interview in English.
+${config.language && config.language !== "en" ? `- Conduct this entire interview in ${LANGUAGE_NAMES[config.language] || config.language}. Ask all questions, give all instructions, and respond in ${LANGUAGE_NAMES[config.language] || config.language}. Only use English for technical terms that have no widely accepted translation.` : "- Default language is English. If the candidate speaks another language and no language preference is set, keep the interview in English."}
 - Always speak in complete, natural sentences.
 - Never output word-by-word, fragmented, or broken transcript text.
 - Ask only one clear question at a time.
@@ -805,7 +807,7 @@ ${questionsList}
     if (prompt.length + section.content.length <= MAX_PROMPT_CHARS) {
       prompt += section.content;
     } else {
-      console.warn(`[Reconnect] Dropped SHOULD-KEEP section: ${section.label} (${section.content.length} chars)`);
+      logger.warn(`[Reconnect] Dropped SHOULD-KEEP section: ${section.label} (${section.content.length} chars)`);
     }
   }
 
@@ -814,13 +816,13 @@ ${questionsList}
     if (prompt.length + section.content.length <= MAX_PROMPT_CHARS) {
       prompt += section.content;
     } else {
-      console.warn(`[Reconnect] Dropped MAY-DROP section: ${section.label} (${section.content.length} chars)`);
+      logger.warn(`[Reconnect] Dropped MAY-DROP section: ${section.label} (${section.content.length} chars)`);
     }
   }
 
   // Final safety check — if MUST-KEEP alone exceeds budget, truncate with marker
   if (prompt.length > MAX_PROMPT_CHARS) {
-    console.warn(`[Reconnect] MUST-KEEP content exceeds budget (${Math.round(prompt.length / 1024)}KB), hard truncating`);
+    logger.warn(`[Reconnect] MUST-KEEP content exceeds budget (${Math.round(prompt.length / 1024)}KB), hard truncating`);
     prompt = prompt.slice(0, MAX_PROMPT_CHARS - 50) + "\n\n[CONTEXT TRUNCATED — RESUME FROM LAST QUESTION]";
   }
 

@@ -66,12 +66,25 @@ function persistGaugeToRedis(key: string, value: number): void {
 function persistHistogramToRedis(key: string, value: number): void {
   getRedisClient().then(async (redis) => {
     if (!redis) return;
-    // Store as count + sum for cross-instance aggregation
+    // Store count + sum + recent observations for cross-instance percentile calculation
     await Promise.all([
       redis.incrbyfloat(`metrics:hist:${key}:count`, 1),
       redis.incrbyfloat(`metrics:hist:${key}:sum`, value),
+      // Store recent observations in a capped list for percentile approximation
+      redis.set(`metrics:hist:${key}:recent`, JSON.stringify(
+        getRecentObservations(key, value)
+      ), { ex: 3600 }),
     ]).catch(() => {});
   }).catch(() => {});
+}
+
+/** Get recent observations for a histogram key, capped at 1000. */
+function getRecentObservations(key: string, newValue: number): number[] {
+  const existing = metrics.get(key);
+  const obs = existing?.observations || [];
+  const recent = obs.slice(-999);
+  recent.push(newValue);
+  return recent;
 }
 
 /**
@@ -95,8 +108,19 @@ export async function syncFromRedis(): Promise<void> {
         if (countStr) {
           const redisCount = parseFloat(countStr as string);
           if (redisCount > (metric.observations?.length || 0)) {
-            // Redis has more observations from other instances — update count
             metric.value = redisCount;
+          }
+        }
+        // Pull recent observations from Redis for accurate percentile calculation
+        const recentStr = await redis.get(`metrics:hist:${key}:recent`);
+        if (recentStr) {
+          try {
+            const recentObs = JSON.parse(recentStr as string);
+            if (Array.isArray(recentObs) && recentObs.length > (metric.observations?.length || 0)) {
+              metric.observations = recentObs;
+            }
+          } catch {
+            // Best-effort parse
           }
         }
       }

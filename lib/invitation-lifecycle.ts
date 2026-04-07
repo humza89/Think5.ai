@@ -7,6 +7,7 @@
  */
 
 import { prisma } from "@/lib/prisma";
+import { logger } from "@/lib/logger";
 
 type InvitationStatus =
   | "CREATED"
@@ -146,6 +147,6 @@ export async function cascadeInterviewStatus(
   try {
     await transitionInvitation(interview.invitationId, newInvitationStatus);
   } catch (err) {
-    console.error("Invitation cascade failed:", err);
+    logger.error("Invitation cascade failed", { error: err });
   }
 }

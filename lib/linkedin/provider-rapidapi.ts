@@ -83,12 +83,12 @@ async function fetchRapidAPI(linkedinUrl: string) {
 
   if (!response.ok) {
     const error = await response.text();
-    console.error(`❌ RapidAPI HTTP Error ${response.status}:`, error);
+    logger.error(`RapidAPI HTTP Error ${response.status}`, { error });
     throw new Error(`RapidAPI error ${response.status}: ${error}`);
   }
 
   const jsonData = await response.json();
-  logger.debug("📦 RapidAPI Response:", JSON.stringify(jsonData, null, 2));
+  logger.debug("📦 RapidAPI Response", { data: JSON.stringify(jsonData, null, 2) });
 
   // Check if the response indicates an error or requires subscription
   if (jsonData.message && jsonData.message.includes("subscribe")) {

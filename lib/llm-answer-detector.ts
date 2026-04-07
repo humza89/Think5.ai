@@ -29,11 +29,11 @@ const HUMAN_FILLERS = [
   "i mean", "sort of", "kind of", "actually", "right",
 ];
 
-export function detectLLMAnswer(
+export async function detectLLMAnswer(
   response: string,
   responseTimeMs?: number,
   previousResponses?: string[]
-): DetectionResult {
+): Promise<DetectionResult> {
   const signals: DetectionSignal[] = [];
   const words = response.toLowerCase().split(/\s+/);
   const wordCount = words.length;
@@ -98,7 +98,32 @@ export function detectLLMAnswer(
     }
   }
 
-  const totalScore = Math.min(100, signals.reduce((sum, s) => sum + s.weight, 0));
+  let totalScore = Math.min(100, signals.reduce((sum, s) => sum + s.weight, 0));
+
+  // For borderline cases, run semantic LLM-based detection for higher accuracy
+  if (totalScore >= 25 && totalScore < 70) {
+    try {
+      const { detectAIResponseSemantic } = await import("@/lib/llm-answer-detector-semantic");
+      const semanticResult = await detectAIResponseSemantic(
+        response,
+        "", // question context not available at this level
+        previousResponses
+      );
+      if (semanticResult.provider !== "heuristic_only") {
+        // Blend semantic confidence with heuristic score
+        const semanticScore = Math.round(semanticResult.confidence * 100);
+        totalScore = Math.round(totalScore * 0.4 + semanticScore * 0.6);
+        signals.push({
+          type: "SEMANTIC_ANALYSIS",
+          weight: 0, // Already blended into totalScore
+          description: `Semantic detection: ${semanticResult.isLikelyAI ? "likely AI" : "likely human"} (${Math.round(semanticResult.confidence * 100)}% confidence). Signals: ${semanticResult.signals.join("; ")}`,
+        });
+      }
+    } catch {
+      // Semantic detection is supplementary — don't fail the detection pipeline
+    }
+  }
+
   const verdict = totalScore >= 50 ? "likely_ai" : totalScore >= 25 ? "suspicious" : "likely_human";
 
   if (totalScore >= 25) {

@@ -93,23 +93,23 @@ export async function exportResults(
 /**
  * Verify an ATS webhook signature.
  */
-export function verifyWebhook(
+export async function verifyWebhook(
   provider: ATSProvider,
   payload: string,
   signature: string,
   secret: string
-): boolean {
+): Promise<boolean> {
   switch (provider) {
     case "greenhouse": {
-      const { verifyGreenhouseWebhook } = require("./greenhouse");
+      const { verifyGreenhouseWebhook } = await import("./greenhouse");
       return verifyGreenhouseWebhook(payload, signature, secret);
     }
     case "lever": {
-      const { verifyLeverWebhook } = require("./lever");
+      const { verifyLeverWebhook } = await import("./lever");
       return verifyLeverWebhook(payload, signature, secret);
     }
     case "ashby": {
-      const { verifyAshbyWebhook } = require("./ashby");
+      const { verifyAshbyWebhook } = await import("./ashby");
       return verifyAshbyWebhook(payload, signature, secret);
     }
     case "workday":
@@ -124,22 +124,22 @@ export function verifyWebhook(
 /**
  * Map an ATS stage name to a Paraform candidate status.
  */
-export function mapStageToParaform(provider: ATSProvider, stage: string): string {
+export async function mapStageToParaform(provider: ATSProvider, stage: string): Promise<string> {
   switch (provider) {
     case "greenhouse": {
-      const { mapGreenhouseStage } = require("./greenhouse");
+      const { mapGreenhouseStage } = await import("./greenhouse");
       return mapGreenhouseStage(stage);
     }
     case "lever": {
-      const { mapLeverStage } = require("./lever");
+      const { mapLeverStage } = await import("./lever");
       return mapLeverStage(stage);
     }
     case "workday": {
-      const { mapWorkdayStage } = require("./workday");
+      const { mapWorkdayStage } = await import("./workday");
       return mapWorkdayStage(stage);
     }
     case "ashby": {
-      const { mapAshbyStage } = require("./ashby");
+      const { mapAshbyStage } = await import("./ashby");
       return mapAshbyStage(stage);
     }
     default:

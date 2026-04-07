@@ -26,7 +26,7 @@ export async function countTokens(
   model = "gemini-1.5-pro"
 ): Promise<number> {
   // Check cache first (same text always has same token count)
-  const cacheKey = `${model}:${text.length}:${simpleHash(text)}`;
+  const cacheKey = `${model}:${simpleHash(text)}`;
   const cached = tokenCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) {
     return cached.count;

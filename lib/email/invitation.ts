@@ -1,4 +1,5 @@
 import { Resend } from "resend";
+import { logger } from "@/lib/logger";
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
@@ -33,7 +34,7 @@ export async function sendInterviewInvitationEmail(
   });
 
   if (error) {
-    console.error("Error sending invitation email:", error);
+    logger.error("Error sending invitation email: " + error.message);
     throw new Error(error.message);
   }
 

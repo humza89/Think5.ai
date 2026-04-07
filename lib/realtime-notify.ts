@@ -6,6 +6,7 @@
  */
 
 import { prisma } from "@/lib/prisma";
+import { logger } from "@/lib/logger";
 
 type NotificationType =
   | "INTERVIEW_INVITE"
@@ -39,7 +40,7 @@ export async function createNotification(
       },
     });
   } catch (err) {
-    console.error("[Notification] Failed to create notification:", err);
+    logger.error("[Notification] Failed to create notification", { error: err });
   }
 }
 
@@ -87,7 +88,7 @@ export async function notifyReportReady(interviewId: string): Promise<void> {
       });
     }
   } catch (err) {
-    console.error("[Notification] Failed to notify report ready:", err);
+    logger.error("[Notification] Failed to notify report ready", { error: err });
   }
 }
 
@@ -117,6 +118,6 @@ export async function notifyInterviewCompleted(
       data: { interviewId: interview.id },
     });
   } catch (err) {
-    console.error("[Notification] Failed to notify interview completed:", err);
+    logger.error("[Notification] Failed to notify interview completed", { error: err });
   }
 }

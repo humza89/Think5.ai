@@ -6,6 +6,7 @@ import { sendCandidateFeedbackEmail } from "@/lib/email/candidate-feedback";
 import { computeEvidenceHash } from "@/lib/evidence-hash";
 import { logAIUsage } from "@/lib/ai-usage";
 import { normalizeScore, updateNormalizationParams } from "@/lib/score-normalizer";
+import { logger } from "@/lib/logger";
 import * as Sentry from "@sentry/nextjs";
 
 // ── Redis deduplication lock ──────────────────────────────────────────
@@ -38,14 +39,14 @@ async function acquireReportLock(interviewId: string): Promise<boolean> {
       if (result === "OK") return true;
       return false; // Lock held by another process
     } catch (err) {
-      console.warn(`[Report Lock] Attempt ${attempt + 1}/3 failed for ${interviewId}:`, err);
+      logger.warn(`[Report Lock] Attempt ${attempt + 1}/3 failed for ${interviewId}`, err as Record<string, unknown>);
       if (attempt < 2) {
         await new Promise((r) => setTimeout(r, 500 * Math.pow(2, attempt)));
       }
     }
   }
   // All retries failed — fail-closed to prevent duplicate reports
-  console.error(`[Report Lock] All 3 attempts failed for ${interviewId} — blocking generation`);
+  logger.error(`[Report Lock] All 3 attempts failed for ${interviewId} — blocking generation`);
   Sentry.captureMessage(`Report lock acquisition failed after 3 attempts for ${interviewId}`, "error");
   return false;
 }
@@ -71,7 +72,7 @@ export async function generateReportInBackground(
   // Acquire dedup lock — if another instance is already generating, skip
   const lockAcquired = await acquireReportLock(interviewId);
   if (!lockAcquired) {
-    console.log(`Report generation already in progress for ${interviewId}, skipping`);
+    logger.info(`Report generation already in progress for ${interviewId}, skipping`);
     return;
   }
 
@@ -184,7 +185,7 @@ export async function generateReportInBackground(
       model: SCORER_MODEL_VERSION,
       inputTokens: estimatedInputTokens,
       outputTokens: 3000, // typical report: 2000-4000 tokens
-      companyId: interview.job?.title ? undefined : undefined, // populated if available
+      companyId: (interview as any).companyId || undefined,
       recruiterId: interview.recruiter?.id,
     });
 
@@ -354,7 +355,7 @@ export async function generateReportInBackground(
       // to avoid running it twice.
     } catch (sectionError) {
       // Non-critical — don't fail report generation for section scoring
-      console.error("Section scoring failed:", sectionError);
+      logger.error("Section scoring failed", sectionError as Record<string, unknown>);
     }
 
     // ── Interview Quality Metrics ──────────────────────────────────
@@ -409,7 +410,7 @@ export async function generateReportInBackground(
         });
       }
     } catch (qualityError) {
-      console.error("Quality metrics computation failed:", qualityError);
+      logger.error("Quality metrics computation failed", qualityError as Record<string, unknown>);
     }
 
     // ── Evidence Bundle Compilation ──────────────────────────────────
@@ -467,7 +468,7 @@ export async function generateReportInBackground(
         data: { evidenceBundle },
       });
     } catch (bundleError) {
-      console.error("Evidence bundle compilation failed:", bundleError);
+      logger.error("Evidence bundle compilation failed", bundleError as Record<string, unknown>);
     }
 
     const overallScore = reportData.overallScore || null;
@@ -547,7 +548,7 @@ export async function generateReportInBackground(
         recommendation: reportData.recommendation,
         reportUrl,
       }).catch((err) =>
-        console.error("Failed to send recruiter report email:", err)
+        logger.error("Failed to send recruiter report email", err as Record<string, unknown>)
       );
     }
 
@@ -558,7 +559,7 @@ export async function generateReportInBackground(
         candidateName: interview.candidate.fullName,
         strengths: reportData.strengths || [],
       }).catch((err) =>
-        console.error("Failed to send candidate feedback email:", err)
+        logger.error("Failed to send candidate feedback email", err as Record<string, unknown>)
       );
     }
 
@@ -569,7 +570,7 @@ export async function generateReportInBackground(
     await releaseReportLock(interviewId);
 
     Sentry.captureException(error, { tags: { component: "report_generator" }, extra: { interviewId } });
-    console.error(`Report generation failed for interview ${interviewId}:`, error);
+    logger.error(`Report generation failed for interview ${interviewId}`, error as Record<string, unknown>);
 
     const currentRetryCount = interview.reportRetryCount ?? 0;
     const newRetryCount = currentRetryCount + 1;
@@ -625,7 +626,7 @@ export async function recoverStuckReports(): Promise<{ recovered: number }> {
   }
 
   if (recovered > 0) {
-    console.log(`Recovered ${recovered} stuck report(s)`);
+    logger.info(`Recovered ${recovered} stuck report(s)`);
   }
 
   return { recovered };
@@ -662,11 +663,11 @@ export async function retryFailedReports(): Promise<void> {
       await generateReportInBackground(interview.id);
       retried++;
     } catch (error) {
-      console.error(`Retry failed for interview ${interview.id}:`, error);
+      logger.error(`Retry failed for interview ${interview.id}`, error as Record<string, unknown>);
     }
   }
 
   if (retried > 0) {
-    console.log(`Retried report generation for ${retried} interview(s)`);
+    logger.info(`Retried report generation for ${retried} interview(s)`);
   }
 }

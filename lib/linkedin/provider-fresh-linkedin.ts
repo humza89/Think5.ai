@@ -124,14 +124,14 @@ async function fetchFreshLinkedInAPI(linkedinUrl: string): Promise<z.infer<typeo
         const bodyString = body.toString();
 
         if (res.statusCode && res.statusCode >= 400) {
-          console.error(`❌ Fresh LinkedIn API HTTP Error ${res.statusCode}:`, bodyString);
+          logger.error(`Fresh LinkedIn API HTTP Error ${res.statusCode}`, { body: bodyString });
           reject(new Error(`Fresh LinkedIn API error ${res.statusCode}: ${bodyString}`));
           return;
         }
 
         try {
           const jsonData = JSON.parse(bodyString);
-          logger.debug("📦 Fresh LinkedIn API Response:", JSON.stringify(jsonData, null, 2));
+          logger.debug("📦 Fresh LinkedIn API Response", { data: JSON.stringify(jsonData, null, 2) });
 
           // Check if the response indicates an error or requires subscription
           if (jsonData.message && jsonData.message.includes("subscribe")) {
@@ -160,7 +160,7 @@ async function fetchFreshLinkedInAPI(linkedinUrl: string): Promise<z.infer<typeo
     });
 
     req.on('error', function (error) {
-      console.error('❌ Fresh LinkedIn API Request Error:', error);
+      logger.error("Fresh LinkedIn API Request Error", { error });
       reject(error);
     });
 

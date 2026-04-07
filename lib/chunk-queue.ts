@@ -1,5 +1,7 @@
 "use client";
 
+import { logger } from "@/lib/logger";
+
 /**
  * IndexedDB-backed queue for recording chunks that failed to upload.
  * Provides offline resilience for video recording.
@@ -73,7 +75,7 @@ export async function enqueueChunk(
     if (isQuota && chunkQueueErrorCallback) {
       chunkQueueErrorCallback("Recording backup storage is full. Some recording chunks may not be saved locally.");
     }
-    console.warn("[ChunkQueue] Enqueue failed:", err);
+    logger.warn("[ChunkQueue] Enqueue failed: " + String(err));
     throw err; // Re-throw so caller knows it failed
   }
 }

@@ -1,4 +1,5 @@
 import https from "https";
+import { logger } from "@/lib/logger";
 
 const APOLLO_API_KEY = process.env.APOLLO_API_KEY;
 
@@ -79,7 +80,7 @@ async function fetchApolloCompanyData(domain: string): Promise<any> {
   }
 
   const path = `/api/v1/organizations/enrich?domain=${encodeURIComponent(domain)}`;
-  console.log(`📡 Calling Apollo.io Organization Enrichment API for domain: ${domain}`);
+  logger.info(`📡 Calling Apollo.io Organization Enrichment API for domain: ${domain}`);
 
   return new Promise((resolve, reject) => {
     const options = {
@@ -106,24 +107,24 @@ async function fetchApolloCompanyData(domain: string): Promise<any> {
         const bodyString = body.toString();
 
         if (res.statusCode && res.statusCode >= 400) {
-          console.error(`❌ Apollo API HTTP Error ${res.statusCode}:`, bodyString);
+          logger.error(`❌ Apollo API HTTP Error ${res.statusCode}: ` + bodyString);
           reject(new Error(`Apollo API error ${res.statusCode}: ${bodyString}`));
           return;
         }
 
         try {
           const jsonData = JSON.parse(bodyString);
-          console.log("📦 Apollo API Response:", JSON.stringify(jsonData, null, 2));
+          logger.info("📦 Apollo API Response: " + JSON.stringify(jsonData, null, 2));
           resolve(jsonData);
         } catch (error) {
-          console.error(`❌ Failed to parse Apollo response:`, bodyString);
+          logger.error(`❌ Failed to parse Apollo response: ` + bodyString);
           reject(error);
         }
       });
     });
 
     req.on('error', function (error) {
-      console.error('❌ Apollo API Request Error:', error);
+      logger.error('❌ Apollo API Request Error: ' + String(error));
       reject(error);
     });
 
@@ -144,14 +145,14 @@ export async function importCompanyFromApollo(
   // If domain is provided, use it directly
   if (providedDomain) {
     domain = providedDomain;
-    console.log(`🔍 Using provided domain: ${domain}`);
+    logger.info(`🔍 Using provided domain: ${domain}`);
     if (linkedinUrl) {
       normalizedUrl = normalizeLinkedInCompanyUrl(linkedinUrl);
     }
   } else {
     // Normalize the LinkedIn URL
     normalizedUrl = normalizeLinkedInCompanyUrl(linkedinUrl);
-    console.log(`🔗 Normalized LinkedIn Company URL: ${linkedinUrl} → ${normalizedUrl}`);
+    logger.info(`🔗 Normalized LinkedIn Company URL: ${linkedinUrl} → ${normalizedUrl}`);
 
     // Extract company slug for domain guessing
     const guessDomain = extractDomainGuess(normalizedUrl);
@@ -161,7 +162,7 @@ export async function importCompanyFromApollo(
     }
 
     domain = guessDomain;
-    console.log(`🔍 Attempting to fetch company data with guessed domain: ${domain}`);
+    logger.info(`🔍 Attempting to fetch company data with guessed domain: ${domain}`);
   }
 
   // Fetch company data from Apollo

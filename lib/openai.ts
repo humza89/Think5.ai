@@ -1,7 +1,8 @@
 import OpenAI from "openai";
+import { logger } from "@/lib/logger";
 
 if (!process.env.OPENAI_API_KEY) {
-  console.warn("Warning: OPENAI_API_KEY is not set. AI features will not work.");
+  logger.warn("Warning: OPENAI_API_KEY is not set. AI features will not work.");
 }
 
 // Month name/abbreviation → number mapping
@@ -211,7 +212,7 @@ Return ONLY valid JSON.`;
   const parsed = JSON.parse(content);
 
   // Debug: log raw AI dates
-  console.log("[Resume Parser] Raw AI experience dates:",
+  logger.info("[Resume Parser] Raw AI experience dates: " +
     JSON.stringify((parsed.experiences || []).map((e: Record<string, unknown>) => ({ company: e.company, startDate: e.startDate, endDate: e.endDate }))));
 
   // Normalize experience dates
@@ -221,7 +222,7 @@ Return ONLY valid JSON.`;
     endDate: normalizeDate(exp.endDate as string),
   }));
 
-  console.log("[Resume Parser] Normalized experience dates:",
+  logger.info("[Resume Parser] Normalized experience dates: " +
     JSON.stringify(experiences.map((e: Record<string, unknown>) => ({ company: e.company, startDate: e.startDate, endDate: e.endDate }))));
 
   // Normalize education dates

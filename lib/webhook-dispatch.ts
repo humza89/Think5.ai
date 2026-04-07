@@ -7,6 +7,7 @@
 
 import { prisma } from "@/lib/prisma";
 import crypto from "crypto";
+import { logger } from "@/lib/logger";
 
 interface WebhookPayload {
   event: string;
@@ -48,7 +49,7 @@ export async function dispatchWebhooks(
       matching.map((endpoint: any) => deliverWebhook(endpoint, payload))
     );
   } catch (err) {
-    console.error("[Webhook] Failed to dispatch webhooks:", err);
+    logger.error("[Webhook] Failed to dispatch webhooks", { error: err });
   }
 }
 

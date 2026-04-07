@@ -279,8 +279,8 @@ export async function generateInterviewReport(
   integrityEvents?: IntegrityEvent[] | null,
   options?: ReportGenerationOptions
 ): Promise<InterviewReportData> {
-  if (!process.env.GEMINI_API_KEY) {
-    throw new Error("GEMINI_API_KEY is not configured");
+  if (!process.env.GEMINI_API_KEY && !process.env.OPENAI_API_KEY) {
+    throw new Error("No LLM provider configured — set GEMINI_API_KEY or OPENAI_API_KEY");
   }
 
   // H8/R5: Validate and normalize transcript entries before Gemini API call
@@ -379,10 +379,8 @@ Minimum score is 0. If 3+ paste or devtools events, add a meta-flag: {type: "hig
     .replace("{hypotheses}", hypothesesSection)
     .replace("{jobContext}", jobContextSection) + integritySection;
 
-  // Single-call helper: generate + parse + validate
-  async function singleScoringCall(): Promise<InterviewReportData> {
-    const result = await model.generateContent(prompt);
-    const text = result.response.text();
+  // Parse LLM JSON output into validated report data
+  function parseReportJson(text: string): InterviewReportData {
     let jsonStr = text.trim();
     if (jsonStr.startsWith("```json")) jsonStr = jsonStr.slice(7);
     else if (jsonStr.startsWith("```")) jsonStr = jsonStr.slice(3);
@@ -390,6 +388,27 @@ Minimum score is 0. If 3+ paste or devtools events, add a meta-flag: {type: "hig
     jsonStr = jsonStr.trim();
     const parsed = JSON.parse(jsonStr);
     return ReportDataSchema.parse(parsed) as InterviewReportData;
+  }
+
+  // Single-call helper: generate + parse + validate (Gemini primary, OpenAI fallback)
+  async function singleScoringCall(): Promise<InterviewReportData> {
+    try {
+      const result = await model.generateContent(prompt);
+      return parseReportJson(result.response.text());
+    } catch (geminiError) {
+      // Fallback to OpenAI if Gemini fails
+      const openaiKey = process.env.OPENAI_API_KEY;
+      if (!openaiKey) throw geminiError;
+
+      const { generateWithFallback } = await import("@/lib/llm-fallback");
+      const response = await generateWithFallback({
+        prompt,
+        temperature: 0.15,
+        maxTokens: 8192,
+        model: SCORER_MODEL_VERSION,
+      });
+      return parseReportJson(response.text);
+    }
   }
 
   // Consensus scoring: N parallel calls, average numeric scores

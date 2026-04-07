@@ -15,6 +15,7 @@ import {
   getModuleByName,
 } from "./skill-modules";
 import { sanitizeForPrompt } from "./aria-prompts";
+import { logger } from "@/lib/logger";
 
 // ── Types ──────────────────────────────────────────────────────────────
 
@@ -227,7 +228,7 @@ Return valid JSON:
       generatedAt: new Date().toISOString(),
     };
   } catch (error) {
-    console.error("Failed to generate interview plan with AI, using default:", error);
+    logger.error("Failed to generate interview plan with AI, using default", { error });
     return generateDefaultPlan(candidate, job, mode, options);
   }
 }

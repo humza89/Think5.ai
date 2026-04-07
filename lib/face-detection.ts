@@ -1,5 +1,6 @@
 import sharp from "sharp";
 import { GoogleGenAI } from "@google/genai";
+import { logger } from "@/lib/logger";
 
 // ============================================
 // Types
@@ -25,7 +26,7 @@ const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
  */
 export async function detectFace(imageBuffer: Buffer): Promise<FaceBox | null> {
   if (!process.env.GEMINI_API_KEY) {
-    console.warn("No GEMINI_API_KEY. Skipping face detection.");
+    logger.warn("No GEMINI_API_KEY. Skipping face detection.");
     return null;
   }
 
@@ -82,10 +83,10 @@ export async function detectFace(imageBuffer: Buffer): Promise<FaceBox | null> {
       };
     }
 
-    console.warn("Unexpected Gemini bounding box format:", text);
+    logger.warn("Unexpected Gemini bounding box format: " + text);
     return null;
   } catch (err) {
-    console.error("Gemini face detection failed:", err);
+    logger.error("Gemini face detection failed", { error: err });
     return null;
   }
 }

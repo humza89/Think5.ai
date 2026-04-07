@@ -73,13 +73,13 @@ export async function runPromptRegression(): Promise<{
     try {
       const { generateInterviewReport } = await import("@/lib/gemini");
       const reportData = await generateInterviewReport(
-        testCase.transcript,
-        { name: testCase.name, email: `test@regression.test` },
+        testCase.transcript as any,
+        { fullName: testCase.name } as any,
         null,
         {}
       );
 
-      const score = reportData.overallScore;
+      const score = reportData.overallScore ?? 0;
       const rec = reportData.recommendation;
       const inRange = score >= testCase.expectedScoreRange.min && score <= testCase.expectedScoreRange.max;
       const correctRec = testCase.expectedRecommendation.includes(rec);
@@ -87,7 +87,7 @@ export async function runPromptRegression(): Promise<{
       results.push({
         testCase: testCase.name,
         passed: inRange && correctRec,
-        score,
+        score: score,
         recommendation: rec,
         expectedRange: testCase.expectedScoreRange,
         promptHash,

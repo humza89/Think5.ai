@@ -6,6 +6,8 @@
  * Terminal: FAILED — requires page refresh to reset
  */
 
+import { logger } from "@/lib/logger";
+
 export type ReconnectState =
   | "DISCONNECTED"
   | "RECOVERY_PENDING"
@@ -41,7 +43,7 @@ export function isValidTransition(from: ReconnectState, to: ReconnectState): boo
 export function transitionReconnectState(from: ReconnectState, to: ReconnectState): ReconnectState {
   if (!isValidTransition(from, to)) {
     const msg = `[ReconnectSM] INVALID transition: ${from} → ${to}`;
-    console.error(msg);
+    logger.error(msg);
     throw new Error(msg);
   }
   return to;

@@ -49,8 +49,8 @@ export async function GET(request: NextRequest) {
     const sortField = validSortFields.includes(sortBy) ? sortBy : "overallScore";
 
     const ranked = interviews
-      .filter(i => i.report)
-      .map(interview => ({
+      .filter((i: any) => i.report)
+      .map((interview: any) => ({
         candidateId: interview.candidate?.id,
         candidateName: interview.candidate?.fullName,
         interviewId: interview.id,
@@ -70,13 +70,13 @@ export async function GET(request: NextRequest) {
         strengths: interview.report!.strengths,
         riskSignals: interview.report!.riskSignals,
       }))
-      .sort((a, b) => {
+      .sort((a: any, b: any) => {
         const key = sortField === "overallScore" ? "overall" : sortField;
         const aScore = (a.scores as Record<string, unknown>)[key] as number ?? 0;
         const bScore = (b.scores as Record<string, unknown>)[key] as number ?? 0;
         return bScore - aScore;
       })
-      .map((candidate, index) => ({ rank: index + 1, ...candidate }));
+      .map((candidate: any, index: number) => ({ rank: index + 1, ...candidate }));
 
     return Response.json({ success: true, jobId, totalCandidates: ranked.length, sortedBy: sortField, rankings: ranked });
   } catch {

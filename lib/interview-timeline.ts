@@ -10,6 +10,7 @@
  */
 
 import { prisma } from "@/lib/prisma";
+import { logger } from "@/lib/logger";
 
 // ── Types ────────────────────────────────────────────────────────────
 
@@ -69,7 +70,7 @@ export async function recordEvent(
       },
     });
   } catch (err) {
-    console.warn(`[timeline] Failed to record ${eventType} for ${interviewId}:`, err);
+    logger.warn(`[timeline] Failed to record ${eventType} for ${interviewId}: ` + String(err));
   }
 }
 
@@ -101,7 +102,7 @@ export async function recordEvents(
       })),
     });
   } catch (err) {
-    console.warn(`[timeline] Failed to record batch of ${batch.length} events for ${interviewId}:`, err);
+    logger.warn(`[timeline] Failed to record batch of ${batch.length} events for ${interviewId}: ` + String(err));
   }
 }
 

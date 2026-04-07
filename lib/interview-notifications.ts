@@ -8,6 +8,7 @@
 import { prisma } from "@/lib/prisma";
 import { sendReportReadyEmail } from "@/lib/email/report-ready";
 import { sendCandidateFeedbackEmail } from "@/lib/email/candidate-feedback";
+import { logger } from "@/lib/logger";
 
 export async function sendInterviewNotifications(
   interviewId: string
@@ -49,7 +50,7 @@ export async function sendInterviewNotifications(
         reportUrl,
       });
     } catch (err) {
-      console.error("Failed to send recruiter report email:", err);
+      logger.error("Failed to send recruiter report email", { error: err });
     }
   }
 
@@ -62,7 +63,7 @@ export async function sendInterviewNotifications(
         strengths: (interview.report.strengths as string[]) || [],
       });
     } catch (err) {
-      console.error("Failed to send candidate feedback email:", err);
+      logger.error("Failed to send candidate feedback email", { error: err });
     }
   }
 }
