@@ -93,6 +93,10 @@ export async function GET(
 
     // If email-gated, verify the access cookie
     if (report.recipientEmail) {
+      if (!process.env.NEXTAUTH_SECRET) {
+        console.error("NEXTAUTH_SECRET is required for email-gated shared reports");
+        return NextResponse.json({ error: "Server configuration error" }, { status: 500 });
+      }
       const cookieStore = await cookies();
       const cookieName = `report-access-${token}`;
       const cookie = cookieStore.get(cookieName);
@@ -109,7 +113,7 @@ export async function GET(
         .update(report.recipientEmail.toLowerCase().trim())
         .digest("hex");
       const expectedCookieValue = createHash("sha256")
-        .update(`${token}:${emailHash}:${process.env.NEXTAUTH_SECRET || "fallback-secret"}`)
+        .update(`${token}:${emailHash}:${process.env.NEXTAUTH_SECRET}`)
         .digest("hex");
 
       if (cookie.value !== expectedCookieValue) {

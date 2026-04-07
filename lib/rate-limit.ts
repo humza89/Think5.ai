@@ -121,7 +121,11 @@ export async function checkRateLimit(
         resetAt,
       };
     } catch (error) {
-      logger.error("Redis rate limit error, falling back to in-memory", { error });
+      logger.error("Redis rate limit error", { error });
+      // In production, fail-closed if Redis is down to prevent bypass
+      if (process.env.NODE_ENV === "production") {
+        return { allowed: false, remaining: 0, resetAt: Date.now() + config.windowMs };
+      }
       return checkRateLimitInMemory(key, config);
     }
   }

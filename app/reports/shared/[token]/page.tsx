@@ -67,7 +67,7 @@ export default async function SharedReportPage({
         .update(reportMeta.recipientEmail.toLowerCase().trim())
         .digest("hex");
       const expectedCookieValue = createHash("sha256")
-        .update(`${token}:${emailHash}:${process.env.NEXTAUTH_SECRET || "fallback-secret"}`)
+        .update(`${token}:${emailHash}:${process.env.NEXTAUTH_SECRET}`)
         .digest("hex");
       cookieValid = cookie.value === expectedCookieValue;
     }

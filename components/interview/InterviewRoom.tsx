@@ -152,8 +152,17 @@ export function InterviewRoom({ interviewId, candidateName, jobTitle, accessToke
     document.addEventListener("visibilitychange", handleVisibilityChange);
     document.addEventListener("fullscreenchange", handleFullscreenChange);
 
+    // Real network quality detection using Navigator.connection API
     const netInterval = setInterval(() => {
-        setNetworkQuality(Math.random() > 0.8 ? "low" : "high");
+        const conn = (navigator as any).connection;
+        if (conn) {
+          const effectiveType = conn.effectiveType; // "4g", "3g", "2g", "slow-2g"
+          const downlink = conn.downlink; // Mbps
+          setNetworkQuality(
+            effectiveType === "4g" && downlink > 1 ? "high" : "low"
+          );
+        }
+        // If Navigator.connection is not available (Safari), keep the last known state
     }, 15000);
 
     return () => {

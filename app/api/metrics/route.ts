@@ -10,8 +10,13 @@ export async function GET(req: Request) {
   const authHeader = req.headers.get("authorization");
   const expectedToken = process.env.METRICS_BEARER_TOKEN;
 
-  // If token is configured, require it
-  if (expectedToken && authHeader !== `Bearer ${expectedToken}`) {
+  // Always require bearer token authentication — no unauthenticated access
+  if (!expectedToken) {
+    console.error("METRICS_BEARER_TOKEN is not configured — metrics endpoint is disabled");
+    return NextResponse.json({ error: "Metrics endpoint not configured" }, { status: 503 });
+  }
+
+  if (authHeader !== `Bearer ${expectedToken}`) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

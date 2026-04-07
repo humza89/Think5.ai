@@ -56,7 +56,8 @@ export default function InterviewRoom() {
   const searchParams = useSearchParams();
   const interviewId = params.id as string;
   // Token from URL is backward-compat only; new flow uses HttpOnly session cookie
-  // which the server reads directly (see /api/interviews/[id]/validate)
+  // which the server reads directly (see /api/interviews/[id]/validate).
+  // Empty string is valid — the validate endpoint will check the cookie.
   const accessToken = searchParams.get("token") || "";
 
   const [stage, setStage] = useState<InterviewStage>("LOADING");
@@ -127,7 +128,7 @@ export default function InterviewRoom() {
       }
     }
 
-    if (interviewId && accessToken) {
+    if (interviewId) {
       validate();
     } else {
       setError("Invalid interview link. Please check the URL.");

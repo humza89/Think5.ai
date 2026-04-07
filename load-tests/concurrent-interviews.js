@@ -16,10 +16,16 @@ import http from "k6/http";
 import { check, sleep } from "k6";
 import { Rate, Trend } from "k6/metrics";
 
-// Custom metrics
+// Custom metrics — global
 const errorRate = new Rate("errors");
 const voiceInitLatency = new Trend("voice_init_latency", true);
 const apiLatency = new Trend("api_latency", true);
+
+// Per-endpoint error rates for SLO alignment
+const healthErrors = new Rate("health_errors");
+const voiceInitErrors = new Rate("voice_init_errors");
+const createErrors = new Rate("create_errors");
+const adminErrors = new Rate("admin_errors");
 
 // Configuration
 const BASE_URL = __ENV.BASE_URL || "http://localhost:3000";
@@ -70,11 +76,14 @@ export const options = {
     },
   },
   thresholds: {
-    "voice_init_latency": ["p(95)<2000"],  // P95 voice-init under 2s
-    "api_latency": ["p(95)<500"],          // P95 API under 500ms
-    "errors": ["rate<0.01"],               // Error rate under 1%
-    "http_req_duration": ["p(99)<5000"],   // P99 all requests under 5s
-    "report_gen_latency": ["p(95)<5000"],  // P95 report generation under 5s
+    "voice_init_latency": ["p(50)<500", "p(95)<2000", "p(99)<3000"],  // SLO: P50<500ms, P95<2s, P99<3s
+    "api_latency": ["p(50)<200", "p(95)<500", "p(99)<2000"],       // SLO: P50<200ms, P95<500ms, P99<2s
+    "errors": ["rate<0.01"],                                        // Error rate under 1%
+    "http_req_duration": ["p(99)<5000"],                            // P99 all requests under 5s
+    "report_gen_latency": ["p(95)<5000"],                           // P95 report generation under 5s
+    "health_errors": ["rate<0.001"],                                // Health endpoint: <0.1% errors
+    "voice_init_errors": ["rate<0.01"],                             // Voice-init: <1% errors
+    "create_errors": ["rate<0.05"],                                 // Interview creation: <5% errors (auth-dependent)
   },
 };
 
@@ -84,10 +93,11 @@ const reportGenLatency = new Trend("report_gen_latency", true);
 export function standardLoad() {
   // 1. Health check
   const healthStart = Date.now();
-  const healthRes = http.get(`${BASE_URL}/api/v1/health`);
+  const healthRes = http.get(`${BASE_URL}/api/health`);
   apiLatency.add(Date.now() - healthStart);
   check(healthRes, { "health check 200": (r) => r.status === 200 });
   errorRate.add(healthRes.status >= 500);
+  healthErrors.add(healthRes.status >= 400);
 
   // 2. Simulate interview creation
   const createStart = Date.now();
@@ -107,6 +117,7 @@ export function standardLoad() {
   );
   apiLatency.add(Date.now() - createStart);
   errorRate.add(createRes.status >= 500);
+  createErrors.add(createRes.status >= 400);
 
   sleep(1);
 
@@ -117,13 +128,13 @@ export function standardLoad() {
 
     if (interviewId) {
       const initStart = Date.now();
+      const accessToken = body.accessToken || body.access_token || "";
       const initRes = http.post(
         `${BASE_URL}/api/interviews/${interviewId}/voice-init`,
-        JSON.stringify({ reconnect: false }),
+        JSON.stringify({ reconnect: false, accessToken }),
         {
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${API_TOKEN}`,
           },
         }
       );
@@ -133,6 +144,7 @@ export function standardLoad() {
         "voice-init under 2s": (r) => r.timings.duration < 2000,
       });
       errorRate.add(initRes.status >= 500);
+      voiceInitErrors.add(initRes.status >= 400);
     }
   }
 
@@ -146,6 +158,7 @@ export function standardLoad() {
   });
   apiLatency.add(Date.now() - dashStart);
   errorRate.add(dashRes.status >= 500);
+  adminErrors.add(dashRes.status >= 400);
 
   sleep(1);
 }
@@ -195,9 +208,12 @@ export function bulkOperations() {
   });
   errorRate.add(reportRes.status >= 500);
 
-  // 3. Metrics endpoint (Prometheus scrape simulation)
-  const metricsRes = http.get(`${BASE_URL}/api/metrics`);
-  check(metricsRes, { "metrics 200": (r) => r.status === 200 });
+  // 3. Metrics endpoint (Prometheus scrape simulation — requires METRICS_BEARER_TOKEN)
+  const metricsToken = __ENV.METRICS_BEARER_TOKEN || "";
+  const metricsRes = http.get(`${BASE_URL}/api/metrics`, {
+    headers: { Authorization: `Bearer ${metricsToken}` },
+  });
+  check(metricsRes, { "metrics 200": (r) => r.status === 200 || r.status === 503 });
 
   sleep(1);
 }

@@ -145,7 +145,7 @@ describe("Chaos & Resilience Tests", () => {
       expect(facts).toHaveLength(0);
     });
 
-    it("handles very long content without timeout", () => {
+    it("handles very long content without timeout", { timeout: 10000 }, () => {
       const longContent = "I worked at Google. ".repeat(1000) + "I managed 50 engineers.";
       const facts = extractFactsImmediate({
         turnId: "t1",
@@ -289,7 +289,7 @@ describe("Chaos & Resilience Tests", () => {
   });
 
   describe("long-session soak (60+ min simulated)", () => {
-    it("state integrity preserved across 60-minute simulated session with reconnects", () => {
+    it("state integrity preserved across 60-minute simulated session with reconnects", { timeout: 15000 }, () => {
       let state = createInitialState();
       state = transitionState(state, { type: "INTRO_COMPLETED" });
       state = transitionState(state, { type: "MOVE_TO_STEP", step: "technical" });

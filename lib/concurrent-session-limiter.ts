@@ -30,7 +30,14 @@ async function getRedis() {
  */
 export async function acquireSessionSlot(interviewId: string): Promise<boolean> {
   const redis = await getRedis();
-  if (!redis) return true; // No Redis = allow (local dev)
+  if (!redis) {
+    // Fail-closed in production: reject if Redis is unavailable
+    if (process.env.NODE_ENV === "production") {
+      logger.error("[session-limiter] Redis unavailable in production — rejecting session for safety");
+      return false;
+    }
+    return true; // No Redis = allow (local dev only)
+  }
 
   const now = Date.now();
   const key = "active-sessions";
@@ -50,8 +57,12 @@ export async function acquireSessionSlot(interviewId: string): Promise<boolean> 
     await redis.zadd(key, { score: now, member: interviewId });
     return true;
   } catch (err) {
-    logger.error("[session-limiter] Redis error, allowing session", err as Record<string, unknown>);
-    return true; // Fail-open to not block interviews
+    logger.error("[session-limiter] Redis error during session acquisition", err as Record<string, unknown>);
+    // Fail-closed in production to prevent over-admission under incident conditions
+    if (process.env.NODE_ENV === "production") {
+      return false;
+    }
+    return true; // Fail-open in dev only
   }
 }
 

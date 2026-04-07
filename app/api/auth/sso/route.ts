@@ -102,6 +102,7 @@ export async function GET(request: NextRequest) {
       cookieStore.set(SSO_STATE_COOKIE, state, cookieOptions);
       cookieStore.set(SSO_VERIFIER_COOKIE, codeVerifier, cookieOptions);
       cookieStore.set(SSO_PROVIDER_COOKIE, "oidc", cookieOptions);
+      cookieStore.set("sso-domain", domain, cookieOptions);
 
       return NextResponse.json({ redirectUrl: authUrl });
     }
@@ -133,6 +134,7 @@ export async function GET(request: NextRequest) {
       cookieStore.set(SSO_STATE_COOKIE, relayState, cookieOptions);
       cookieStore.set(SSO_PROVIDER_COOKIE, "saml", cookieOptions);
       cookieStore.set("sso-request-id", requestId, cookieOptions);
+      cookieStore.set("sso-domain", domain, cookieOptions);
 
       // Return SAML POST binding data
       return NextResponse.json({
