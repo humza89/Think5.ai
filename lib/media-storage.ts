@@ -54,7 +54,29 @@ export interface RecordingMetadata {
   durationSeconds?: number;
   uploadedAt: string;
   chunkCount: number;
+  /**
+   * Track-1 correctness: whether the chunk-merge step actually produced a
+   * playable merged file. Callers MUST check this before marking the
+   * interview's recording as playable.
+   */
+  mergeSucceeded: boolean;
 }
+
+/**
+ * Track-1 correctness: emergency rollback flag for the first-chunk playback
+ * fallback. This flag exists ONLY so operators can re-enable the old unsafe
+ * behavior during a production incident if killing the fallback causes
+ * unforeseen breakage. Default is FALSE (safe). Set to "true" in env only
+ * as a last resort; never leave it enabled.
+ *
+ * Historical context: the old behavior silently served the first 10MB
+ * chunk of a 45-minute recording when the merged file was missing, which
+ * meant recruiters watched a 2-minute snippet as if it were the whole
+ * interview. That is unacceptable correctness behavior and violates the
+ * hiring-integrity invariant. See docs/audit Track 1, Task 2.
+ */
+const ALLOW_FIRST_CHUNK_FALLBACK =
+  process.env.PLAYBACK_ALLOW_FIRST_CHUNK_FALLBACK === "true";
 
 // ── Upload Functions ───────────────────────────────────────────────────
 
@@ -145,34 +167,20 @@ export async function finalizeRecording(
     }
   }
 
-  const metadata: RecordingMetadata = {
-    interviewId,
-    format,
-    sizeBytes: totalSize,
-    durationSeconds,
-    uploadedAt: new Date().toISOString(),
-    chunkCount: totalChunks,
-  };
-
-  // Store manifest
-  await client.send(
-    new PutObjectCommand({
-      Bucket: R2_BUCKET_NAME,
-      Key: `recordings/${interviewId}/manifest.json`,
-      Body: JSON.stringify(metadata),
-      ContentType: "application/json",
-    })
-  );
-
-  // Merge chunks into a single playback file with retry
+  // Merge chunks into a single playback file with retry BEFORE writing the
+  // manifest. We want the manifest to reflect reality — if merge fails, the
+  // manifest records mergeSucceeded=false so every downstream consumer
+  // (report generator, recruiter UI, cron reconciler) can see the truth.
   const MAX_MERGE_RETRIES = 3;
-  let mergeSuccess = false;
+  let mergeSucceeded = false;
+  let lastMergeError: unknown = null;
   for (let attempt = 1; attempt <= MAX_MERGE_RETRIES; attempt++) {
     try {
       await mergeRecordingChunks(interviewId, totalChunks, format);
-      mergeSuccess = true;
+      mergeSucceeded = true;
       break;
     } catch (err) {
+      lastMergeError = err;
       logger.error(
         `[Recording Merge] Attempt ${attempt}/${MAX_MERGE_RETRIES} failed for interview ${interviewId}`,
         { error: err }
@@ -183,20 +191,69 @@ export async function finalizeRecording(
       }
     }
   }
-  if (!mergeSuccess) {
-    const mergeError = new Error(`Recording merge failed after ${MAX_MERGE_RETRIES} attempts`);
-    Sentry.captureException(mergeError, {
+
+  const metadata: RecordingMetadata = {
+    interviewId,
+    format,
+    sizeBytes: totalSize,
+    durationSeconds,
+    uploadedAt: new Date().toISOString(),
+    chunkCount: totalChunks,
+    mergeSucceeded,
+  };
+
+  // Store manifest — the manifest is the durable record of what happened,
+  // including the merge outcome. Callers MUST read mergeSucceeded before
+  // treating the recording as playable.
+  await client.send(
+    new PutObjectCommand({
+      Bucket: R2_BUCKET_NAME,
+      Key: `recordings/${interviewId}/manifest.json`,
+      Body: JSON.stringify(metadata),
+      ContentType: "application/json",
+    })
+  );
+
+  if (!mergeSucceeded) {
+    // Track-1 correctness: STOP silently degrading to "first chunk only"
+    // playback. Throw a typed error so the calling API route can set
+    // recordingState back to a non-playable state and surface a clear
+    // "recording unavailable" signal to the recruiter. Downstream retries
+    // (inngest/functions/recording-finalize-retry.ts) can pick this up.
+    Sentry.captureException(lastMergeError ?? new Error("recording_merge_failed"), {
       level: "fatal",
-      tags: { component: "recording_merge" },
-      extra: { interviewId, totalChunks, totalSize },
+      tags: { component: "recording_merge", interviewId },
+      extra: { totalChunks, totalSize, attempts: MAX_MERGE_RETRIES },
     });
-    logger.error(
-      `[Recording Merge] CRITICAL: All ${MAX_MERGE_RETRIES} merge attempts failed for interview ${interviewId}. ` +
-      `Playback will use first chunk only. Total chunks: ${totalChunks}, total size: ${totalSize} bytes.`
+    throw new RecordingMergeFailedError(
+      `Recording merge failed after ${MAX_MERGE_RETRIES} attempts for interview ${interviewId}`,
+      { interviewId, totalChunks, totalSize },
     );
   }
 
   return metadata;
+}
+
+/**
+ * Typed error thrown when chunk merge exhausts its retry budget. API callers
+ * should catch this and record a non-playable recording state; they should
+ * NOT return a success response. Replaces the old behavior of silently
+ * falling back to the first chunk for playback.
+ */
+export class RecordingMergeFailedError extends Error {
+  readonly interviewId: string;
+  readonly totalChunks: number;
+  readonly totalSize: number;
+  constructor(
+    message: string,
+    ctx: { interviewId: string; totalChunks: number; totalSize: number },
+  ) {
+    super(message);
+    this.name = "RecordingMergeFailedError";
+    this.interviewId = ctx.interviewId;
+    this.totalChunks = ctx.totalChunks;
+    this.totalSize = ctx.totalSize;
+  }
 }
 
 /**
@@ -254,7 +311,20 @@ async function mergeRecordingChunks(
 
 /**
  * Get a time-limited signed URL for recording playback.
- * Default expiry: 1 hour.
+ *
+ * Track-1 correctness: by default, this function returns null if the merged
+ * recording file is missing. It does NOT silently fall back to serving the
+ * first chunk — that was the old behavior and it caused recruiters to watch
+ * the first 2 minutes of 45-minute interviews as if they were the entire
+ * recording. If you get null here, the recording is genuinely unplayable
+ * and the UI must show "recording unavailable".
+ *
+ * The `PLAYBACK_ALLOW_FIRST_CHUNK_FALLBACK=true` env flag exists as an
+ * emergency rollback only. Do not set it in normal operation.
+ *
+ * @param interviewId interview to look up
+ * @param expiresInSeconds signed URL TTL, default 1h
+ * @returns signed URL for the merged recording, or null if unavailable
  */
 export async function getSignedPlaybackUrl(
   interviewId: string,
@@ -262,7 +332,8 @@ export async function getSignedPlaybackUrl(
 ): Promise<string | null> {
   const client = getR2Client();
 
-  // Try complete recording first
+  // Try the merged, verified recording first — this is the ONLY playable
+  // artifact in normal operation.
   const completeKey = `recordings/${interviewId}/recording.webm`;
   try {
     await client.send(
@@ -281,10 +352,27 @@ export async function getSignedPlaybackUrl(
       { expiresIn: expiresInSeconds }
     );
   } catch {
-    // No complete recording, try first chunk as fallback
+    // Merged file missing — fall through to check the kill-switch below.
   }
 
-  // Fallback: sign first chunk (for immediate low-res playback)
+  if (!ALLOW_FIRST_CHUNK_FALLBACK) {
+    // Normal path: no merged file → no playback URL. The caller must treat
+    // null as "recording unavailable" and surface that state to the user.
+    logger.warn(
+      `[Recording] Merged file missing for interview ${interviewId} and ` +
+        `PLAYBACK_ALLOW_FIRST_CHUNK_FALLBACK is disabled — returning null.`,
+    );
+    return null;
+  }
+
+  // Emergency rollback path (kill-switch ON). Log loudly so operators know
+  // the unsafe fallback is active in production. This branch should never
+  // run under normal conditions.
+  logger.error(
+    `[Recording] CORRECTNESS WARNING: serving first-chunk fallback for ` +
+      `interview ${interviewId} because PLAYBACK_ALLOW_FIRST_CHUNK_FALLBACK=true. ` +
+      `Recruiters will see partial content without a warning. Disable this flag ASAP.`,
+  );
   const chunkKey = `recordings/${interviewId}/chunks/000000`;
   try {
     await client.send(
