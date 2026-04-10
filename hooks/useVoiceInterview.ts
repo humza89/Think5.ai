@@ -379,6 +379,22 @@ export function useVoiceInterview(
       }
       const data = JSON.parse(text);
 
+      // Phase 1.5: relay control frames (backpressure, flow-control, degraded).
+      // These are NOT Gemini messages — the relay emits them directly when it
+      // detects local problems like buffer overflow. Surface as a degraded-quality
+      // signal so the UI can warn the candidate.
+      if (typeof data.type === "string" && data.type.startsWith("relay.")) {
+        if (data.type === "relay.backpressure" && data.severity === "drop") {
+          console.warn(
+            `[Voice] Relay buffer overflow — ${data.droppedThisSession ?? "?"} message(s) dropped this session`,
+          );
+          setConnectionQuality("poor");
+          // Phase 2.5 will wire full SLO reporting here. For now the quality downgrade
+          // is enough for the existing admin dashboards to notice degraded sessions.
+        }
+        return;
+      }
+
       // Setup complete
       if (data.setupComplete) {
         return;

@@ -159,6 +159,9 @@ wss.on("connection", (clientWs: WebSocket, req: IncomingMessage) => {
   let isReconnecting = false;
   const messageBuffer: Array<Buffer | string> = [];
   let cleanedUp = false;
+  // Phase 1.5: per-session counter of messages dropped due to buffer overflow,
+  // surfaced to the client via relay.backpressure control frames.
+  let bufferDropsThisSession = 0;
 
   // ── Idle timeout ──
   let idleTimer = setTimeout(() => cleanup("idle_timeout"), IDLE_TIMEOUT_MS);
@@ -301,8 +304,26 @@ wss.on("connection", (clientWs: WebSocket, req: IncomingMessage) => {
       if (messageBuffer.length < MESSAGE_BUFFER_LIMIT) {
         messageBuffer.push(data);
       } else {
+        // Phase 1.5: surface buffer overflow to the client instead of dropping silently.
+        // The client can show a degraded-connection UI and optionally throttle sending.
+        // Full application-level backpressure ladder (slow/pause) lands in Phase 2.2.
         console.warn(`[Relay] Buffer overflow (${MESSAGE_BUFFER_LIMIT} msgs) for interview=${interviewId}, dropping message`);
         metrics.bufferOverflows++;
+        bufferDropsThisSession++;
+        if (clientWs.readyState === WebSocket.OPEN) {
+          try {
+            clientWs.send(
+              JSON.stringify({
+                type: "relay.backpressure",
+                severity: "drop",
+                droppedThisSession: bufferDropsThisSession,
+                timestamp: Date.now(),
+              }),
+            );
+          } catch {
+            /* ignore send failures — client is probably gone */
+          }
+        }
       }
     }
   });
