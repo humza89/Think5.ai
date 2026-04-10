@@ -36,7 +36,11 @@ const MAX_GEMINI_RECONNECTS = 6;
 const RECONNECT_BACKOFF = [1000, 2000, 4000, 8000, 12000, 16000]; // ms
 const MESSAGE_BUFFER_LIMIT = 100;
 const PING_INTERVAL_MS = 30_000;
-const IDLE_TIMEOUT_MS = 5 * 60 * 1000;
+// Phase 1.1: raised from 5min → 20min. The previous 5min hard-kill was dropping sessions
+// whenever a candidate went quiet (thinking, reading a problem statement) or whenever the
+// audio processor stalled briefly. resetIdle() is already called on every client→relay
+// AND Gemini→client frame, so the timer only fires on true connection death.
+const IDLE_TIMEOUT_MS = 20 * 60 * 1000;
 
 if (!GEMINI_API_KEY) {
   console.error("FATAL: GEMINI_API_KEY is required");
