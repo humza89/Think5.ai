@@ -4,6 +4,8 @@ import {
   isValidTransition,
   stateToPhase,
   MAX_RECOVERY_ATTEMPTS,
+  getHeartbeatThresholdMs,
+  HEARTBEAT_LADDER_MS,
 } from "@/lib/reconnect-state-machine";
 import type { ReconnectState } from "@/lib/reconnect-state-machine";
 
@@ -93,8 +95,34 @@ describe("Reconnect State Machine", () => {
   });
 
   describe("MAX_RECOVERY_ATTEMPTS config", () => {
-    it("defaults to 3", () => {
-      expect(MAX_RECOVERY_ATTEMPTS).toBe(3);
+    it("defaults to 10 (aligned with relay MAX_GEMINI_RECONNECTS)", () => {
+      expect(MAX_RECOVERY_ATTEMPTS).toBe(10);
+    });
+  });
+
+  describe("Phase 1.3: adaptive heartbeat ladder", () => {
+    it("uses 45s threshold on a fresh session (0 reconnects)", () => {
+      expect(getHeartbeatThresholdMs(0)).toBe(45_000);
+    });
+
+    it("bumps to 90s after 1 reconnect", () => {
+      expect(getHeartbeatThresholdMs(1)).toBe(90_000);
+    });
+
+    it("caps at 150s once 2 or more reconnects have happened", () => {
+      expect(getHeartbeatThresholdMs(2)).toBe(150_000);
+      expect(getHeartbeatThresholdMs(5)).toBe(150_000);
+      expect(getHeartbeatThresholdMs(100)).toBe(150_000);
+    });
+
+    it("clamps negative inputs to the first ladder entry", () => {
+      expect(getHeartbeatThresholdMs(-1)).toBe(45_000);
+    });
+
+    it("ladder is monotonically non-decreasing", () => {
+      for (let i = 1; i < HEARTBEAT_LADDER_MS.length; i++) {
+        expect(HEARTBEAT_LADDER_MS[i]).toBeGreaterThanOrEqual(HEARTBEAT_LADDER_MS[i - 1]!);
+      }
     });
   });
 });

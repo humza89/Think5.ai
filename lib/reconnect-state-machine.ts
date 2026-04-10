@@ -68,11 +68,34 @@ export function stateToPhase(state: ReconnectState): ReconnectPhase {
   }
 }
 
-/** Configurable max recovery attempts before hard failure */
+/**
+ * Configurable max recovery attempts before hard failure.
+ *
+ * Phase 1.2: default raised from 3 → 10 to match relay MAX_GEMINI_RECONNECTS.
+ * A mismatch made the client give up (and fall back to text) while the relay was
+ * still happily reconnecting to Gemini — producing unnecessary degraded experiences.
+ */
 export const MAX_RECOVERY_ATTEMPTS = parseInt(
-  typeof process !== "undefined" ? process.env?.NEXT_PUBLIC_MAX_RECONNECT_ATTEMPTS || "3" : "3",
+  typeof process !== "undefined" ? process.env?.NEXT_PUBLIC_MAX_RECONNECT_ATTEMPTS || "10" : "10",
   10,
 );
+
+/**
+ * Phase 1.3: Adaptive heartbeat ladder — the longer we've been reconnecting in
+ * the current session, the more patient we become before declaring the WS dead.
+ *
+ *   0 prior reconnects  → 45s threshold (fresh session, fail fast on dead connections)
+ *   1 prior reconnect   → 90s
+ *   2+ prior reconnects → 150s (network is clearly flaky, don't pile on more reconnects)
+ *
+ * Exported as a pure function so it can be unit-tested without mounting the hook.
+ */
+export const HEARTBEAT_LADDER_MS = [45_000, 90_000, 150_000] as const;
+
+export function getHeartbeatThresholdMs(reconnectAttempts: number): number {
+  const clamped = Math.max(0, Math.min(reconnectAttempts, HEARTBEAT_LADDER_MS.length - 1));
+  return HEARTBEAT_LADDER_MS[clamped];
+}
 
 /** CF4: Rapid-reconnect rate-limit — max cycles within window before throttling */
 export const RATE_LIMIT_MAX_CYCLES = 3;

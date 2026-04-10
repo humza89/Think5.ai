@@ -17,12 +17,30 @@ primary_region = 'iad'
   force_https = true
   auto_stop_machines = 'stop'
   auto_start_machines = true
-  min_machines_running = 1
+  min_machines_running = 3
 
   [http_service.concurrency]
     type = 'connections'
     hard_limit = 1000
-    soft_limit = 800
+    # Phase 1.4: lowered from 800 → 400. At 512MB per machine, each active Gemini
+    # session buffers up to 100 messages (~100KB) plus audio frames. 400 concurrent
+    # is the safe envelope per instance; above that we risk OOM + buffer drops.
+    soft_limit = 400
+
+  # Phase 1.4: HTTP health check against the existing /health endpoint on the relay.
+  # Without this, Fly has no way to know when an instance is dead, so stale machines
+  # continue receiving traffic after crashing. /health returns 200 + live metrics.
+  [[http_service.checks]]
+    grace_period = "10s"
+    interval = "15s"
+    method = "GET"
+    timeout = "5s"
+    path = "/health"
+
+# Multi-region deployment: US East, EU West, Asia Pacific
+# Fly.io Anycast routes candidates to nearest region automatically.
+# Deploy with: fly regions add lhr nrt
+# Verify with: fly regions list
 
 [[vm]]
   memory = '512mb'

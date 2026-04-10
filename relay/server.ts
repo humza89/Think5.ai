@@ -32,11 +32,20 @@ const RELAY_JWT_SECRET = process.env.RELAY_JWT_SECRET;
 const GEMINI_WS_BASE =
   "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent";
 
-const MAX_GEMINI_RECONNECTS = 6;
-const RECONNECT_BACKOFF = [1000, 2000, 4000, 8000, 12000, 16000]; // ms
+// Phase 1.2: aligned with client MAX_RECOVERY_ATTEMPTS. Previously relay=6 and client=3
+// (or 10 via env) would disagree on how long to keep trying — producing permanent failures
+// on the client while the relay was still reconnecting, or vice versa. Both now target 10.
+const MAX_GEMINI_RECONNECTS = 10;
+// Base backoff in ms. Actual delay is base * (0.5 + Math.random() * 0.5) for full jitter,
+// so N clients reconnecting simultaneously don't stampede Gemini at the same moment.
+const RECONNECT_BACKOFF = [500, 1000, 2000, 4000, 8000, 12000, 16000, 20000, 25000, 30000];
 const MESSAGE_BUFFER_LIMIT = 100;
 const PING_INTERVAL_MS = 30_000;
-const IDLE_TIMEOUT_MS = 5 * 60 * 1000;
+// Phase 1.1: raised from 5min → 20min. The previous 5min hard-kill was dropping sessions
+// whenever a candidate went quiet (thinking, reading a problem statement) or whenever the
+// audio processor stalled briefly. resetIdle() is already called on every client→relay
+// AND Gemini→client frame, so the timer only fires on true connection death.
+const IDLE_TIMEOUT_MS = 20 * 60 * 1000;
 
 if (!GEMINI_API_KEY) {
   console.error("FATAL: GEMINI_API_KEY is required");
@@ -150,6 +159,9 @@ wss.on("connection", (clientWs: WebSocket, req: IncomingMessage) => {
   let isReconnecting = false;
   const messageBuffer: Array<Buffer | string> = [];
   let cleanedUp = false;
+  // Phase 1.5: per-session counter of messages dropped due to buffer overflow,
+  // surfaced to the client via relay.backpressure control frames.
+  let bufferDropsThisSession = 0;
 
   // ── Idle timeout ──
   let idleTimer = setTimeout(() => cleanup("idle_timeout"), IDLE_TIMEOUT_MS);
@@ -244,7 +256,10 @@ wss.on("connection", (clientWs: WebSocket, req: IncomingMessage) => {
     }
 
     isReconnecting = true;
-    const delay = RECONNECT_BACKOFF[reconnectAttempts] || 4000;
+    const baseDelay = RECONNECT_BACKOFF[reconnectAttempts] ?? 30000;
+    // Full jitter: delay randomized in [0.5*base, 1.0*base] to prevent thundering herd
+    // when many clients reconnect at the same moment after a Gemini blip.
+    const delay = Math.round(baseDelay * (0.5 + Math.random() * 0.5));
     reconnectAttempts++;
     metrics.geminiReconnects++;
 
@@ -289,8 +304,26 @@ wss.on("connection", (clientWs: WebSocket, req: IncomingMessage) => {
       if (messageBuffer.length < MESSAGE_BUFFER_LIMIT) {
         messageBuffer.push(data);
       } else {
+        // Phase 1.5: surface buffer overflow to the client instead of dropping silently.
+        // The client can show a degraded-connection UI and optionally throttle sending.
+        // Full application-level backpressure ladder (slow/pause) lands in Phase 2.2.
         console.warn(`[Relay] Buffer overflow (${MESSAGE_BUFFER_LIMIT} msgs) for interview=${interviewId}, dropping message`);
         metrics.bufferOverflows++;
+        bufferDropsThisSession++;
+        if (clientWs.readyState === WebSocket.OPEN) {
+          try {
+            clientWs.send(
+              JSON.stringify({
+                type: "relay.backpressure",
+                severity: "drop",
+                droppedThisSession: bufferDropsThisSession,
+                timestamp: Date.now(),
+              }),
+            );
+          } catch {
+            /* ignore send failures — client is probably gone */
+          }
+        }
       }
     }
   });

@@ -39,6 +39,7 @@ import {
   stateToPhase,
   MAX_RECOVERY_ATTEMPTS,
   shouldRateLimit,
+  getHeartbeatThresholdMs,
 } from "@/lib/reconnect-state-machine";
 import type { ReconnectState, ReconnectPhase } from "@/lib/reconnect-state-machine";
 
@@ -378,6 +379,22 @@ export function useVoiceInterview(
         return; // Skip unknown data types
       }
       const data = JSON.parse(text);
+
+      // Phase 1.5: relay control frames (backpressure, flow-control, degraded).
+      // These are NOT Gemini messages — the relay emits them directly when it
+      // detects local problems like buffer overflow. Surface as a degraded-quality
+      // signal so the UI can warn the candidate.
+      if (typeof data.type === "string" && data.type.startsWith("relay.")) {
+        if (data.type === "relay.backpressure" && data.severity === "drop") {
+          console.warn(
+            `[Voice] Relay buffer overflow — ${data.droppedThisSession ?? "?"} message(s) dropped this session`,
+          );
+          setConnectionQuality("poor");
+          // Phase 2.5 will wire full SLO reporting here. For now the quality downgrade
+          // is enough for the existing admin dashboards to notice degraded sessions.
+        }
+        return;
+      }
 
       // Setup complete
       if (data.setupComplete) {
@@ -1372,7 +1389,9 @@ export function useVoiceInterview(
           setReconnectPhase(stateToPhase(reconnectStateRef.current));
           setConnectionQuality("poor");
           setIsReconnecting(false);
-          onErrorRef.current?.(`Session recovery failed after ${MAX_RECOVERY_ATTEMPTS} attempts. Please use this link to resume: /interview/${interviewId}?resume=true`);
+          // P0-5: Auto-fallback to text mode when voice recovery exhausted
+          setFallbackToText(true);
+          onErrorRef.current?.("Voice connection lost. Switching to text mode automatically.");
           reportSLOEvent("session.reconnect.success_rate", false);
           return;
         }
@@ -1391,7 +1410,9 @@ export function useVoiceInterview(
           setReconnectPhase(stateToPhase(reconnectStateRef.current));
           setConnectionQuality("poor");
           setIsReconnecting(false);
-          onErrorRef.current?.("Too many reconnect attempts. Please wait a moment before retrying, or switch to text mode.");
+          // P0-5: Auto-fallback to text mode when rate-limited
+          setFallbackToText(true);
+          onErrorRef.current?.("Voice connection lost. Switching to text mode automatically.");
           reportSLOEvent("session.reconnect.rate_limited", true);
           return;
         }
@@ -1870,11 +1891,21 @@ export function useVoiceInterview(
         }
 
         const silenceMs = Date.now() - lastMessageTimeRef.current;
-        // Only trigger heartbeat timeout when AI is truly idle — NOT during thinking/speaking/listening
-        // Increased to 60s: Gemini processing + long candidate pauses can legitimately exceed 45s
+        // Phase 1.3: Adaptive heartbeat ladder.
+        // - Only trip when AI is fully idle (thinking/speaking/listening all have natural silences).
+        // - Never trip while tab is hidden (browser may throttle WS pings).
+        // - Threshold scales with prior reconnect attempts in this session: the more trouble
+        //   we've already had, the more patient we become before another hard close.
+        //     0 reconnects  → 45s   (fresh session, be responsive)
+        //     1 reconnect   → 90s
+        //     2+ reconnects → 150s  (network is clearly flaky — don't pile on)
         const aiIdle = aiStateRef.current === "idle";
-        if (silenceMs > 60_000 && aiIdle && !tabHiddenRef.current) {
-          console.warn("[Voice] Heartbeat timeout — no server message for 60s, triggering reconnect");
+        const threshold = getHeartbeatThresholdMs(reconnectAttemptsRef.current);
+        if (silenceMs > threshold && aiIdle && !tabHiddenRef.current) {
+          console.warn(
+            `[Voice] Heartbeat timeout — no server message for ${Math.round(silenceMs / 1000)}s ` +
+              `(threshold ${threshold / 1000}s, reconnects=${reconnectAttemptsRef.current}), triggering reconnect`,
+          );
           intentionalCloseRef.current = false;
           ws2.close(4000, "Heartbeat timeout");
         }
