@@ -68,9 +68,15 @@ export function stateToPhase(state: ReconnectState): ReconnectPhase {
   }
 }
 
-/** Configurable max recovery attempts before hard failure */
+/**
+ * Configurable max recovery attempts before hard failure.
+ *
+ * Phase 1.2: default raised from 3 → 10 to match relay MAX_GEMINI_RECONNECTS.
+ * A mismatch made the client give up (and fall back to text) while the relay was
+ * still happily reconnecting to Gemini — producing unnecessary degraded experiences.
+ */
 export const MAX_RECOVERY_ATTEMPTS = parseInt(
-  typeof process !== "undefined" ? process.env?.NEXT_PUBLIC_MAX_RECONNECT_ATTEMPTS || "3" : "3",
+  typeof process !== "undefined" ? process.env?.NEXT_PUBLIC_MAX_RECONNECT_ATTEMPTS || "10" : "10",
   10,
 );
 

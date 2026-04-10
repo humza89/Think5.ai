@@ -32,8 +32,13 @@ const RELAY_JWT_SECRET = process.env.RELAY_JWT_SECRET;
 const GEMINI_WS_BASE =
   "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent";
 
-const MAX_GEMINI_RECONNECTS = 6;
-const RECONNECT_BACKOFF = [1000, 2000, 4000, 8000, 12000, 16000]; // ms
+// Phase 1.2: aligned with client MAX_RECOVERY_ATTEMPTS. Previously relay=6 and client=3
+// (or 10 via env) would disagree on how long to keep trying — producing permanent failures
+// on the client while the relay was still reconnecting, or vice versa. Both now target 10.
+const MAX_GEMINI_RECONNECTS = 10;
+// Base backoff in ms. Actual delay is base * (0.5 + Math.random() * 0.5) for full jitter,
+// so N clients reconnecting simultaneously don't stampede Gemini at the same moment.
+const RECONNECT_BACKOFF = [500, 1000, 2000, 4000, 8000, 12000, 16000, 20000, 25000, 30000];
 const MESSAGE_BUFFER_LIMIT = 100;
 const PING_INTERVAL_MS = 30_000;
 // Phase 1.1: raised from 5min → 20min. The previous 5min hard-kill was dropping sessions
@@ -248,7 +253,10 @@ wss.on("connection", (clientWs: WebSocket, req: IncomingMessage) => {
     }
 
     isReconnecting = true;
-    const delay = RECONNECT_BACKOFF[reconnectAttempts] || 4000;
+    const baseDelay = RECONNECT_BACKOFF[reconnectAttempts] ?? 30000;
+    // Full jitter: delay randomized in [0.5*base, 1.0*base] to prevent thundering herd
+    // when many clients reconnect at the same moment after a Gemini blip.
+    const delay = Math.round(baseDelay * (0.5 + Math.random() * 0.5));
     reconnectAttempts++;
     metrics.geminiReconnects++;
 
