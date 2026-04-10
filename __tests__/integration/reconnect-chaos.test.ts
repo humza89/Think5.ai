@@ -168,16 +168,20 @@ describe("Reconnect Chaos + Integration Tests", () => {
     // Monotonic: every version is strictly greater than the previous
   });
 
-  // T6: Rapid reconnect storm (5 in 10s) → max attempts enforced
+  // T6: Rapid reconnect storm → max attempts enforced
+  // Phase 1.2: MAX_RECOVERY_ATTEMPTS raised from 3 to 10 to match relay budget.
+  // This test is now parameterized over whatever the current limit is, so it
+  // stays correct if the limit changes again.
   it("T6: max recovery attempts enforced, no state divergence", () => {
     const maxAttempts = MAX_RECOVERY_ATTEMPTS;
-    expect(maxAttempts).toBe(3);
+    expect(maxAttempts).toBe(10);
 
-    // Simulate 5 rapid reconnect attempts
+    // Simulate maxAttempts + 2 rapid reconnect attempts
+    const totalAttempts = maxAttempts + 2;
     let reconnectAttempts = 0;
     const results: { attempt: number; blocked: boolean }[] = [];
 
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < totalAttempts; i++) {
       reconnectAttempts++;
       const blocked = reconnectAttempts >= maxAttempts;
       results.push({ attempt: reconnectAttempts, blocked });
@@ -189,12 +193,13 @@ describe("Reconnect Chaos + Integration Tests", () => {
       }
     }
 
-    // First 2 attempts allowed, attempts 3+ blocked
-    expect(results[0].blocked).toBe(false);
-    expect(results[1].blocked).toBe(false);
-    expect(results[2].blocked).toBe(true);
-    expect(results[3].blocked).toBe(true);
-    expect(results[4].blocked).toBe(true);
+    // Everything before the threshold is allowed; everything from the threshold on is blocked
+    for (let i = 0; i < maxAttempts - 1; i++) {
+      expect(results[i].blocked).toBe(false);
+    }
+    for (let i = maxAttempts - 1; i < totalAttempts; i++) {
+      expect(results[i].blocked).toBe(true);
+    }
   });
 
   // T7: Tab refresh → full recovery cycle required
