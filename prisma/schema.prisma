@@ -33,6 +33,15 @@ enum InterviewStatus {
   IN_PROGRESS
   PAUSED
   DISCONNECTED
+  // Track 2 Task 8: explicit "finalization in progress" state.
+  // An interview MUST pass through FINALIZING on its way to COMPLETED —
+  // a direct IN_PROGRESS → COMPLETED transition is now rejected by the
+  // state machine. FINALIZING means all durability work is scheduled
+  // (ledger finalize, recording merge, report dispatch) but not yet
+  // confirmed. The caller that owns the interview lifecycle transitions
+  // to COMPLETED only after the FinalizationManifest reports all
+  // required stages satisfied.
+  FINALIZING
   COMPLETED
   CANCELLED
   EXPIRED
@@ -326,6 +335,12 @@ model Candidate {
   // Embedding freshness tracking
   embeddingUpdatedAt DateTime?
 
+  // PII encryption lookup hash (SHA-256 of normalized email)
+  emailHash        String?
+
+  // Soft delete
+  deletedAt        DateTime?
+
   createdAt        DateTime        @default(now())
   updatedAt        DateTime        @updatedAt
 
@@ -334,6 +349,9 @@ model Candidate {
   @@index([ariaInterviewed])
   @@index([email])
   @@index([onboardingStatus])
+  @@index([createdAt])
+  @@index([emailHash])
+  @@index([deletedAt])
   @@unique([email, recruiterId])
 }
 
@@ -355,6 +373,7 @@ model Note {
   updatedAt       DateTime  @updatedAt
 
   @@index([candidateId])
+  @@index([createdAt])
 }
 
 model Client {
@@ -727,6 +746,13 @@ model Interview {
   interviewCommitments    InterviewCommitment[]
   interviewContradictions InterviewContradiction[]
 
+  // Track 2: Atomic finalization (see models at bottom of schema).
+  finalizationManifest    FinalizationManifest?
+  finalizationAttempts    InterviewFinalizationAttempt[]
+
+  // Soft delete
+  deletedAt       DateTime?
+
   createdAt       DateTime          @default(now())
   updatedAt       DateTime          @updatedAt
 
@@ -738,6 +764,9 @@ model Interview {
   @@index([reconnectToken])
   @@index([completedAt])
   @@index([companyId])
+  @@index([reportStatus])
+  @@index([consentedAt])
+  @@index([deletedAt])
 }
 
 // ============================================
@@ -770,6 +799,7 @@ model InterviewTranscript {
   @@unique([interviewId, turnIndex])
   @@unique([interviewId, turnId])
   @@index([interviewId])
+  @@index([timestamp])
 }
 
 // ============================================
@@ -990,12 +1020,27 @@ model InterviewReport {
   memoryMetadata  Json?     // {memoryConfidence, retrievalStatus, factCount, turnsCount, ...}
   memoryIntegrityScorecard Json? // {verdict, overallGrade, confidence, dimensions, alerts, recommendation}
 
+  // Raw scores (P0-2: stored alongside normalized for audit/recalibration)
+  rawScores       Json?     // {domainExpertise, clarityStructure, problemSolving, ...} — original Gemini output
+
+  // Hallucination rate tracking (P2-4)
+  groundingScore        Float?    // 0-1, from grounding gate
+  totalClaims           Int?      // Total factual claims in AI responses
+  unsupportedClaimCount Int?      // Claims not supported by verified facts
+  gateViolationCount    Int?      // Output gate violations (reintro, duplicate, unsupported, hallucinated)
+  gateViolationTypes    Json?     // [{type, count}]
+
+  // Soft delete
+  deletedAt       DateTime?
+
   // Relations
   views           ReportShareView[]
 
   createdAt       DateTime  @default(now())
 
   @@index([reviewStatus, createdAt])
+  @@index([createdAt])
+  @@index([deletedAt])
 }
 
 // ============================================
@@ -1751,4 +1796,114 @@ model ATSIntegration {
   @@unique([companyId, provider])
   @@index([companyId])
   @@index([provider])
+}
+
+// ── Track 2: Atomic Finalization ─────────────────────────────────────
+
+/**
+ * FinalizationManifest — the authoritative record of whether an
+ * interview's durability invariants are satisfied.
+ *
+ * Written exclusively by the finalization pipeline (lib/finalization-manifest.ts).
+ * The Interview.status column can only transition to COMPLETED when a
+ * corresponding manifest row reports all required stages successful.
+ *
+ * One row per Interview, upserted as finalization progresses. The enum
+ * fields use string columns (not dedicated enums) so adding a new state
+ * is additive and does not require another migration.
+ */
+model FinalizationManifest {
+  id                String    @id @default(uuid())
+  interviewId       String    @unique
+  interview         Interview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+
+  /**
+   * Overall manifest state. Drives the gate on Interview.status = COMPLETED.
+   *   "pending"    — manifest row created, no stages attempted yet
+   *   "in_flight"  — at least one stage running
+   *   "satisfied"  — all required stages report success; COMPLETED is safe
+   *   "degraded"   — finalization finished but with non-fatal issues
+   *                  (recording unavailable, for example); COMPLETED with
+   *                  a visible degraded-flag is acceptable
+   *   "failed"     — at least one required stage failed terminally;
+   *                  Interview.status should be FAILED, not COMPLETED
+   */
+  state             String    @default("pending")
+
+  /**
+   * Per-stage status fields. Each one is a string so we can add new
+   * statuses without schema migrations.
+   *
+   * ledgerStatus:
+   *   "not_finalized" → "finalized" | "integrity_failed"
+   *
+   * recordingStatus:
+   *   "not_applicable" (no recording by design) | "uploading" |
+   *   "finalizing" | "merged" | "degraded" | "failed"
+   *
+   * reportStatus:
+   *   "not_started" | "pending" | "generating" | "completed" | "failed"
+   *
+   * auditStatus:
+   *   "not_started" | "partial" | "complete"
+   */
+  ledgerStatus      String    @default("not_finalized")
+  recordingStatus   String    @default("not_applicable")
+  reportStatus      String    @default("not_started")
+  auditStatus       String    @default("not_started")
+
+  /**
+   * Human-readable reason for the most recent state change. Used for
+   * debugging and displayed in the admin reliability dashboard.
+   */
+  reason            String?
+
+  /**
+   * Number of finalization attempts that have touched this manifest.
+   * Incremented every time a caller opens an idempotent end-interview
+   * session for this row. Used by the reconciliation cron to avoid
+   * infinite retry loops.
+   */
+  attemptCount      Int       @default(0)
+
+  startedAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  satisfiedAt       DateTime?
+  failedAt          DateTime?
+
+  @@index([state])
+  @@index([startedAt])
+  @@index([satisfiedAt])
+}
+
+/**
+ * InterviewFinalizationAttempt — idempotency store for end_interview
+ * requests. A client that retries end_interview with the same
+ * Idempotency-Key header gets the cached response from the first call
+ * instead of a duplicate finalization run.
+ *
+ * The unique constraint on (interviewId, idempotencyKey) is the hard
+ * gate. TTL is enforced by the cleanup cron after 24h.
+ */
+model InterviewFinalizationAttempt {
+  id              String   @id @default(uuid())
+  interviewId     String
+  interview       Interview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+
+  /** Header value from the client's end_interview request. */
+  idempotencyKey  String
+
+  /**
+   * Cached response body from the first successful call with this key.
+   * JSON so callers can return it verbatim on retry.
+   */
+  responseBody    Json
+
+  /** HTTP status code to return on retry. */
+  responseStatus  Int      @default(200)
+
+  createdAt       DateTime @default(now())
+
+  @@unique([interviewId, idempotencyKey])
+  @@index([createdAt])
 }
