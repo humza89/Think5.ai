@@ -23,6 +23,11 @@ import { createServer, IncomingMessage, ServerResponse } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import jwt from "jsonwebtoken";
 import { URL } from "url";
+import {
+  lifecycleCreate,
+  lifecycleTransition,
+  lifecycleHeartbeat,
+} from "./lifecycle-client";
 
 // ── Configuration ─────────────────────────────────────────────────────
 
@@ -150,6 +155,13 @@ wss.on("connection", (clientWs: WebSocket, req: IncomingMessage) => {
   metrics.activeConnections++;
   metrics.totalConnections++;
 
+  // Phase 2.1: Drive the SessionService lifecycle over HTTP. Best-effort —
+  // lifecycle tracking is observability, not the critical path for audio.
+  // `lifecycleCreate` is idempotent: if voice-init already created the record
+  // it returns 409 and we continue. Then transition pending → active.
+  lifecycleCreate(interviewId, "relay_connection_opened").catch(() => {});
+  lifecycleTransition(interviewId, "pending", "active", "relay_connected").catch(() => {});
+
   // ── Session state ──
   let clientAlive = true;
   let geminiAlive = false;
@@ -165,11 +177,20 @@ wss.on("connection", (clientWs: WebSocket, req: IncomingMessage) => {
 
   // ── Idle timeout ──
   let idleTimer = setTimeout(() => cleanup("idle_timeout"), IDLE_TIMEOUT_MS);
+  // Phase 2.1: throttle lifecycle heartbeats to once every 15s so we don't
+  // hammer the Next.js API on every audio frame.
+  let lastLifecycleHeartbeatAt = 0;
+  const LIFECYCLE_HEARTBEAT_THROTTLE_MS = 15_000;
 
   const resetIdle = () => {
     clearTimeout(idleTimer);
     if (!cleanedUp) {
       idleTimer = setTimeout(() => cleanup("idle_timeout"), IDLE_TIMEOUT_MS);
+    }
+    const now = Date.now();
+    if (now - lastLifecycleHeartbeatAt > LIFECYCLE_HEARTBEAT_THROTTLE_MS) {
+      lastLifecycleHeartbeatAt = now;
+      lifecycleHeartbeat(interviewId).catch(() => {});
     }
   };
 
@@ -190,6 +211,17 @@ wss.on("connection", (clientWs: WebSocket, req: IncomingMessage) => {
     ws.on("open", () => {
       geminiAlive = true;
       console.log(`[Relay] Gemini connected for interview=${interviewId}`);
+
+      // Phase 2.1: Gemini reconnect succeeded — transition back to active so
+      // heartbeat + cron consumers know the session is healthy again.
+      if (isReconnecting) {
+        lifecycleTransition(
+          interviewId,
+          "reconnecting",
+          "active",
+          "gemini_reconnect_success",
+        ).catch(() => {});
+      }
 
       // If reconnecting, resend the cached setup message first
       if (isReconnecting && setupMessage) {
@@ -249,6 +281,14 @@ wss.on("connection", (clientWs: WebSocket, req: IncomingMessage) => {
       console.error(`[Relay] Gemini reconnect exhausted (${MAX_GEMINI_RECONNECTS} attempts) for interview=${interviewId}`);
       metrics.geminiReconnectFailures++;
       messageBuffer.length = 0;
+      // Phase 2.1: terminal failure — mark the lifecycle record failed so cron
+      // doesn't try to resuscitate it and admin dashboards see an accurate count.
+      lifecycleTransition(
+        interviewId,
+        "reconnecting",
+        "failed",
+        "gemini_reconnect_exhausted",
+      ).catch(() => {});
       if (clientAlive) {
         clientWs.close(4502, "Upstream connection error — reconnect exhausted");
       }
@@ -264,6 +304,19 @@ wss.on("connection", (clientWs: WebSocket, req: IncomingMessage) => {
     metrics.geminiReconnects++;
 
     console.log(`[Relay] Reconnecting to Gemini in ${delay}ms (attempt ${reconnectAttempts}/${MAX_GEMINI_RECONNECTS}) for interview=${interviewId}`);
+
+    // Phase 2.1: announce the reconnect to SessionService so cron / admin
+    // dashboards / other relay workers know this session is in flux.
+    // Only transitions from "active" → "reconnecting" on the first attempt;
+    // subsequent attempts are no-ops (CAS rejects stale_from).
+    if (reconnectAttempts === 1) {
+      lifecycleTransition(
+        interviewId,
+        "active",
+        "reconnecting",
+        `gemini_closed_code_unknown`,
+      ).catch(() => {});
+    }
 
     setTimeout(() => {
       if (!clientAlive || cleanedUp) return;
@@ -345,6 +398,18 @@ wss.on("connection", (clientWs: WebSocket, req: IncomingMessage) => {
       `[Relay] Disconnected (${source}): interview=${interviewId}`
     );
     metrics.activeConnections = Math.max(0, metrics.activeConnections - 1);
+
+    // Phase 2.1: idle-timeout and client-error disconnects are terminal for
+    // the voice session; mark them failed so cron/dashboards have an accurate
+    // count. Normal client-initiated close (source="client") is NOT terminal —
+    // the client may be navigating away, pausing, or about to reconnect, so
+    // we leave the lifecycle state alone and let the next event drive it.
+    if (source === "idle_timeout" || source === "client_error") {
+      // We don't know the current state from here (relay doesn't cache it),
+      // so try the most-likely transitions. CAS will reject the wrong one.
+      lifecycleTransition(interviewId, "active", "failed", `relay_${source}`).catch(() => {});
+      lifecycleTransition(interviewId, "reconnecting", "failed", `relay_${source}`).catch(() => {});
+    }
 
     clearTimeout(idleTimer);
     clearInterval(pingInterval);
