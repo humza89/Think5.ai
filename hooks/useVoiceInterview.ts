@@ -39,6 +39,7 @@ import {
   stateToPhase,
   MAX_RECOVERY_ATTEMPTS,
   shouldRateLimit,
+  getHeartbeatThresholdMs,
 } from "@/lib/reconnect-state-machine";
 import type { ReconnectState, ReconnectPhase } from "@/lib/reconnect-state-machine";
 
@@ -1899,9 +1900,7 @@ export function useVoiceInterview(
         //     1 reconnect   → 90s
         //     2+ reconnects → 150s  (network is clearly flaky — don't pile on)
         const aiIdle = aiStateRef.current === "idle";
-        const heartbeatLadder = [45_000, 90_000, 150_000];
-        const threshold =
-          heartbeatLadder[Math.min(reconnectAttemptsRef.current, heartbeatLadder.length - 1)];
+        const threshold = getHeartbeatThresholdMs(reconnectAttemptsRef.current);
         if (silenceMs > threshold && aiIdle && !tabHiddenRef.current) {
           console.warn(
             `[Voice] Heartbeat timeout — no server message for ${Math.round(silenceMs / 1000)}s ` +
