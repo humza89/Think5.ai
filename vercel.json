@@ -26,6 +26,14 @@
     {
       "path": "/api/cron/fragment-cleanup",
       "schedule": "0 */6 * * *"
+    },
+    {
+      "path": "/api/cron/pause-timeout",
+      "schedule": "*/2 * * * *"
+    },
+    {
+      "path": "/api/cron/broken-completed-detector",
+      "schedule": "*/5 * * * *"
     }
   ]
 }
