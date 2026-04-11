@@ -641,6 +641,13 @@ model Interview {
   accessToken          String?           @unique
   accessTokenExpiresAt DateTime?
   invitedEmail         String?
+  // Track 5 Task 20: device fingerprint bound on first successful
+  // validate. Subsequent calls on the same access token must match
+  // or be rejected (leaked-URL defense). Stored as SHA-256 hex digest
+  // of (accessToken + userAgent + ip /24 prefix). Null until first
+  // successful validate. Cleared when the interview reaches a
+  // terminal state.
+  candidateDeviceFingerprint String?
 
   // Proctoring events collected during interview
   integrityEvents Json?             // [{type, description, timestamp}]
