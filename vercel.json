@@ -26,6 +26,10 @@
     {
       "path": "/api/cron/fragment-cleanup",
       "schedule": "0 */6 * * *"
+    },
+    {
+      "path": "/api/cron/recording-health-backfill",
+      "schedule": "0 * * * *"
     }
   ]
 }

@@ -16,6 +16,12 @@ import {
   finalizeRecording as finalizeR2Recording,
   getSignedPlaybackUrl,
 } from "@/lib/media-storage";
+// Track 4 Task 15: durable recording health field. Writes here go
+// through setRecordingHealth so recordingHealthReason/At stay in sync.
+import {
+  healthFromMergeOutcome,
+  setRecordingHealth,
+} from "@/lib/recording-health";
 import * as Sentry from "@sentry/nextjs";
 
 // ── Rate Limiting (in-memory per-instance) ──────────────────────────
@@ -96,10 +102,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           return Response.json({ error: "Invalid totalChunks" }, { status: 400 });
         }
 
-        // Update recording state to FINALIZING
+        // Update recording state to FINALIZING and mark health as
+        // PROCESSING so the recruiter UI doesn't prematurely try to
+        // play a mid-finalization recording.
         await prisma.interview.update({
           where: { id },
           data: { recordingState: "FINALIZING" },
+        });
+        await setRecordingHealth(id, "PROCESSING", "finalize_started").catch((e) => {
+          // Never let a health-write failure block the finalization itself.
+          console.error(`[Recording] setRecordingHealth PROCESSING failed:`, e);
         });
 
         try {
@@ -123,12 +135,34 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             },
           });
 
+          // Track 4: compute and persist the health outcome. The
+          // classifier knows how to map (mergeSucceeded, playbackUrlResolved,
+          // totalChunks) to HEALTHY / DEGRADED / MISSING / FAILED.
+          //
+          // Note: on branches that have Track 1 PR #4 merged,
+          // `finalizeR2Recording` throws RecordingMergeFailedError on
+          // merge failure so we never reach this code path with
+          // mergeSucceeded=false — that case falls into the catch block
+          // below. On main (pre-PR-#4), finalizeR2Recording may return
+          // normally after silently failing, in which case our best
+          // signal is whether getSignedPlaybackUrl resolved. The
+          // classifier handles both cases conservatively.
+          const outcome = healthFromMergeOutcome({
+            mergeSucceeded: true, // if we got here, finalizeR2Recording didn't throw
+            playbackUrlResolved: !!playbackUrl,
+            totalChunks,
+          });
+          await setRecordingHealth(id, outcome.health, outcome.reason).catch((e) => {
+            console.error(`[Recording] setRecordingHealth ${outcome.health} failed:`, e);
+          });
+
           await recordSLOEvent("recording.upload.success_rate", true);
 
           return Response.json({
             success: true,
             url: playbackUrl,
             metadata,
+            recordingHealth: outcome.health,
           }, { status: 202 });
         } catch (err) {
           Sentry.captureException(err, {
@@ -142,8 +176,22 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             data: { recordingState: "UPLOADING" }, // revert state
           });
 
+          // Track 4: map the thrown error to a concrete health value.
+          // If no chunks were captured at all → FAILED (nothing to recover).
+          // If chunks exist but merge blew up → DEGRADED (reconciler can
+          // retry the merge out-of-band; if it eventually succeeds the
+          // health flips back to HEALTHY).
+          const outcome = healthFromMergeOutcome({
+            mergeSucceeded: false,
+            playbackUrlResolved: false,
+            totalChunks,
+          });
+          await setRecordingHealth(id, outcome.health, outcome.reason).catch((e) => {
+            console.error(`[Recording] setRecordingHealth ${outcome.health} failed:`, e);
+          });
+
           return Response.json(
-            { error: "Recording finalization failed", retryable: true },
+            { error: "Recording finalization failed", retryable: true, recordingHealth: outcome.health },
             { status: 500 }
           );
         }

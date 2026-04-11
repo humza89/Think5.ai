@@ -67,6 +67,50 @@ enum RecordingState {
   DELETED
 }
 
+/**
+ * RecordingHealth — Track 4 Task 15.
+ *
+ * Orthogonal to RecordingState. RecordingState describes the PIPELINE
+ * (UPLOADING / FINALIZING / COMPLETE / VERIFIED / DELETED) — it answers
+ * "where is the recording in its processing lifecycle". RecordingHealth
+ * describes the INTEGRITY of the result — it answers "is the recording
+ * actually trustworthy for recruiter playback".
+ *
+ * A recording can have recordingState='COMPLETE' and recordingHealth
+ * ='DEGRADED' at the same time: the pipeline finished, a manifest was
+ * written, a signed URL exists — but the merge was missing chunks or
+ * fell back silently. The recruiter UI MUST refuse to play anything
+ * whose recordingHealth is not HEALTHY.
+ *
+ * Values:
+ *   NONE       — no recording was ever captured (text interview, or
+ *                candidate refused consent). recordingUrl should be null.
+ *   PROCESSING — capture or finalization in progress. Not yet playable.
+ *   HEALTHY    — merged file exists, checksum verified, safe to serve.
+ *   DEGRADED   — recording exists but integrity is compromised. Some
+ *                chunks missing, merge partial, or legacy-fallback was
+ *                triggered. UI must surface a warning and refuse to
+ *                auto-play as if it were trustworthy.
+ *   MISSING    — pipeline thinks it has a recording but the underlying
+ *                object is gone (R2 404, retention deleted, etc.).
+ *   FAILED     — terminal finalization failure with no recoverable
+ *                artifact. Triggers re-upload flow in the UI.
+ *
+ * This enum is the companion to lib/media-storage.ts (which refuses to
+ * serve a signed URL for anything other than a merged file) and to the
+ * FinalizationManifest's recordingStatus field (which tracks the
+ * in-flight finalization state; recordingHealth is the POST-finalization
+ * durable answer).
+ */
+enum RecordingHealth {
+  NONE
+  PROCESSING
+  HEALTHY
+  DEGRADED
+  MISSING
+  FAILED
+}
+
 enum TemplateStatus {
   DRAFT
   PENDING_APPROVAL
@@ -666,6 +710,21 @@ model Interview {
   recordingState       RecordingState?
   recordingManifestHash String?      // SHA-256 of chunk manifest for integrity
 
+  // Track 4 Task 15: Recording integrity health. Orthogonal to
+  // recordingState. The pipeline can be COMPLETE while health is
+  // DEGRADED (merged file missing chunks, silent-fallback triggered,
+  // etc.). Recruiter playback MUST gate on health=HEALTHY, not on
+  // state=COMPLETE. See enum RecordingHealth for the full contract.
+  // Default NONE so existing rows start in a "no recording by design"
+  // state; the recording pipeline writes HEALTHY/DEGRADED/FAILED as
+  // it runs. A legacy-backfill cron populates values for old rows.
+  recordingHealth      RecordingHealth @default(NONE)
+  // Reason for the current health value — free-text, used for
+  // debugging and displayed in admin tools.
+  recordingHealthReason String?
+  // Timestamp of the last health transition.
+  recordingHealthAt    DateTime?
+
   // Voice session reconnect (durable sessions)
   reconnectToken       String?       @unique
 
@@ -738,6 +797,10 @@ model Interview {
   @@index([reconnectToken])
   @@index([completedAt])
   @@index([companyId])
+  // Track 4: recordingHealth index for the backfill cron and the
+  // admin reliability dashboard. The cron scans for DEGRADED/MISSING/
+  // FAILED rows ordered by recordingHealthAt.
+  @@index([recordingHealth])
 }
 
 // ============================================
