@@ -8,6 +8,11 @@ import {
 describe("Interview State Machine", () => {
   describe("isValidTransition", () => {
     // Valid transitions
+    //
+    // Track 2 Task 8 change: IN_PROGRESS → COMPLETED and
+    // DISCONNECTED → COMPLETED are NO LONGER legal. The only legal
+    // path to COMPLETED is FINALIZING → COMPLETED (gated on the
+    // FinalizationManifest at the application layer).
     it.each([
       ["CREATED", "PLAN_GENERATED"],
       ["CREATED", "PENDING"],
@@ -17,12 +22,18 @@ describe("Interview State Machine", () => {
       ["PENDING", "IN_PROGRESS"],
       ["PENDING", "CANCELLED"],
       ["PENDING", "EXPIRED"],
-      ["IN_PROGRESS", "COMPLETED"],
+      ["IN_PROGRESS", "FINALIZING"],
       ["IN_PROGRESS", "DISCONNECTED"],
+      ["IN_PROGRESS", "PAUSED"],
       ["IN_PROGRESS", "CANCELLED"],
+      ["PAUSED", "IN_PROGRESS"],
+      ["PAUSED", "FINALIZING"],
+      ["PAUSED", "CANCELLED"],
       ["DISCONNECTED", "IN_PROGRESS"],
-      ["DISCONNECTED", "COMPLETED"],
+      ["DISCONNECTED", "FINALIZING"],
       ["DISCONNECTED", "CANCELLED"],
+      ["FINALIZING", "COMPLETED"],
+      ["FINALIZING", "CANCELLED"],
       ["COMPLETED", "REPORT_GENERATING"],
       ["REPORT_GENERATING", "REPORT_READY"],
       ["REPORT_GENERATING", "REPORT_FAILED"],
@@ -31,7 +42,7 @@ describe("Interview State Machine", () => {
       expect(isValidTransition(from, to)).toBe(true);
     });
 
-    // Invalid transitions
+    // Invalid transitions — explicitly including the ones Track 2 Task 8 removed.
     it.each([
       ["CREATED", "COMPLETED"],
       ["CREATED", "IN_PROGRESS"],
@@ -39,7 +50,17 @@ describe("Interview State Machine", () => {
       ["PENDING", "REPORT_GENERATING"],
       ["IN_PROGRESS", "PENDING"],
       ["IN_PROGRESS", "CREATED"],
+      // Track 2 Task 8: direct IN_PROGRESS → COMPLETED is the bug we're
+      // locking out. Must go through FINALIZING.
+      ["IN_PROGRESS", "COMPLETED"],
+      // Track 2 Task 8: DISCONNECTED → COMPLETED must also go via FINALIZING.
+      ["DISCONNECTED", "COMPLETED"],
+      // FINALIZING is one-way: cannot go back to IN_PROGRESS. Once
+      // finalization begins, the interview can only end.
+      ["FINALIZING", "IN_PROGRESS"],
+      ["FINALIZING", "PAUSED"],
       ["COMPLETED", "IN_PROGRESS"],
+      ["COMPLETED", "FINALIZING"],
       ["COMPLETED", "CANCELLED"],
       ["CANCELLED", "PENDING"],
       ["CANCELLED", "IN_PROGRESS"],
@@ -96,11 +117,24 @@ describe("Interview State Machine", () => {
       expect(allowed).toHaveLength(1);
     });
 
-    it("DISCONNECTED can reconnect or complete", () => {
+    it("DISCONNECTED can reconnect or enter finalization", () => {
+      // Track 2 Task 8: DISCONNECTED can no longer jump straight to
+      // COMPLETED. It must go through FINALIZING first.
       const allowed = getAllowedTransitions("DISCONNECTED");
       expect(allowed).toContain("IN_PROGRESS");
-      expect(allowed).toContain("COMPLETED");
+      expect(allowed).toContain("FINALIZING");
       expect(allowed).toContain("CANCELLED");
+      expect(allowed).not.toContain("COMPLETED");
+    });
+
+    it("FINALIZING can only COMPLETE or CANCEL — one-way door", () => {
+      const allowed = getAllowedTransitions("FINALIZING");
+      expect(allowed).toEqual(
+        expect.arrayContaining(["COMPLETED", "CANCELLED"]),
+      );
+      expect(allowed).not.toContain("IN_PROGRESS");
+      expect(allowed).not.toContain("PAUSED");
+      expect(allowed).toHaveLength(2);
     });
   });
 });

@@ -4,11 +4,25 @@
  * Enforces valid status transitions for interviews. Mirrors the
  * InterviewStatus enum in prisma/schema.prisma.
  *
+ * Track 2, Task 8 change:
+ *   An interview may NO LONGER transition directly from IN_PROGRESS (or
+ *   DISCONNECTED/PAUSED) to COMPLETED. The only legal path to COMPLETED
+ *   now goes through FINALIZING, and the caller is responsible for
+ *   writing a FinalizationManifest row before attempting the
+ *   FINALIZING → COMPLETED transition. The manifest check is enforced
+ *   at the application layer in the finalization pipeline, not here;
+ *   this state machine only gates the transition topology.
+ *
  * Transition diagram:
- *   CREATED → PLAN_GENERATED → PENDING → IN_PROGRESS → COMPLETED → REPORT_GENERATING → REPORT_READY
- *                                    ↘ EXPIRED        ↘ DISCONNECTED ↗                ↘ REPORT_FAILED → REPORT_GENERATING
- *                                                     ↘ PAUSED → IN_PROGRESS
- *                              (any non-terminal) → CANCELLED
+ *   CREATED → PLAN_GENERATED → PENDING → IN_PROGRESS
+ *                                       → PAUSED → IN_PROGRESS
+ *                                       → DISCONNECTED → IN_PROGRESS
+ *   IN_PROGRESS → FINALIZING → COMPLETED → REPORT_GENERATING → REPORT_READY
+ *   FINALIZING → CANCELLED (if finalization fatally fails)
+ *   PAUSED → FINALIZING    (client ended interview while paused)
+ *   DISCONNECTED → FINALIZING (recovery path chose to finalize rather than resume)
+ *   REPORT_FAILED → REPORT_GENERATING
+ *   (any non-terminal) → CANCELLED
  */
 
 // Keep in sync with prisma InterviewStatus enum
@@ -19,6 +33,7 @@ type InterviewStatus =
   | "IN_PROGRESS"
   | "PAUSED"
   | "DISCONNECTED"
+  | "FINALIZING"
   | "COMPLETED"
   | "CANCELLED"
   | "EXPIRED"
@@ -30,9 +45,17 @@ const VALID_TRANSITIONS: Record<InterviewStatus, InterviewStatus[]> = {
   CREATED: ["PLAN_GENERATED", "PENDING", "CANCELLED"],
   PLAN_GENERATED: ["PENDING", "CANCELLED"],
   PENDING: ["IN_PROGRESS", "CANCELLED", "EXPIRED"],
-  IN_PROGRESS: ["COMPLETED", "DISCONNECTED", "PAUSED", "CANCELLED"],
-  PAUSED: ["IN_PROGRESS", "CANCELLED"],
-  DISCONNECTED: ["IN_PROGRESS", "COMPLETED", "CANCELLED"],
+  // Track 2 Task 8: IN_PROGRESS → COMPLETED is REMOVED. Finalization
+  // must always go through FINALIZING so the FinalizationManifest
+  // gate runs.
+  IN_PROGRESS: ["FINALIZING", "DISCONNECTED", "PAUSED", "CANCELLED"],
+  PAUSED: ["IN_PROGRESS", "FINALIZING", "CANCELLED"],
+  DISCONNECTED: ["IN_PROGRESS", "FINALIZING", "CANCELLED"],
+  // FINALIZING is the gated entry to COMPLETED. The only other legal
+  // exit is CANCELLED (for catastrophic finalization failure). Reentry
+  // from FINALIZING → IN_PROGRESS is intentionally disallowed — once
+  // finalization begins, the interview can only end.
+  FINALIZING: ["COMPLETED", "CANCELLED"],
   COMPLETED: ["REPORT_GENERATING"],
   CANCELLED: [],
   EXPIRED: [],

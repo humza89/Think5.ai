@@ -29,6 +29,22 @@ import {
 } from "@/lib/session-store";
 import { recordSLOEvent } from "@/lib/slo-monitor";
 import { appendTurns, getLedgerSnapshot, diffTurns, finalizeLedger, getFullTranscript, verifyContentIntegrity } from "@/lib/conversation-ledger";
+// Track 2: atomic finalization — manifest, idempotency, state machine gate
+import {
+  beginFinalization,
+  updateStage,
+  evaluateManifest,
+  markSatisfied,
+  markDegraded,
+  markFailed,
+  type ReportStatus,
+  type RecordingStatus,
+} from "@/lib/finalization-manifest";
+import {
+  withIdempotentFinalization,
+  extractIdempotencyKey,
+  InvalidIdempotencyKeyError,
+} from "@/lib/finalization-idempotency";
 import { classifyError } from "@/lib/error-classification";
 import { validateTranscript, repairTranscript } from "@/lib/transcript-validator";
 import { isMaintenanceMode, getMaintenanceMessage, maintenanceResponse } from "@/lib/maintenance-mode";
@@ -896,113 +912,312 @@ export async function POST(
 
     // ── End Interview: final save + report generation ──
     if (action === "end_interview") {
-      // Audit log
-      logInterviewActivity({
-        interviewId: id,
-        action: "interview.voice_ended",
-        userId: interview.candidate.id,
-        userRole: "candidate",
-        ipAddress: getClientIp(request.headers),
-      }).catch(() => {});
-
-      // Timeline observability: record disconnect event with causal link to last checkpoint
-      if (isEnabled("TIMELINE_OBSERVABILITY")) {
-        const disconnectSession = await getSessionState(id);
-        const disconnectCausalId = disconnectSession?.ledgerVersion !== undefined
-          ? `checkpoint-${disconnectSession.ledgerVersion}` : undefined;
-        recordEvent(id, "disconnect", {
-          reason: "normal_end",
-          finalQuestionCount: questionCount || 0,
-          ledgerVersion: disconnectSession?.ledgerVersion,
-        }, disconnectSession?.ledgerVersion, disconnectCausalId).catch(() => {});
-      }
-
-      // Validate state transition
-      const currentStatus = interview.status;
-      if (!isValidTransition(currentStatus, "COMPLETED")) {
-        console.warn(JSON.stringify({ event: "invalid_end_transition", interviewId: id, from: currentStatus, to: "COMPLETED", severity: "warning", timestamp: new Date().toISOString() }));
-      }
-
-      // C2: Validate and auto-repair transcript BEFORE database write
-      let finalTranscript = transcript || [];
-      if (finalTranscript.length > 0) {
-        const validation = validateTranscript(finalTranscript);
-
-        // Record transcript anomaly SLO
-        await recordSLOEvent("transcript.anomaly.rate", validation.valid);
-
-        if (!validation.valid || validation.issues.length > 0) {
-          console.warn(JSON.stringify({ event: "transcript_quality_issues", interviewId: id, issues: validation.issues, severity: "warning", timestamp: new Date().toISOString() }));
-          Sentry.addBreadcrumb({
-            category: "transcript_qa",
-            message: `${validation.issues.length} issue(s): ${validation.issues.map(i => i.type).join(", ")}`,
-            level: "warning",
-          });
-
-          const { repaired, repairs } = repairTranscript(finalTranscript);
-          if (repairs.length > 0) {
-            console.log(`[${id}] Transcript auto-repair: ${repairs.join("; ")}`);
-            finalTranscript = repaired;
-          }
+      // Track 2 Task 9: idempotency key on the Idempotency-Key header.
+      // A retry with the same key returns the cached response verbatim
+      // without re-running the finalization work below. Missing key is
+      // tolerated for backward compat with clients that haven't been
+      // updated yet; we log a breadcrumb so we can track adoption.
+      let idempotencyKey: string | null;
+      try {
+        idempotencyKey = extractIdempotencyKey(request.headers);
+      } catch (err) {
+        if (err instanceof InvalidIdempotencyKeyError) {
+          return Response.json({ error: err.message }, { status: 400 });
         }
+        throw err;
+      }
+      if (!idempotencyKey) {
+        Sentry.addBreadcrumb({
+          category: "finalization",
+          message: "end_interview without Idempotency-Key — legacy client",
+          level: "info",
+        });
+        // Synthesize a per-request key so the work still runs under the
+        // idempotency wrapper, just without cross-request dedup. This
+        // preserves the manifest-driven flow for every caller.
+        idempotencyKey = `legacy-${id}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
       }
 
-      // Reconcile any remaining client turns into the canonical ledger
-      const endLedgerSnapshot = await getLedgerSnapshot(id);
-      const remainingTurns = diffTurns(finalTranscript, endLedgerSnapshot.latestTurnIndex);
-      if (remainingTurns.length > 0) {
-        await appendTurns(id, remainingTurns, endLedgerSnapshot.turnCount);
-      }
-
-      // Finalize all ledger turns (marks as immutable — no further appends allowed)
-      const finalizedCount = await finalizeLedger(id);
-      console.log(`[${id}] Ledger finalized: ${finalizedCount} turns marked immutable`);
-
-      // Verify content integrity of finalized ledger
-      const integrityMismatches = await verifyContentIntegrity(id);
-      if (integrityMismatches.length > 0) {
-        console.error(JSON.stringify({ event: "content_integrity_failure", interviewId: id, mismatchCount: integrityMismatches.length, severity: "critical", timestamp: new Date().toISOString() }));
-        if (isEnabled("TIMELINE_OBSERVABILITY")) {
-          recordEvent(id, "anomaly", {
-            type: "content_integrity_failure",
-            mismatchCount: integrityMismatches.length,
-            mismatches: integrityMismatches.slice(0, 5).map(m => ({ turnIndex: m.turnIndex, turnId: m.turnId })),
-          }, endLedgerSnapshot.latestTurnIndex).catch(() => {});
-        }
-      }
-
-      // Build denormalized transcript from canonical ledger for backward compatibility
-      const canonicalTurns = await getFullTranscript(id);
-      const denormalizedTranscript = canonicalTurns.map((t) => ({
-        role: t.role,
-        content: t.content,
-        timestamp: t.timestamp.toISOString(),
-      }));
-
-      // Save denormalized transcript (ledger is authoritative), validated scores, and mark complete
-      await prisma.interview.update({
-        where: { id },
-        data: {
-          status: "COMPLETED",
-          completedAt: new Date(),
-          transcript: denormalizedTranscript,
-          skillModuleScores: validateModuleScores(moduleScores),
-        },
+      const idemResult = await withIdempotentFinalization(id, idempotencyKey, async () => {
+        return runAtomicFinalization({
+          interviewId: id,
+          interview,
+          request,
+          transcript,
+          questionCount,
+          moduleScores,
+        });
       });
 
-      // C3: Persist structured proctoring events BEFORE report trigger
-      const interviewData = await prisma.interview.findUnique({
-        where: { id },
-        select: { integrityEvents: true },
-      });
-      if (interviewData?.integrityEvents && Array.isArray(interviewData.integrityEvents)) {
-        await persistProctoringEvents(id, interviewData.integrityEvents as any[]);
-      }
+      return Response.json(idemResult.body, { status: idemResult.status });
+    }
 
-      // Record session completion SLO
-      await recordSLOEvent("session.30min_completion.rate", true);
-      // Record no hard-stop (normal completion = success)
-      await recordSLOEvent("session.hard_stop.rate", true);
+    return Response.json({ error: "Invalid action" }, { status: 400 });
+  } catch (error) {
+    Sentry.captureException(error, { tags: { component: "voice_route" } });
+    console.error("Voice route error:", error);
+    const classified = classifyError(error, { statusCode: 500 });
+    return Response.json(
+      { error: classified.message, code: classified.title, recoverable: classified.recoverable },
+      { status: 500 }
+    );
+  }
+}
+
+// ── End-Interview body (extracted so withIdempotentFinalization can wrap it) ──
+
+/**
+ * Shape of the transcript entries the caller sends in body.transcript.
+ * Matches what validateTranscript/repairTranscript accept so we don't
+ * have to relax their signatures.
+ */
+type RawTranscriptEntry = {
+  role: string;
+  text?: string;
+  content?: string;
+  timestamp?: string;
+};
+
+interface RunFinalizationArgs {
+  interviewId: string;
+  interview: {
+    id: string;
+    status: string;
+    candidate: { id: string };
+    recordingUrl: string | null;
+    recordingState: string | null;
+    [key: string]: unknown;
+  };
+  request: NextRequest;
+  transcript: RawTranscriptEntry[] | undefined;
+  questionCount: number | undefined;
+  moduleScores: unknown;
+}
+
+interface FinalizationResult {
+  body: Record<string, unknown>;
+  status: number;
+}
+
+async function runAtomicFinalization(args: RunFinalizationArgs): Promise<FinalizationResult> {
+  const id = args.interviewId;
+  const interview = args.interview;
+  const request = args.request;
+  const transcriptInput = args.transcript;
+  const questionCount = args.questionCount;
+  const moduleScores = args.moduleScores;
+
+  // Audit log — fire immediately, not gated on downstream success.
+  logInterviewActivity({
+    interviewId: id,
+    action: "interview.voice_ended",
+    userId: interview.candidate.id,
+    userRole: "candidate",
+    ipAddress: getClientIp(request.headers),
+  }).catch(() => {});
+
+  // Timeline observability: record disconnect event with causal link to last checkpoint
+  if (isEnabled("TIMELINE_OBSERVABILITY")) {
+    const disconnectSession = await getSessionState(id);
+    const disconnectCausalId = disconnectSession?.ledgerVersion !== undefined
+      ? `checkpoint-${disconnectSession.ledgerVersion}` : undefined;
+    recordEvent(id, "disconnect", {
+      reason: "normal_end",
+      finalQuestionCount: questionCount || 0,
+      ledgerVersion: disconnectSession?.ledgerVersion,
+    }, disconnectSession?.ledgerVersion, disconnectCausalId).catch(() => {});
+  }
+
+  // Track 2 Task 8: transition to FINALIZING via the state machine.
+  // The old code wrote status=COMPLETED directly at the end; the new
+  // contract requires entering FINALIZING first, doing all the durability
+  // work, and only then transitioning to COMPLETED based on the manifest
+  // gate. A transition from IN_PROGRESS → COMPLETED is NO LONGER legal.
+  const currentStatus = interview.status;
+  if (!isValidTransition(currentStatus, "FINALIZING")) {
+    console.warn(JSON.stringify({
+      event: "invalid_finalization_entry",
+      interviewId: id,
+      from: currentStatus,
+      to: "FINALIZING",
+      severity: "warning",
+      timestamp: new Date().toISOString(),
+    }));
+    // Fail loud — the caller was in a state (e.g. terminal) that can't
+    // be finalized, and silently pretending to succeed hides real bugs.
+    return {
+      body: {
+        error: "Cannot finalize interview from current state",
+        currentStatus,
+        recoverable: false,
+      },
+      status: 409,
+    };
+  }
+
+  await prisma.interview.update({
+    where: { id },
+    data: { status: "FINALIZING" },
+  });
+  await beginFinalization(id, { reason: "end_interview_requested" });
+
+  // C2: Validate and auto-repair transcript BEFORE database write.
+  // Upfront-fill `timestamp` so repairTranscript's strict signature
+  // accepts the entries — matches the old runtime behavior where
+  // loose typing let missing timestamps slip through.
+  const nowIso = new Date().toISOString();
+  let finalTranscript: Array<{
+    role: string;
+    text?: string;
+    content?: string;
+    timestamp: string;
+  }> = (transcriptInput ?? []).map((t) => ({
+    role: t.role,
+    text: t.text,
+    content: t.content,
+    timestamp: t.timestamp ?? nowIso,
+  }));
+  if (finalTranscript.length > 0) {
+    const validation = validateTranscript(finalTranscript);
+
+    // Record transcript anomaly SLO
+    await recordSLOEvent("transcript.anomaly.rate", validation.valid);
+
+    if (!validation.valid || validation.issues.length > 0) {
+      console.warn(JSON.stringify({ event: "transcript_quality_issues", interviewId: id, issues: validation.issues, severity: "warning", timestamp: new Date().toISOString() }));
+      Sentry.addBreadcrumb({
+        category: "transcript_qa",
+        message: `${validation.issues.length} issue(s): ${validation.issues.map(i => i.type).join(", ")}`,
+        level: "warning",
+      });
+
+      const { repaired, repairs } = repairTranscript(finalTranscript);
+      if (repairs.length > 0) {
+        console.log(`[${id}] Transcript auto-repair: ${repairs.join("; ")}`);
+        finalTranscript = repaired;
+      }
+    }
+  }
+
+  // Normalize to the strict shape diffTurns/appendTurns expect. Each
+  // entry needs {role, content, timestamp}; callers sometimes send
+  // 'text' instead of 'content' and may omit timestamp for the last
+  // partial turn. Fill defaults rather than rejecting.
+  const normalizedTranscript = finalTranscript.map((t) => ({
+    role: t.role,
+    content: t.content ?? t.text ?? "",
+    timestamp: t.timestamp ?? new Date().toISOString(),
+  }));
+
+  // Reconcile any remaining client turns into the canonical ledger
+  const endLedgerSnapshot = await getLedgerSnapshot(id);
+  const remainingTurns = diffTurns(normalizedTranscript, endLedgerSnapshot.latestTurnIndex);
+  if (remainingTurns.length > 0) {
+    await appendTurns(id, remainingTurns, endLedgerSnapshot.turnCount);
+  }
+
+  // Finalize all ledger turns (marks as immutable — no further appends allowed)
+  // Track 2: once this succeeds, mark ledgerStatus='finalized' on the manifest.
+  // On failure, mark integrity_failed — the reconciler will handle the
+  // terminal-failure path after 60 minutes.
+  let ledgerFinalized = false;
+  try {
+    const finalizedCount = await finalizeLedger(id);
+    console.log(`[${id}] Ledger finalized: ${finalizedCount} turns marked immutable`);
+    ledgerFinalized = true;
+  } catch (ledgerErr) {
+    await updateStage(id, {
+      ledgerStatus: "integrity_failed",
+      reason: `ledger_finalize_threw: ${(ledgerErr as Error)?.message ?? "unknown"}`,
+    });
+    // Don't return yet — we still want the catch block to run markFailed
+    // and surface a clear error to the client.
+    throw ledgerErr;
+  }
+
+  // Verify content integrity of finalized ledger
+  const integrityMismatches = await verifyContentIntegrity(id);
+  if (integrityMismatches.length > 0) {
+    console.error(JSON.stringify({ event: "content_integrity_failure", interviewId: id, mismatchCount: integrityMismatches.length, severity: "critical", timestamp: new Date().toISOString() }));
+    if (isEnabled("TIMELINE_OBSERVABILITY")) {
+      recordEvent(id, "anomaly", {
+        type: "content_integrity_failure",
+        mismatchCount: integrityMismatches.length,
+        mismatches: integrityMismatches.slice(0, 5).map(m => ({ turnIndex: m.turnIndex, turnId: m.turnId })),
+      }, endLedgerSnapshot.latestTurnIndex).catch(() => {});
+    }
+    // Track 2: integrity failures mark ledgerStatus='integrity_failed' but
+    // do NOT throw — the old code logged and continued. We preserve that
+    // behavior so we don't worsen current outcomes, but the manifest now
+    // records the true state and the reconciler can surface it.
+    await updateStage(id, {
+      ledgerStatus: "integrity_failed",
+      reason: `integrity_mismatches:${integrityMismatches.length}`,
+    });
+  } else if (ledgerFinalized) {
+    await updateStage(id, { ledgerStatus: "finalized", reason: "ledger_finalized" });
+  }
+
+  // Track 2: evaluate the recording pipeline state up front so we can
+  // record the correct recordingStatus on the manifest. The recording
+  // finalization itself runs independently (client-driven via the
+  // /api/interviews/[id]/recording route) so we only REPORT what state
+  // it's in, not drive it from here.
+  const currentRecordingState = interview.recordingState;
+  const hasRecordingUrl = interview.recordingUrl !== null;
+  let recordingStatus: RecordingStatus;
+  if (!hasRecordingUrl) {
+    recordingStatus = "not_applicable";
+  } else if (currentRecordingState === "COMPLETE" || currentRecordingState === "VERIFIED") {
+    recordingStatus = "merged";
+  } else if (currentRecordingState === "FINALIZING") {
+    recordingStatus = "finalizing";
+  } else if (currentRecordingState === "UPLOADING") {
+    recordingStatus = "uploading";
+  } else {
+    // Unknown / null state while recordingUrl is set — treat as failed so
+    // the preflight refuses to play a mystery recording.
+    recordingStatus = "failed";
+  }
+  await updateStage(id, { recordingStatus, reason: `recording_state=${currentRecordingState}` });
+
+  // Build denormalized transcript from canonical ledger for backward compatibility
+  const canonicalTurns = await getFullTranscript(id);
+  const denormalizedTranscript = canonicalTurns.map((t) => ({
+    role: t.role,
+    content: t.content,
+    timestamp: t.timestamp.toISOString(),
+  }));
+
+  // Track 2: write the denormalized transcript and validated scores WITHOUT
+  // transitioning to COMPLETED. Status stays at FINALIZING until the
+  // manifest gate passes below. The transcript write itself is safe
+  // because the canonical ledger is authoritative — this is just a
+  // backward-compat convenience copy.
+  await prisma.interview.update({
+    where: { id },
+    data: {
+      transcript: denormalizedTranscript,
+      skillModuleScores: validateModuleScores(moduleScores),
+    },
+  });
+
+  // C3: Persist structured proctoring events BEFORE report trigger
+  const interviewData = await prisma.interview.findUnique({
+    where: { id },
+    select: { integrityEvents: true },
+  });
+  if (interviewData?.integrityEvents && Array.isArray(interviewData.integrityEvents)) {
+    await persistProctoringEvents(id, interviewData.integrityEvents as any[]);
+    await updateStage(id, { auditStatus: "complete" });
+  } else {
+    await updateStage(id, { auditStatus: "complete" });
+  }
+
+  // Record session completion SLO
+  await recordSLOEvent("session.30min_completion.rate", true);
+  // Record no hard-stop (normal completion = success)
+  await recordSLOEvent("session.hard_stop.rate", true);
 
       // Compute and persist memory integrity scorecard before session cleanup
       if (isEnabled("MEMORY_INTEGRITY_SCORECARD")) {
@@ -1097,30 +1312,103 @@ export async function POST(
         }
       }
 
-      // Clean up durable session state and release lock (H5: pass owner token)
-      const endSession = await getSessionState(id);
-      await deleteSessionState(id);
-      await releaseSessionLock(id, endSession?.lockOwnerToken);
+  // Clean up durable session state and release lock (H5: pass owner token)
+  const endSession = await getSessionState(id);
+  await deleteSessionState(id);
+  await releaseSessionLock(id, endSession?.lockOwnerToken);
 
-      // Generate report via durable Inngest queue (with in-process fallback)
-      inngest
-        .send({ name: "interview/completed", data: { interviewId: id } })
-        .catch((err: unknown) => {
-          console.error("Inngest dispatch failed, falling back to in-process:", err);
-          generateReportInBackground(id).catch(console.error);
-        });
-
-      return Response.json({ ok: true, message: "Interview ended" });
-    }
-
-    return Response.json({ error: "Invalid action" }, { status: 400 });
-  } catch (error) {
-    Sentry.captureException(error, { tags: { component: "voice_route" } });
-    console.error("Voice route error:", error);
-    const classified = classifyError(error, { statusCode: 500 });
-    return Response.json(
-      { error: classified.message, code: classified.title, recoverable: classified.recoverable },
-      { status: 500 }
-    );
+  // Track 2: dispatch the report job and record the outcome on the
+  // manifest. The AWAIT here is important — the old code fired and
+  // forgot, which meant an Inngest outage produced a COMPLETED
+  // interview with no report event ever queued. We now await the
+  // dispatch, record reportStatus='pending' on success, or fall back
+  // to in-process generation which at least leaves a chance for the
+  // report to complete. On total failure we mark reportStatus='failed'
+  // and the reconciler will terminal-fail the manifest later.
+  let reportStatus: ReportStatus = "not_started";
+  try {
+    await inngest.send({ name: "interview/completed", data: { interviewId: id } });
+    reportStatus = "pending";
+  } catch (inngestErr) {
+    console.error("Inngest dispatch failed, falling back to in-process:", inngestErr);
+    // Fire-and-forget in-process fallback. If it succeeds it'll set
+    // reportStatus later via the report-generator path; if it fails the
+    // retry cron will pick up the "pending" status we write here.
+    generateReportInBackground(id).catch(console.error);
+    reportStatus = "pending";
   }
+  await updateStage(id, { reportStatus, reason: `inngest_dispatch:${reportStatus}` });
+
+  // Track 2: manifest gate — can we actually transition to COMPLETED?
+  const evaluation = await evaluateManifest(id);
+  if (!evaluation) {
+    // Should never happen — we beginFinalization'd at the top.
+    await markFailed(id, "manifest_missing_at_completion_gate");
+    return {
+      body: {
+        error: "Finalization manifest missing",
+        interviewId: id,
+        recoverable: false,
+      },
+      status: 500,
+    };
+  }
+
+  if (!evaluation.canComplete) {
+    // The manifest says we can't safely mark this COMPLETED. Leave the
+    // interview in FINALIZING — the reconciler cron will pick it up
+    // every 5 minutes and retry the stages that are still failing,
+    // or terminal-fail after 60 minutes.
+    console.warn(JSON.stringify({
+      event: "finalization_not_ready",
+      interviewId: id,
+      missing: evaluation.missing,
+      severity: "warning",
+      timestamp: new Date().toISOString(),
+    }));
+    return {
+      body: {
+        ok: false,
+        status: "FINALIZING",
+        message: "Finalization in progress — reconciler will complete",
+        missing: evaluation.missing,
+      },
+      status: 202,
+    };
+  }
+
+  // Manifest gate passed. Safe to transition to COMPLETED.
+  if (!isValidTransition("FINALIZING", "COMPLETED")) {
+    // Guard against future state-machine changes that would drop this
+    // edge. If it ever does, fail loud instead of silently skipping.
+    await markFailed(id, "state_machine_rejects_finalizing_to_completed");
+    return {
+      body: { error: "State machine refused FINALIZING → COMPLETED", recoverable: false },
+      status: 500,
+    };
+  }
+
+  await prisma.interview.update({
+    where: { id },
+    data: {
+      status: "COMPLETED",
+      completedAt: new Date(),
+    },
+  });
+
+  if (evaluation.degraded) {
+    await markDegraded(id, "completed_with_degraded_recording");
+  } else {
+    await markSatisfied(id, "completed_normally");
+  }
+
+  return {
+    body: {
+      ok: true,
+      message: "Interview ended",
+      status: "COMPLETED",
+      degraded: evaluation.degraded,
+    },
+    status: 200,
+  };
 }

@@ -10,6 +10,22 @@ import { generateReportInBackground } from "@/lib/report-generator";
 import { inngest } from "@/inngest/client";
 import { checkCandidateEligibility } from "@/lib/interview-eligibility";
 import { logInterviewActivity, getClientIp } from "@/lib/interview-audit";
+import { isValidTransition } from "@/lib/interview-state-machine";
+// Track 2: text-fallback path must go through the same atomic-finalization
+// primitives as the voice path. See app/api/interviews/[id]/voice/route.ts
+// for the voice equivalent.
+import {
+  beginFinalization,
+  updateStage,
+  evaluateManifest,
+  markSatisfied,
+  markFailed,
+} from "@/lib/finalization-manifest";
+import {
+  withIdempotentFinalization,
+  extractIdempotencyKey,
+  InvalidIdempotencyKeyError,
+} from "@/lib/finalization-idempotency";
 
 interface TranscriptEntry {
   role: "interviewer" | "candidate";
@@ -118,33 +134,127 @@ export async function POST(
 
     const existingTranscript = (interview.transcript as TranscriptEntry[]) || [];
 
-    // Handle end action
+    // Handle end action — Track 2 atomic finalization
     if (action === "end") {
-      await prisma.interview.update({
-        where: { id },
-        data: {
-          status: "COMPLETED",
-          completedAt: new Date(),
-          ...(integrityEvents ? { integrityEvents } : {}),
-        },
+      // Idempotency key (optional for legacy clients — synthesized if absent).
+      let idempotencyKey: string | null;
+      try {
+        idempotencyKey = extractIdempotencyKey(request.headers);
+      } catch (err) {
+        if (err instanceof InvalidIdempotencyKeyError) {
+          return Response.json({ error: err.message }, { status: 400 });
+        }
+        throw err;
+      }
+      if (!idempotencyKey) {
+        idempotencyKey = `legacy-stream-${id}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+      }
+
+      // Wrap the finalization work in the idempotency helper so a client
+      // retry with the same key gets the cached response.
+      const idemResult = await withIdempotentFinalization(id, idempotencyKey, async () => {
+        // Enter FINALIZING via the state machine. A direct
+        // IN_PROGRESS → COMPLETED is no longer legal (Track 2 Task 8).
+        const currentStatus = interview.status;
+        if (!isValidTransition(currentStatus, "FINALIZING")) {
+          return {
+            body: {
+              error: "Cannot finalize interview from current state",
+              currentStatus,
+              recoverable: false,
+            },
+            status: 409,
+          };
+        }
+
+        await prisma.interview.update({
+          where: { id },
+          data: {
+            status: "FINALIZING",
+            ...(integrityEvents ? { integrityEvents } : {}),
+          },
+        });
+        await beginFinalization(id, { reason: "stream_end_requested" });
+
+        // Text path has no canonical ledger to finalize and no recording.
+        // The transcript is the denormalized JSON that was already written
+        // incrementally on the interview row. Stage statuses reflect this:
+        //   ledgerStatus = 'finalized' (nothing to finalize, treat as done)
+        //   recordingStatus = 'not_applicable'
+        await updateStage(id, {
+          ledgerStatus: "finalized",
+          recordingStatus: "not_applicable",
+          auditStatus: "complete",
+          reason: "text_stream_path",
+        });
+
+        // Audit log: stream ended
+        logInterviewActivity({
+          interviewId: id,
+          action: "interview.stream_ended",
+          userId: interview.candidate.id,
+          userRole: "candidate",
+          ipAddress: getClientIp(request.headers),
+        }).catch(() => {});
+
+        // Dispatch report generation and record the outcome on the
+        // manifest. Same contract as the voice path — we await the
+        // Inngest send (rather than fire-and-forget) so a dispatch
+        // failure actually gets caught and recorded.
+        try {
+          await inngest.send({ name: "interview/completed", data: { interviewId: id } });
+          await updateStage(id, { reportStatus: "pending", reason: "inngest_dispatch:pending" });
+        } catch (inngestErr) {
+          console.error("Inngest dispatch failed, falling back to in-process:", inngestErr);
+          generateReportInBackground(id).catch(console.error);
+          await updateStage(id, { reportStatus: "pending", reason: "inngest_dispatch_fallback" });
+        }
+
+        // Manifest gate: only transition to COMPLETED if the manifest is satisfied.
+        const evaluation = await evaluateManifest(id);
+        if (!evaluation) {
+          await markFailed(id, "manifest_missing_at_completion_gate");
+          return {
+            body: { error: "Finalization manifest missing", recoverable: false },
+            status: 500,
+          };
+        }
+        if (!evaluation.canComplete) {
+          // Leave in FINALIZING — reconciler will finish the job.
+          return {
+            body: {
+              ok: false,
+              status: "FINALIZING",
+              message: "Finalization in progress — reconciler will complete",
+              missing: evaluation.missing,
+            },
+            status: 202,
+          };
+        }
+
+        await prisma.interview.update({
+          where: { id },
+          data: { status: "COMPLETED", completedAt: new Date() },
+        });
+        await markSatisfied(id, "stream_end_completed");
+
+        return {
+          body: {
+            ok: true,
+            status: "COMPLETED",
+            questionsAsked: countQuestionsFromTranscript(existingTranscript),
+          },
+          status: 200,
+        };
       });
 
-      // Audit log: stream ended
-      logInterviewActivity({
-        interviewId: id,
-        action: "interview.stream_ended",
-        userId: interview.candidate.id,
-        userRole: "candidate",
-        ipAddress: getClientIp(request.headers),
-      }).catch(() => {});
-
-      // Generate report via durable Inngest queue (with in-process fallback)
-      inngest
-        .send({ name: "interview/completed", data: { interviewId: id } })
-        .catch((err: unknown) => {
-          console.error("Inngest dispatch failed, falling back to in-process:", err);
-          generateReportInBackground(id).catch(console.error);
-        });
+      // The text client expects a streaming response for its UI. When
+      // finalization succeeded, emit the closing message. When it
+      // couldn't complete (202 / 4xx / 5xx), emit a plain JSON error
+      // so the client can show the correct state.
+      if (idemResult.status !== 200) {
+        return Response.json(idemResult.body, { status: idemResult.status });
+      }
 
       const encoder = new TextEncoder();
       const stream = new ReadableStream({
