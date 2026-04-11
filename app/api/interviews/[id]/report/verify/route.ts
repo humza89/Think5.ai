@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireInterviewAccess, handleAuthError } from "@/lib/auth";
+import { buildInterviewAccessScope, handleAuthError } from "@/lib/auth";
 import { computeEvidenceHash } from "@/lib/evidence-hash";
 
 export async function GET(
@@ -9,10 +9,11 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
-    await requireInterviewAccess(id);
 
-    const interview = await prisma.interview.findUnique({
-      where: { id },
+    // Track-1 sweep: tenant-scoped fetch.
+    const scope = await buildInterviewAccessScope(id);
+    const interview = await prisma.interview.findFirst({
+      where: scope.whereFragment,
       select: {
         transcript: true,
         recordingUrl: true,

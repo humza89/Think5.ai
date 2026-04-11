@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireInterviewAccess, handleAuthError, getAuthenticatedUser } from "@/lib/auth";
+import { buildInterviewAccessScope, handleAuthError } from "@/lib/auth";
 import { logInterviewActivity, getClientIp } from "@/lib/interview-audit";
 
 // DELETE - Revoke a shared report link
@@ -10,19 +10,27 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params;
-    const { user, profile } = await getAuthenticatedUser();
 
-    if (!profile || !["recruiter", "admin"].includes(profile.role)) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
+    // Track-1 sweep: tenant-scoped access + data fetch in one query.
+    // The old code used a two-query dance (auth check, then unscoped
+    // findUnique on interviewReport by interviewId) which meant a
+    // cross-tenant id could reach the DB. Now we resolve the interview
+    // row via the scoped fragment first, which refuses cross-tenant
+    // access at the database layer.
+    const scope = await buildInterviewAccessScope(id);
 
-    await requireInterviewAccess(id);
-
-    const report = await prisma.interviewReport.findUnique({
-      where: { interviewId: id },
-      select: { id: true, shareToken: true },
+    const interviewWithReport = await prisma.interview.findFirst({
+      where: scope.whereFragment,
+      select: {
+        report: { select: { id: true, shareToken: true } },
+      },
     });
 
+    if (!interviewWithReport) {
+      return NextResponse.json({ error: "Interview not found" }, { status: 404 });
+    }
+
+    const report = interviewWithReport.report;
     if (!report) {
       return NextResponse.json({ error: "Report not found" }, { status: 404 });
     }
@@ -39,12 +47,12 @@ export async function DELETE(
       },
     });
 
-    // Audit log
+    // Audit log — reuses the scope we already resolved.
     logInterviewActivity({
       interviewId: id,
       action: "report.share_revoked",
-      userId: user.id,
-      userRole: profile.role,
+      userId: scope.userId,
+      userRole: scope.role,
       ipAddress: getClientIp(request.headers),
     }).catch(() => {});
 

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import {
+  buildInterviewAccessScope,
   requireInterviewAccess,
   handleAuthError,
   getAuthenticatedUser,
@@ -17,73 +18,79 @@ export async function GET(
   try {
     const { id } = await params;
 
-    await requireInterviewAccess(id);
+    // Track-1 sweep: tenant-scoped access check. The scoped findFirst
+    // below is what actually enforces cross-tenant isolation at the DB
+    // layer; a cross-tenant interview id matches no row and we fall
+    // through to 404 with the same shape as a genuine missing row.
+    const scope = await buildInterviewAccessScope(id);
 
-    // Audit trail: log report view
-    const { user, profile } = await getAuthenticatedUser();
-    logInterviewActivity({
-      interviewId: id,
-      action: "report.viewed",
-      userId: user.id,
-      userRole: profile.role,
-      ipAddress: getClientIp(request.headers),
-    }).catch(() => {});
-
-    // All InterviewReport fields (including memoryIntegrityScorecard) are returned
-    // via findUnique + include. No explicit select needed on the report model.
-    const report = await prisma.interviewReport.findUnique({
-      where: { interviewId: id },
-      include: {
-        interview: {
+    // Scoped load: fetch interview + report in a single scoped query.
+    // The report is reached via the Interview relation so the tenant
+    // filter applies transitively. If the caller can't see the
+    // interview, they can't see the report, period.
+    const interviewWithReport = await prisma.interview.findFirst({
+      where: scope.whereFragment,
+      select: {
+        report: true,
+        candidate: {
           select: {
             id: true,
-            candidateId: true,
-            status: true,
-            type: true,
-            duration: true,
-            overallScore: true,
-            startedAt: true,
-            completedAt: true,
-            candidate: {
-              select: {
-                id: true,
-                fullName: true,
-                currentTitle: true,
-                currentCompany: true,
-              },
-            },
-            template: {
-              select: { isShadow: true },
-            },
+            fullName: true,
+            currentTitle: true,
+            currentCompany: true,
           },
         },
+        id: true,
+        candidateId: true,
+        status: true,
+        type: true,
+        duration: true,
+        overallScore: true,
+        startedAt: true,
+        completedAt: true,
+        template: { select: { isShadow: true } },
       },
     });
 
-    if (!report) {
+    if (!interviewWithReport?.report) {
       return NextResponse.json(
         { error: "Report not found for this interview" },
         { status: 404 }
       );
     }
 
-    // Shadow template reports are only visible to admins
-    if (report.interview?.template?.isShadow) {
-      const { profile } = await getAuthenticatedUser();
-      if (profile?.role !== "admin") {
-        return NextResponse.json(
-          { error: "Report not found for this interview" },
-          { status: 404 }
-        );
-      }
+    // Shadow template reports are only visible to admins. The scope
+    // already told us the caller's role, so no extra auth round-trip.
+    if (interviewWithReport.template?.isShadow && !scope.isAdmin) {
+      return NextResponse.json(
+        { error: "Report not found for this interview" },
+        { status: 404 }
+      );
     }
 
+    // Audit trail: log report view AFTER the scoped query so forbidden
+    // access attempts don't pollute the audit log with noise.
+    logInterviewActivity({
+      interviewId: id,
+      action: "report.viewed",
+      userId: scope.userId,
+      userRole: scope.role,
+      ipAddress: getClientIp(request.headers),
+    }).catch(() => {});
+
+    // Reshape to the legacy response shape so existing clients don't break.
+    const { report, ...interviewScalar } = interviewWithReport;
+    const responseReport = {
+      ...report,
+      interview: interviewScalar,
+    };
+
     // Add review banner for pending reviews
-    const reviewBanner = report.reviewStatus === "PENDING_REVIEW"
+    const reviewBanner = responseReport.reviewStatus === "PENDING_REVIEW"
       ? "AI-generated assessment, pending human review"
       : null;
 
-    return NextResponse.json({ ...report, reviewBanner });
+    return NextResponse.json({ ...responseReport, reviewBanner });
   } catch (error) {
     const { error: message, status } = handleAuthError(error);
     console.error("Error fetching interview report:", error);
@@ -201,6 +208,26 @@ export async function POST(
         jobMatchScore: reportData.jobMatchScore,
         requirementMatches: reportData.requirementMatches as any,
         environmentFitNotes: reportData.environmentFitNotes,
+        // P0-2: Store raw scores for audit/recalibration
+        rawScores: {
+          domainExpertise: reportData.domainExpertise,
+          clarityStructure: reportData.clarityStructure,
+          problemSolving: reportData.problemSolving,
+          communicationScore: reportData.communicationScore,
+          measurableImpact: reportData.measurableImpact,
+          professionalExperience: reportData.professionalExperience,
+          roleFit: reportData.roleFit,
+          culturalFit: reportData.culturalFit,
+          thinkingJudgment: reportData.thinkingJudgment,
+          overallScore: reportData.overallScore,
+          integrityScore: reportData.integrityScore,
+        },
+        // P2-4: Hallucination metrics (populated by grounding gate if available)
+        groundingScore: ((reportData as unknown as Record<string, unknown>).groundingScore as number | null) ?? null,
+        totalClaims: ((reportData as unknown as Record<string, unknown>).totalClaims as number | null) ?? null,
+        unsupportedClaimCount: ((reportData as unknown as Record<string, unknown>).unsupportedClaimCount as number | null) ?? null,
+        gateViolationCount: ((reportData as unknown as Record<string, unknown>).gateViolationCount as number | null) ?? null,
+        gateViolationTypes: ((reportData as unknown as Record<string, unknown>).gateViolationTypes ?? null) as any,
       },
     });
 

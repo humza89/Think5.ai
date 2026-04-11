@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireInterviewAccess, handleAuthError, getAuthenticatedUser } from "@/lib/auth";
+import { buildInterviewAccessScope, handleAuthError, getAuthenticatedUser } from "@/lib/auth";
 import { logInterviewActivity, getClientIp } from "@/lib/interview-audit";
 
 // POST - Submit a review decision for an interview report
@@ -10,13 +10,29 @@ export async function POST(
 ) {
   try {
     const { id } = await params;
-    const { user, profile } = await getAuthenticatedUser();
 
-    if (!profile || !["recruiter", "admin", "hiring_manager"].includes(profile.role)) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    // Track-1 sweep: tenant-scoped access. The scope helper already
+    // rejects anyone who isn't recruiter / hiring_manager / admin with
+    // a 404, so the role check that used to live above is now folded
+    // into the scope. We still need profile.email + user.id for the
+    // review-decision record below — resolve them via the scope.
+    const scope = await buildInterviewAccessScope(id);
+
+    // Existence check: if the caller can't see this interview, 404 early
+    // before touching the body or validation logic.
+    const interviewExists = await prisma.interview.findFirst({
+      where: scope.whereFragment,
+      select: { id: true },
+    });
+    if (!interviewExists) {
+      return NextResponse.json({ error: "Interview not found" }, { status: 404 });
     }
 
-    await requireInterviewAccess(id);
+    // Review decisions include the reviewer's email on the record for
+    // audit, so we still need the profile — but we only fetch it AFTER
+    // the scoped check so forbidden callers don't cause extra Supabase
+    // round-trips.
+    const { user, profile } = await getAuthenticatedUser();
 
     const body = await request.json();
     const { decision, overrideReason, newRecommendation } = body;
@@ -108,12 +124,22 @@ export async function POST(
 
 // GET - List review decisions for an interview
 export async function GET(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { id } = await params;
-    await requireInterviewAccess(id);
+
+    // Track-1 sweep: tenant-scoped access. If the caller can't see the
+    // interview, they cannot enumerate its review decisions.
+    const scope = await buildInterviewAccessScope(id);
+    const interview = await prisma.interview.findFirst({
+      where: scope.whereFragment,
+      select: { id: true },
+    });
+    if (!interview) {
+      return NextResponse.json({ error: "Interview not found" }, { status: 404 });
+    }
 
     const decisions = await prisma.reviewDecision.findMany({
       where: { interviewId: id },
