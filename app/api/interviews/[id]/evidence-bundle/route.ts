@@ -7,7 +7,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireInterviewAccess, handleAuthError, getAuthenticatedUser } from "@/lib/auth";
+import { buildInterviewAccessScope, requireInterviewAccess, handleAuthError, getAuthenticatedUser } from "@/lib/auth";
 import { logInterviewActivity, getClientIp } from "@/lib/interview-audit";
 
 // GET — Export evidence bundle
@@ -17,15 +17,28 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
-    await requireInterviewAccess(id);
 
-    // Audit trail: log evidence bundle access
-    const { user, profile } = await getAuthenticatedUser();
+    // Track-1 sweep: tenant-scoped access. Evidence bundles contain the
+    // full audit artifact set — transcript hash, scores, legal-hold
+    // status — so a cross-tenant leak here is catastrophic. Enforce
+    // tenant isolation at the DB layer by resolving the bundle via
+    // the scoped Interview query.
+    const scope = await buildInterviewAccessScope(id);
+    const interviewScope = await prisma.interview.findFirst({
+      where: scope.whereFragment,
+      select: { id: true, evidenceBundle: true, legalHold: true },
+    });
+    if (!interviewScope) {
+      return NextResponse.json({ error: "Interview not found" }, { status: 404 });
+    }
+
+    // Audit trail: log evidence bundle access AFTER the scoped check
+    // so forbidden callers don't pollute the audit log.
     logInterviewActivity({
       interviewId: id,
       action: "evidence_bundle.accessed",
-      userId: user.id,
-      userRole: profile.role,
+      userId: scope.userId,
+      userRole: scope.role,
       ipAddress: getClientIp(request.headers),
     }).catch(() => {});
 
@@ -34,13 +47,9 @@ export async function GET(
     });
 
     if (!bundle) {
-      // Fall back to JSON blob on Interview if EvidenceBundle record doesn't exist yet
-      const interview = await prisma.interview.findUnique({
-        where: { id },
-        select: { evidenceBundle: true, legalHold: true },
-      });
-
-      if (!interview?.evidenceBundle) {
+      // Fall back to JSON blob on Interview. Use the tenant-scoped row
+      // we already fetched — no second unscoped query.
+      if (!interviewScope.evidenceBundle) {
         return NextResponse.json(
           { error: "Evidence bundle not yet compiled" },
           { status: 404 }
@@ -49,8 +58,8 @@ export async function GET(
 
       return NextResponse.json({
         source: "legacy",
-        bundle: interview.evidenceBundle,
-        legalHold: interview.legalHold,
+        bundle: interviewScope.evidenceBundle,
+        legalHold: interviewScope.legalHold,
       });
     }
 
