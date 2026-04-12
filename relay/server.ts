@@ -23,6 +23,48 @@ import { createServer, IncomingMessage, ServerResponse } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import jwt from "jsonwebtoken";
 import { URL } from "url";
+import * as Sentry from "@sentry/node";
+
+// ── Task 32: Sentry initialization ───────────────────────────────────
+//
+// The relay was completely dark to production error tracking — every
+// Gemini failure, reconnect exhaustion, buffer overflow, and deploy
+// drain was only visible in local console.log on the Fly machine.
+// This init gives ops a single Sentry project to answer "why did this
+// interview's voice drop?" without SSH-ing into a Fly instance.
+//
+// Env vars:
+//   SENTRY_DSN — required in production, optional in dev. If unset,
+//                Sentry is a no-op (init still runs, just doesn't send).
+//   SENTRY_ENVIRONMENT — defaults to NODE_ENV.
+//   SENTRY_TRACES_SAMPLE_RATE — defaults to 0 (no perf tracing yet;
+//                               Task 31 will enable it with OTel).
+
+Sentry.init({
+  dsn: process.env.SENTRY_DSN || "",
+  environment: process.env.SENTRY_ENVIRONMENT || process.env.NODE_ENV || "development",
+  release: process.env.SENTRY_RELEASE || "relay@unknown",
+  // No perf tracing until Task 31 (OTel). Keep this at 0 so we only
+  // send error events, not transaction spans — the relay is a
+  // long-lived process, not a request-response server, so default
+  // tracing produces unbounded transactions.
+  tracesSampleRate: parseFloat(process.env.SENTRY_TRACES_SAMPLE_RATE || "0"),
+  // Scrub Gemini API key from breadcrumbs and events. The key appears
+  // in the Gemini WS URL; Sentry's default PII scrubbing won't catch
+  // it because it's embedded in a URL, not a named field.
+  beforeSend(event) {
+    if (event.request?.url) {
+      event.request.url = event.request.url.replace(/key=[^&]+/, "key=[REDACTED]");
+    }
+    return event;
+  },
+  beforeBreadcrumb(breadcrumb) {
+    if (breadcrumb.data?.url && typeof breadcrumb.data.url === "string") {
+      breadcrumb.data.url = breadcrumb.data.url.replace(/key=[^&]+/, "key=[REDACTED]");
+    }
+    return breadcrumb;
+  },
+});
 
 // ── Configuration ─────────────────────────────────────────────────────
 
@@ -39,12 +81,17 @@ const PING_INTERVAL_MS = 30_000;
 const IDLE_TIMEOUT_MS = 5 * 60 * 1000;
 
 if (!GEMINI_API_KEY) {
-  console.error("FATAL: GEMINI_API_KEY is required");
-  process.exit(1);
+  const err = new Error("FATAL: GEMINI_API_KEY is required");
+  Sentry.captureException(err, { tags: { component: "relay_startup" } });
+  console.error(err.message);
+  // Flush Sentry before exit so the startup failure is actually sent
+  Sentry.flush(2000).finally(() => process.exit(1));
 }
 if (!RELAY_JWT_SECRET) {
-  console.error("FATAL: RELAY_JWT_SECRET is required");
-  process.exit(1);
+  const err = new Error("FATAL: RELAY_JWT_SECRET is required");
+  Sentry.captureException(err, { tags: { component: "relay_startup" } });
+  console.error(err.message);
+  Sentry.flush(2000).finally(() => process.exit(1));
 }
 
 // ── Types ─────────────────────────────────────────────────────────────
@@ -210,6 +257,10 @@ wss.on("connection", (clientWs: WebSocket, req: IncomingMessage) => {
         `[Relay] Gemini WS error for interview=${interviewId}:`,
         err.message
       );
+      Sentry.captureException(err, {
+        tags: { component: "gemini_ws", interviewId },
+        extra: { reconnectAttempts, geminiAlive, clientAlive },
+      });
       geminiAlive = false;
     });
 
@@ -223,6 +274,12 @@ wss.on("connection", (clientWs: WebSocket, req: IncomingMessage) => {
       if (code === 1000 || code === 1001) return;
 
       console.log(`[Relay] Gemini closed unexpectedly (code=${code}) for interview=${interviewId}, attempting reconnect...`);
+      Sentry.addBreadcrumb({
+        category: "gemini",
+        message: `Gemini closed unexpectedly (code=${code})`,
+        level: "warning",
+        data: { interviewId, code, reconnectAttempts },
+      });
       attemptGeminiReconnect();
     });
 
@@ -237,6 +294,22 @@ wss.on("connection", (clientWs: WebSocket, req: IncomingMessage) => {
       console.error(`[Relay] Gemini reconnect exhausted (${MAX_GEMINI_RECONNECTS} attempts) for interview=${interviewId}`);
       metrics.geminiReconnectFailures++;
       messageBuffer.length = 0;
+      // Task 32: this is the terminal provider failure — the interview
+      // will fall back to text mode or end. Capture as a Sentry error
+      // (not just a breadcrumb) so it shows up as its own issue with
+      // interview correlation for root-cause investigation.
+      Sentry.captureMessage(
+        `Gemini reconnect exhausted after ${MAX_GEMINI_RECONNECTS} attempts`,
+        {
+          level: "error",
+          tags: { component: "gemini_reconnect", interviewId },
+          extra: {
+            maxAttempts: MAX_GEMINI_RECONNECTS,
+            bufferedMessages: messageBuffer.length,
+            clientIp: clientIp,
+          },
+        },
+      );
       if (clientAlive) {
         clientWs.close(4502, "Upstream connection error — reconnect exhausted");
       }
@@ -291,6 +364,16 @@ wss.on("connection", (clientWs: WebSocket, req: IncomingMessage) => {
       } else {
         console.warn(`[Relay] Buffer overflow (${MESSAGE_BUFFER_LIMIT} msgs) for interview=${interviewId}, dropping message`);
         metrics.bufferOverflows++;
+        // Task 32: buffer overflows mean audio is being lost. Capture
+        // as a warning (not error) since it's a degradation, not a
+        // crash — but include the interview ID so ops can correlate
+        // with candidate complaints about missing audio.
+        Sentry.addBreadcrumb({
+          category: "relay_buffer",
+          message: `Buffer overflow — message dropped (limit=${MESSAGE_BUFFER_LIMIT})`,
+          level: "warning",
+          data: { interviewId, bufferOverflows: metrics.bufferOverflows },
+        });
       }
     }
   });
@@ -300,6 +383,10 @@ wss.on("connection", (clientWs: WebSocket, req: IncomingMessage) => {
       `[Relay] Client WS error for interview=${interviewId}:`,
       err.message
     );
+    Sentry.captureException(err, {
+      tags: { component: "client_ws", interviewId },
+      extra: { clientIp, source: "client_error" },
+    });
     cleanup("client_error");
   });
 
@@ -363,9 +450,16 @@ process.on("SIGTERM", () => {
     const remaining = wss.clients.size;
     if (remaining > 0) {
       console.warn(`[Relay] Drain timeout — ${remaining} session(s) forcefully terminated`);
+      Sentry.captureMessage(`Drain timeout — ${remaining} session(s) forcefully terminated`, {
+        level: "warning",
+        tags: { component: "relay_drain" },
+        extra: { remaining, drainMs: GRACEFUL_DRAIN_MS },
+      });
     }
     console.log("[Relay] Shutdown complete");
-    process.exit(0);
+    // Task 32: flush Sentry events before exit so drain/startup
+    // errors are actually delivered to the dashboard.
+    Sentry.flush(2000).finally(() => process.exit(0));
   }, GRACEFUL_DRAIN_MS);
 
   // If all clients disconnect early, exit immediately
@@ -374,7 +468,7 @@ process.on("SIGTERM", () => {
       clearInterval(checkDrained);
       clearTimeout(drainTimeout);
       console.log("[Relay] All sessions drained, shutdown complete");
-      process.exit(0);
+      Sentry.flush(2000).finally(() => process.exit(0));
     }
   }, 500);
 });
