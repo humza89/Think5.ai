@@ -179,6 +179,9 @@ export function useVoiceInterview(
   const checkpointResultsRef = useRef<boolean[]>([]); // Rolling window of last 5 checkpoint results
   const consecutiveSetupFailuresRef = useRef(0); // Circuit breaker counter
   const tabHiddenRef = useRef(false); // F5: Tab visibility — suppress heartbeat when hidden
+  // Task 27: relay backpressure flow level. Updated by relay.flow
+  // control frames. The audio processor checks this before sending.
+  const flowLevelRef = useRef<"normal" | "slow" | "pause">("normal");
   const circuitBreakerStateRef = useRef<"CLOSED" | "OPEN" | "HALF_OPEN">("CLOSED"); // F3: Circuit breaker state
   const circuitBreakerTimerRef = useRef<NodeJS.Timeout | null>(null); // F3: OPEN → HALF_OPEN timer
   const endInterviewInternalRef = useRef<(() => void) | null>(null); // Forward ref for checkpoint→endInterview
@@ -378,6 +381,22 @@ export function useVoiceInterview(
         return; // Skip unknown data types
       }
       const data = JSON.parse(text);
+
+      // Task 27: relay control frames (backpressure flow-control).
+      // These are NOT Gemini messages — the relay emits them to signal
+      // buffer pressure so the client can throttle audio send rate.
+      if (typeof data.type === "string" && data.type.startsWith("relay.")) {
+        if (data.type === "relay.flow") {
+          flowLevelRef.current = data.level || "normal";
+          if (data.level === "pause" || data.level === "slow") {
+            console.warn(`[Voice] Relay backpressure: ${data.level} (buffer ${Math.round((data.bufferUtilization ?? 0) * 100)}%)`);
+            setConnectionQuality("poor");
+          } else {
+            setConnectionQuality("good");
+          }
+        }
+        return;
+      }
 
       // Setup complete
       if (data.setupComplete) {
@@ -1712,10 +1731,26 @@ export function useVoiceInterview(
       audioProcessorErrorCountRef.current = 0; // F2: Reset error counter on new processor
 
       // Helper: shared audio send logic (used by both AudioWorklet and ScriptProcessorNode paths)
+      // Task 27: frame-skip counter for the "slow" backpressure level.
+      // When flowLevel is "slow", we skip every other audio frame to
+      // halve the send rate without stopping entirely.
+      let slowModeFrameCount = 0;
+
       const sendPcmToWebSocket = (pcm16Buffer: ArrayBuffer) => {
         if (!isMicEnabledRef.current) return;
         const ws2 = wsRef.current;
         if (!ws2 || ws2.readyState !== WebSocket.OPEN) return;
+
+        // Task 27: relay backpressure throttle.
+        // "pause" → drop ALL outbound audio until the relay signals "normal"
+        // "slow"  → send every other frame (halve bandwidth)
+        // "normal" → send at full rate
+        const flow = flowLevelRef.current;
+        if (flow === "pause") return; // silently drop — relay buffer is near-full
+        if (flow === "slow") {
+          slowModeFrameCount++;
+          if (slowModeFrameCount % 2 !== 0) return; // skip odd frames
+        }
 
         // Convert Int16 PCM ArrayBuffer to base64
         const bytes = new Uint8Array(pcm16Buffer);
