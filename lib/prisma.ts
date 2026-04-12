@@ -27,11 +27,17 @@ if (useMockDb) {
         dbUrl;
     }
 
-    // Ensure connection pool limit is set for serverless environments
-    // PgBouncer handles pooling externally; Prisma pool should be small per-instance
+    // Track 6 Task 23: PgBouncer-tuned connection pool.
+    // Supabase provides PgBouncer (port 6543, transaction mode). Per-instance
+    // pool should be SMALL (default 5) — PgBouncer aggregates across functions.
+    // Previous default 10 × 50 concurrent functions = 500 connections, exceeding
+    // Supabase's typical 60-connection direct limit. Also:
+    //   statement_cache_size=0 → avoids PgBouncer prepared-statement conflicts
+    //   pool_timeout=15 → fail fast under pool exhaustion, generous for cold starts
+    const poolLimit = process.env.PRISMA_CONNECTION_LIMIT || "5";
     if (dbUrl && !dbUrl.includes("connection_limit")) {
-      const separator = dbUrl.includes("?") ? "&" : "?";
-      dbUrl += `${separator}connection_limit=${process.env.PRISMA_CONNECTION_LIMIT || "10"}`;
+      const sep = dbUrl.includes("?") ? "&" : "?";
+      dbUrl += `${sep}connection_limit=${poolLimit}&pool_timeout=15&statement_cache_size=0`;
     }
 
     prismaInstance = globalForPrisma.prisma ?? new PrismaClient({
