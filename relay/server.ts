@@ -23,6 +23,10 @@ import { createServer, IncomingMessage, ServerResponse } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import jwt from "jsonwebtoken";
 import { URL } from "url";
+// Task 28: provider circuit breaker. Shared across all sessions on the
+// instance so a Gemini-wide outage is detected fast (3 failures/60s)
+// instead of each session burning its full reconnect budget independently.
+import { CircuitBreaker, CircuitOpenError } from "./circuit-breaker";
 
 // ── Configuration ─────────────────────────────────────────────────────
 
@@ -31,6 +35,14 @@ const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const RELAY_JWT_SECRET = process.env.RELAY_JWT_SECRET;
 const GEMINI_WS_BASE =
   "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent";
+
+// Task 28: global circuit breaker shared across all sessions.
+// 3 Gemini connection failures within 60s → breaker OPEN for 30s.
+const geminiBreaker = new CircuitBreaker({
+  failureThreshold: 3,
+  failureWindowMs: 60_000,
+  cooldownMs: 30_000,
+});
 
 const MAX_GEMINI_RECONNECTS = 6;
 const RECONNECT_BACKOFF = [1000, 2000, 4000, 8000, 12000, 16000]; // ms
@@ -95,6 +107,10 @@ const httpServer = createServer(
           bufferOverflows: metrics.bufferOverflows,
           uptimeSeconds: Math.round(process.uptime()),
           memoryMB: Math.round(process.memoryUsage().heapUsed / 1024 / 1024),
+          circuitBreaker: {
+            state: geminiBreaker.getState(),
+            recentFailures: geminiBreaker.getFailureCount(),
+          },
         })
       );
       return;
@@ -151,6 +167,42 @@ wss.on("connection", (clientWs: WebSocket, req: IncomingMessage) => {
   const messageBuffer: Array<Buffer | string> = [];
   let cleanedUp = false;
 
+  // Task 27: Application-level backpressure state.
+  // The relay emits relay.flow control frames to the client as the
+  // message buffer fills during Gemini reconnects:
+  //   normal  (buffer <50%)  — client sends at full rate
+  //   slow    (buffer 50-80%) — client halves audio chunk rate
+  //   pause   (buffer ≥80%)  — client stops sending for 500ms windows
+  // The client consumes these via a flowLevelRef in the audio processor.
+  type FlowLevel = "normal" | "slow" | "pause";
+  let currentFlowLevel: FlowLevel = "normal";
+
+  function emitFlowLevel(level: FlowLevel) {
+    if (level === currentFlowLevel) return; // no-op on same level
+    currentFlowLevel = level;
+    if (clientWs.readyState === WebSocket.OPEN) {
+      try {
+        clientWs.send(JSON.stringify({
+          type: "relay.flow",
+          level,
+          bufferUtilization: messageBuffer.length / MESSAGE_BUFFER_LIMIT,
+          timestamp: Date.now(),
+        }));
+      } catch { /* client may already be gone */ }
+    }
+  }
+
+  function checkAndEmitFlowLevel() {
+    const utilization = messageBuffer.length / MESSAGE_BUFFER_LIMIT;
+    if (utilization >= 0.8) {
+      emitFlowLevel("pause");
+    } else if (utilization >= 0.5) {
+      emitFlowLevel("slow");
+    } else {
+      emitFlowLevel("normal");
+    }
+  }
+
   // ── Idle timeout ──
   let idleTimer = setTimeout(() => cleanup("idle_timeout"), IDLE_TIMEOUT_MS);
 
@@ -172,11 +224,42 @@ wss.on("connection", (clientWs: WebSocket, req: IncomingMessage) => {
 
   // ── Connect to Gemini ──
   function connectToGemini(): WebSocket {
+    // Task 28: check the circuit breaker BEFORE opening a new WebSocket.
+    // If the breaker is OPEN, reject immediately — the relay tells the
+    // client "provider unavailable" and the client falls back to text
+    // mode rather than burning through reconnect attempts against a
+    // known-down provider.
+    if (!geminiBreaker.canAttempt()) {
+      console.warn(`[Relay] Circuit breaker ${geminiBreaker.getState()} — blocking Gemini connect for interview=${interviewId}`);
+      // Emit a degraded signal so the client knows WHY the connection
+      // isn't happening (not a generic timeout — a known provider issue).
+      if (clientWs.readyState === WebSocket.OPEN) {
+        try {
+          clientWs.send(JSON.stringify({
+            type: "relay.degraded",
+            reason: "provider_circuit_open",
+            cooldownMs: 30_000,
+            breakerState: geminiBreaker.getState(),
+            timestamp: Date.now(),
+          }));
+        } catch { /* client gone */ }
+      }
+      // Return a dummy WS that immediately closes — the reconnect
+      // handler will see the close and either wait for cooldown or
+      // fall back to text mode.
+      const dummy = new WebSocket("wss://localhost:0");
+      dummy.on("error", () => {}); // swallow — this is intentional
+      setTimeout(() => { try { dummy.close(); } catch {} }, 100);
+      return dummy;
+    }
+
     const geminiUrl = `${GEMINI_WS_BASE}?key=${GEMINI_API_KEY}`;
     const ws = new WebSocket(geminiUrl);
 
     ws.on("open", () => {
       geminiAlive = true;
+      // Task 28: successful connection → reset the breaker.
+      geminiBreaker.recordSuccess();
       console.log(`[Relay] Gemini connected for interview=${interviewId}`);
 
       // If reconnecting, resend the cached setup message first
@@ -193,6 +276,9 @@ wss.on("connection", (clientWs: WebSocket, req: IncomingMessage) => {
         }
       }
       isReconnecting = false;
+      // Task 27: buffer drained, reconnect succeeded → tell the client
+      // it can resume full-rate sending.
+      emitFlowLevel("normal");
     });
 
     ws.on("message", (data: Buffer | string) => {
@@ -211,6 +297,8 @@ wss.on("connection", (clientWs: WebSocket, req: IncomingMessage) => {
         err.message
       );
       geminiAlive = false;
+      // Task 28: feed the failure into the global circuit breaker.
+      geminiBreaker.recordFailure();
     });
 
     ws.on("close", (code) => {
@@ -288,6 +376,9 @@ wss.on("connection", (clientWs: WebSocket, req: IncomingMessage) => {
       // Buffer during initial connect OR reconnect (cap at limit)
       if (messageBuffer.length < MESSAGE_BUFFER_LIMIT) {
         messageBuffer.push(data);
+        // Task 27: emit flow-control signal as buffer fills so the
+        // client can throttle BEFORE overflow drops messages.
+        checkAndEmitFlowLevel();
       } else {
         console.warn(`[Relay] Buffer overflow (${MESSAGE_BUFFER_LIMIT} msgs) for interview=${interviewId}, dropping message`);
         metrics.bufferOverflows++;
