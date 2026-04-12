@@ -326,6 +326,12 @@ model Candidate {
   // Embedding freshness tracking
   embeddingUpdatedAt DateTime?
 
+  // Track 6 Task 24: soft-delete support. The Prisma middleware in
+  // lib/prisma.ts auto-filters reads with WHERE deletedAt IS NULL and
+  // converts delete operations to SET deletedAt = NOW(). Without this
+  // field, the middleware was referencing a non-existent column.
+  deletedAt        DateTime?
+
   createdAt        DateTime        @default(now())
   updatedAt        DateTime        @updatedAt
 
@@ -334,6 +340,7 @@ model Candidate {
   @@index([ariaInterviewed])
   @@index([email])
   @@index([onboardingStatus])
+  @@index([deletedAt])
   @@unique([email, recruiterId])
 }
 
@@ -727,6 +734,9 @@ model Interview {
   interviewCommitments    InterviewCommitment[]
   interviewContradictions InterviewContradiction[]
 
+  // Track 6 Task 24: soft-delete support (see Candidate for context)
+  deletedAt       DateTime?
+
   createdAt       DateTime          @default(now())
   updatedAt       DateTime          @updatedAt
 
@@ -738,6 +748,7 @@ model Interview {
   @@index([reconnectToken])
   @@index([completedAt])
   @@index([companyId])
+  @@index([deletedAt])
 }
 
 // ============================================
@@ -993,9 +1004,13 @@ model InterviewReport {
   // Relations
   views           ReportShareView[]
 
+  // Track 6 Task 24: soft-delete support (see Candidate for context)
+  deletedAt       DateTime?
+
   createdAt       DateTime  @default(now())
 
   @@index([reviewStatus, createdAt])
+  @@index([deletedAt])
 }
 
 // ============================================
