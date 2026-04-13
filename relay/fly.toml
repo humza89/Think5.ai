@@ -11,6 +11,11 @@ primary_region = 'iad'
 
 [env]
   PORT = '8080'
+  # SENTRY_DSN is set via `fly secrets set` (not in fly.toml) because
+  # it's a credential. Listed here as a comment so operators know to
+  # set it. If unset, Sentry is a no-op — no errors are sent.
+  # fly secrets set SENTRY_DSN="https://...@sentry.io/..." --app think5-voice-relay
+  NODE_ENV = 'production'
 
 [http_service]
   internal_port = 8080
