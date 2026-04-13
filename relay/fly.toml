@@ -1,10 +1,18 @@
-# fly.toml app configuration file generated for think5-voice-relay on 2026-03-29T08:49:09-04:00
+# fly.toml — Think5 Voice Relay
 #
-# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+# Track 6 Task 25: hardened for graceful deploy drain + health checks.
+# Track 6 Task 26: multi-region preparation (secondary regions documented
+# but NOT provisioned yet — see docs/ops/multi-region-relay.md).
 #
+# See https://fly.io/docs/reference/configuration/
 
 app = 'think5-voice-relay'
 primary_region = 'iad'
+
+# Secondary regions (NOT auto-provisioned — add manually via fly CLI):
+#   fly regions add lhr  # EU West (London)
+#   fly regions add nrt  # Asia Pacific (Tokyo)
+# See docs/ops/multi-region-relay.md for the full rollout runbook.
 
 [build]
   dockerfile = 'Dockerfile'
@@ -17,20 +25,49 @@ primary_region = 'iad'
   # fly secrets set SENTRY_DSN="https://...@sentry.io/..." --app think5-voice-relay
   NODE_ENV = 'production'
 
+# Track 6 Task 25: rolling deploys. Fly replaces machines one at a time
+# so there's always a live instance during deploy. Combined with
+# min_machines_running=2, this guarantees zero-downtime deploys.
+[deploy]
+  strategy = 'rolling'
+
 [http_service]
   internal_port = 8080
   force_https = true
   auto_stop_machines = 'stop'
   auto_start_machines = true
-  min_machines_running = 1
+  # Track 6 Task 25: bumped from 1 → 2 so rolling deploys always have
+  # at least one warm instance serving active interviews while the other
+  # is being replaced. With min=1, Fly could stop the only instance
+  # and cold-start a new one — killing all in-flight WebSocket sessions.
+  min_machines_running = 2
 
   [http_service.concurrency]
     type = 'connections'
     hard_limit = 1000
-    soft_limit = 800
+    # Track 6 Task 25: lowered from 800 → 400 (matches the Phase 1 PR #1
+    # recommendation). At 512MB per machine, 400 concurrent WebSocket
+    # sessions with per-session message buffers is the safe envelope.
+    soft_limit = 400
+
+  # Track 6 Task 25: HTTP health check. Without this, Fly cannot detect
+  # an unhealthy relay instance — dead machines keep receiving traffic
+  # until they're explicitly killed. The relay's /health endpoint returns
+  # 200 + live metrics (activeConnections, totalMessages, memoryMB, etc.)
+  [[http_service.checks]]
+    grace_period = '10s'
+    interval = '15s'
+    method = 'GET'
+    timeout = '5s'
+    path = '/health'
 
 [[vm]]
   memory = '512mb'
   cpu_kind = 'shared'
   cpus = 1
   memory_mb = 512
+  # Track 6 Task 25: ensure Fly sends SIGTERM (not SIGINT) so the relay's
+  # graceful-drain handler at relay/server.ts:344 fires. kill_timeout must
+  # be > GRACEFUL_DRAIN_MS (10s) in the relay code to avoid premature SIGKILL.
+  kill_signal = 'SIGTERM'
+  kill_timeout = '15s'

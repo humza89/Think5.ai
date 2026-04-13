@@ -125,13 +125,24 @@ const metrics: RelayMetrics = {
 
 // ── HTTP Server (health check) ────────────────────────────────────────
 
+// Track 6 Task 26: expose the Fly region so operators and the client
+// can see which region a session landed in. Fly sets FLY_REGION at
+// runtime on every machine; we surface it on /health and log it at
+// startup.
+const FLY_REGION = process.env.FLY_REGION || "local";
+
 const httpServer = createServer(
   (req: IncomingMessage, res: ServerResponse) => {
     if (req.url === "/health") {
-      res.writeHead(200, { "Content-Type": "application/json" });
+      res.writeHead(200, {
+        "Content-Type": "application/json",
+        // Track 6 Task 26: region header for curl diagnostics.
+        "fly-region": FLY_REGION,
+      });
       res.end(
         JSON.stringify({
           status: "healthy",
+          region: FLY_REGION,
           timestamp: new Date().toISOString(),
           activeConnections: metrics.activeConnections,
           totalConnections: metrics.totalConnections,
@@ -421,6 +432,7 @@ wss.on("connection", (clientWs: WebSocket, req: IncomingMessage) => {
 
 httpServer.listen(PORT, () => {
   console.log(`[Relay] Voice relay server listening on port ${PORT}`);
+  console.log(`[Relay] Region: ${FLY_REGION}`);
   console.log(`[Relay] Health check: http://localhost:${PORT}/health`);
   console.log(`[Relay] WebSocket endpoint: ws://localhost:${PORT}/ws`);
 });
@@ -430,20 +442,47 @@ const GRACEFUL_DRAIN_MS = 10_000; // 10s max wait for sessions to checkpoint
 
 process.on("SIGTERM", () => {
   const activeCount = wss.clients.size;
-  console.log(`[Relay] SIGTERM received, draining ${activeCount} active session(s)...`);
+  console.log(
+    `[Relay] SIGTERM received, draining ${activeCount} active session(s)...` +
+    ` (drain window: ${GRACEFUL_DRAIN_MS}ms, kill_timeout: 15s)`
+  );
 
   // Stop accepting new connections
   httpServer.close(() => {
     console.log("[Relay] HTTP server closed, no new connections accepted");
   });
 
-  // Notify all clients to checkpoint and close gracefully
+  // Track 6 Task 25: send a `relay.draining` control frame BEFORE the
+  // close frame. The client hook (useVoiceInterview.ts) can use this to
+  // distinguish a deploy restart (reconnect immediately) from a session
+  // kill (fall back to text or show an error). Without this signal, the
+  // client sees close code 1001 and may treat it as a terminal close —
+  // meaning the candidate sees a permanent disconnect during a deploy.
   wss.clients.forEach((ws) => {
     if (ws.readyState === WebSocket.OPEN) {
-      // Send a close frame so clients can checkpoint their state
-      ws.close(1001, "Server shutting down");
+      try {
+        ws.send(JSON.stringify({
+          type: "relay.draining",
+          reason: "deploy_restart",
+          drainMs: GRACEFUL_DRAIN_MS,
+          timestamp: Date.now(),
+        }));
+      } catch {
+        /* client may have already disconnected */
+      }
     }
   });
+
+  // Give clients a moment to process the draining frame before closing.
+  // 500ms is enough for one WS round-trip so the client can acknowledge
+  // and start its reconnect flow before the close frame arrives.
+  setTimeout(() => {
+    wss.clients.forEach((ws) => {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.close(1001, "Server shutting down");
+      }
+    });
+  }, 500);
 
   // Force exit after drain timeout
   const drainTimeout = setTimeout(() => {
