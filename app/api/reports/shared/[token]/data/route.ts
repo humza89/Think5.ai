@@ -2,6 +2,45 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { createHash } from "crypto";
 import { cookies } from "next/headers";
+import { checkRateLimit } from "@/lib/rate-limit";
+import { logger } from "@/lib/logger";
+
+/**
+ * Track-1 Task 5: rate limits for shared-report token access.
+ *
+ * The old behavior had NO rate limit on token lookup, making UUID
+ * enumeration feasible and giving a leaked token effectively unlimited
+ * attempts to extract the underlying report. We apply two layers:
+ *
+ * 1. Per-IP: 20 requests per 60s. Legitimate recruiter/hiring-manager
+ *    reviewing a single report does not need more than a few requests.
+ *    This blocks scan-and-guess attacks from any single source.
+ *
+ * 2. Per-token: 60 requests per 5 minutes. Even if an attacker rotates
+ *    source IPs, a single token cannot be hit more than once a few
+ *    seconds on average — a legitimate recruiter reading the page twice
+ *    is fine, a credential-stuffing bot is not.
+ *
+ * Failed/blocked attempts are logged with structured fields so the
+ * audit trail can answer "was this token enumerated at some point".
+ */
+const SHARED_TOKEN_RATE_LIMIT_PER_IP = {
+  maxRequests: 20,
+  windowMs: 60_000,
+};
+
+const SHARED_TOKEN_RATE_LIMIT_PER_TOKEN = {
+  maxRequests: 60,
+  windowMs: 5 * 60_000,
+};
+
+function getClientIp(request: NextRequest): string {
+  const xff = request.headers.get("x-forwarded-for");
+  if (xff) return xff.split(",")[0]!.trim();
+  const realIp = request.headers.get("x-real-ip");
+  if (realIp) return realIp.trim();
+  return "unknown";
+}
 
 /**
  * GET — Fetch shared report data.
@@ -16,6 +55,64 @@ export async function GET(
 ) {
   try {
     const { token } = await params;
+    const ip = getClientIp(request);
+    const userAgent = request.headers.get("user-agent") || "unknown";
+
+    // Track-1 Task 5: rate-limit BEFORE any DB lookup so token enumeration
+    // attacks never touch Postgres. The per-IP key also gates guessing
+    // attempts against the generic lookup endpoint (not tied to a token).
+    const ipCheck = await checkRateLimit(
+      `shared-report:ip:${ip}`,
+      SHARED_TOKEN_RATE_LIMIT_PER_IP,
+    );
+    if (!ipCheck.allowed) {
+      logger.warn(
+        `[SharedReport] Rate-limited by IP ${ip} on token ${token.slice(0, 8)}...`,
+      );
+      return NextResponse.json(
+        { error: "Too many requests" },
+        {
+          status: 429,
+          headers: {
+            "Retry-After": String(Math.ceil((ipCheck.resetAt - Date.now()) / 1000)),
+            "X-RateLimit-Remaining": "0",
+            "X-RateLimit-Reset": String(Math.ceil(ipCheck.resetAt / 1000)),
+          },
+        },
+      );
+    }
+
+    const tokenCheck = await checkRateLimit(
+      `shared-report:token:${token}`,
+      SHARED_TOKEN_RATE_LIMIT_PER_TOKEN,
+    );
+    if (!tokenCheck.allowed) {
+      logger.warn(
+        `[SharedReport] Rate-limited by token ${token.slice(0, 8)}... from IP ${ip}`,
+      );
+      // Audit: persist a failed-access attempt so admins can see the
+      // enumeration pattern later. Token is stored in full for audit
+      // correlation but not echoed to the client.
+      prisma.reportShareView
+        .create({
+          data: {
+            reportId: "rate-limited", // sentinel — no valid report resolved
+            shareToken: token,
+            viewerIp: ip,
+            userAgent,
+          },
+        })
+        .catch(() => {});
+      return NextResponse.json(
+        { error: "Too many requests" },
+        {
+          status: 429,
+          headers: {
+            "Retry-After": String(Math.ceil((tokenCheck.resetAt - Date.now()) / 1000)),
+          },
+        },
+      );
+    }
 
     const report = await prisma.interviewReport.findUnique({
       where: { shareToken: token },
@@ -124,9 +221,7 @@ export async function GET(
       }
     }
 
-    // Log view
-    const ip = request.headers.get("x-forwarded-for")?.split(",")[0] || "unknown";
-    const userAgent = request.headers.get("user-agent") || "unknown";
+    // Log successful view (ip/userAgent already resolved at the top)
     prisma.reportShareView.create({
       data: { reportId: report.id, shareToken: token, viewerIp: ip, userAgent },
     }).catch(() => {});
