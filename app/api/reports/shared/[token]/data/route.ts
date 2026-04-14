@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { createHash } from "crypto";
 import { cookies } from "next/headers";
+// Track 5 Task 21: HMAC-signed cookie verification replaces the old
+// plain-SHA256 scheme. See lib/report-share-cookie.ts.
+import { verifyReportShareCookie } from "@/lib/report-share-cookie";
+import { extractClientIp } from "@/lib/candidate-token-security";
 
 /**
  * GET — Fetch shared report data.
@@ -91,12 +95,11 @@ export async function GET(
       return NextResponse.json({ error: "Link expired" }, { status: 403 });
     }
 
-    // If email-gated, verify the access cookie
+    const ip = extractClientIp(request.headers);
+    const userAgent = request.headers.get("user-agent") || "unknown";
+
+    // Track 5 Task 21: email-gate verification via HMAC cookie.
     if (report.recipientEmail) {
-      if (!process.env.NEXTAUTH_SECRET) {
-        console.error("NEXTAUTH_SECRET is required for email-gated shared reports");
-        return NextResponse.json({ error: "Server configuration error" }, { status: 500 });
-      }
       const cookieStore = await cookies();
       const cookieName = `report-access-${token}`;
       const cookie = cookieStore.get(cookieName);
@@ -108,25 +111,37 @@ export async function GET(
         );
       }
 
-      // Validate cookie value
       const emailHash = createHash("sha256")
         .update(report.recipientEmail.toLowerCase().trim())
         .digest("hex");
-      const expectedCookieValue = createHash("sha256")
-        .update(`${token}:${emailHash}:${process.env.NEXTAUTH_SECRET}`)
-        .digest("hex");
 
-      if (cookie.value !== expectedCookieValue) {
+      const verification = verifyReportShareCookie({
+        token,
+        emailHash,
+        ip,
+        cookieValue: cookie.value,
+      });
+
+      if (!verification.ok) {
+        // Differentiate between "expired" (force re-verify) and other
+        // failures (show generic error). The client uses
+        // requiresEmailVerification to decide whether to open the
+        // re-verify form.
         return NextResponse.json(
-          { error: "Invalid access token", requiresEmailVerification: true },
+          {
+            error:
+              verification.reason === "expired"
+                ? "Access expired. Please verify your email again."
+                : "Invalid access token",
+            requiresEmailVerification: true,
+            reason: verification.reason,
+          },
           { status: 403 }
         );
       }
     }
 
-    // Log view
-    const ip = request.headers.get("x-forwarded-for")?.split(",")[0] || "unknown";
-    const userAgent = request.headers.get("user-agent") || "unknown";
+    // Log view (ip/userAgent already resolved at the top)
     prisma.reportShareView.create({
       data: { reportId: report.id, shareToken: token, viewerIp: ip, userAgent },
     }).catch(() => {});

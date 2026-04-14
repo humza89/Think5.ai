@@ -1,8 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { createHash } from "crypto";
+import { createHash, timingSafeEqual } from "crypto";
 import { cookies } from "next/headers";
 import { checkRateLimit } from "@/lib/rate-limit";
+// Track 5 Task 21: HMAC-signed cookie + CSRF origin check + shorter TTL.
+import {
+  signReportShareCookie,
+  isSameOriginRequest,
+  REPORT_COOKIE_TTL_SECONDS,
+} from "@/lib/report-share-cookie";
+import { extractClientIp } from "@/lib/candidate-token-security";
 
 export async function POST(
   request: NextRequest,
@@ -10,6 +17,18 @@ export async function POST(
 ) {
   try {
     const { token } = await params;
+
+    // Track 5 Task 21: CSRF origin check. The old endpoint accepted
+    // any cross-origin JSON POST because Next.js doesn't auto-enforce
+    // same-origin on Route Handlers. Reject unless Origin matches Host
+    // or is in the REPORT_SHARE_ALLOWED_ORIGINS allowlist.
+    if (!isSameOriginRequest(request.headers)) {
+      return NextResponse.json(
+        { error: "Cross-origin request rejected" },
+        { status: 403 },
+      );
+    }
+
     const body = await request.json();
     const { email } = body;
 
@@ -18,7 +37,7 @@ export async function POST(
     }
 
     // Rate limit check — Redis-backed for serverless durability
-    const ip = request.headers.get("x-forwarded-for")?.split(",")[0] || "unknown";
+    const ip = extractClientIp(request.headers);
     const rateLimitResult = await checkRateLimit(`report-verify:${ip}:${token}`, {
       maxRequests: 5,
       windowMs: 15 * 60 * 1000, // 15 minutes
@@ -56,36 +75,51 @@ export async function POST(
       return NextResponse.json({ error: "No email gate on this report" }, { status: 400 });
     }
 
-    // Server-side hash comparison
+    // Track 5 Task 21: constant-time email comparison via hash.
+    // We still compare hashes (not plaintext) because the old scheme
+    // persisted `recipientEmail` as plaintext and the comparison is
+    // performed against that value directly. Hashing both sides and
+    // using timingSafeEqual stops a short-string compare side channel.
     const inputHash = createHash("sha256")
       .update(email.toLowerCase().trim())
-      .digest("hex");
+      .digest();
     const expectedHash = createHash("sha256")
       .update(report.recipientEmail.toLowerCase().trim())
-      .digest("hex");
+      .digest();
 
-    if (inputHash !== expectedHash) {
+    if (inputHash.length !== expectedHash.length || !timingSafeEqual(inputHash, expectedHash)) {
       return NextResponse.json({ error: "Email does not match" }, { status: 403 });
     }
 
-    // Set HTTP-only cookie for subsequent data fetches
-    const cookieSecret = process.env.NEXTAUTH_SECRET;
-    if (!cookieSecret) {
-      console.error("NEXTAUTH_SECRET is not configured — cannot generate secure report access cookie");
-      return NextResponse.json({ error: "Server configuration error" }, { status: 500 });
+    // Track 5 Task 21: HMAC-signed cookie (replaces plain SHA256 hash).
+    // Cookie format embeds expiry + ipPrefix so a stolen cookie cannot
+    // be replayed past 2 hours or from a different /24. See
+    // lib/report-share-cookie.ts for the signing contract.
+    let cookieValue: string;
+    try {
+      cookieValue = signReportShareCookie({
+        token,
+        emailHash: inputHash.toString("hex"),
+        ip,
+      });
+    } catch (err) {
+      console.error("Failed to sign report share cookie:", err);
+      return NextResponse.json(
+        { error: "Server configuration error" },
+        { status: 500 },
+      );
     }
 
     const cookieStore = await cookies();
     const cookieName = `report-access-${token}`;
-    const cookieValue = createHash("sha256")
-      .update(`${token}:${inputHash}:${cookieSecret}`)
-      .digest("hex");
 
     cookieStore.set(cookieName, cookieValue, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "strict",
-      maxAge: 24 * 60 * 60, // 24 hours
+      // Track 5 Task 21: 2h (down from 24h). A recruiter review session
+      // fits comfortably; anything longer can re-verify.
+      maxAge: REPORT_COOKIE_TTL_SECONDS,
       path: "/",
     });
 

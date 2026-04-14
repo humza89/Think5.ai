@@ -2,6 +2,24 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { checkCandidateEligibility } from "@/lib/interview-eligibility";
 import { logInterviewActivity, getClientIp } from "@/lib/interview-audit";
+import { checkRateLimit } from "@/lib/rate-limit";
+// Track 5 Task 20: bind an access token to the first device that
+// successfully validates and reject mismatches as leaked-URL replays.
+import {
+  computeCandidateFingerprint,
+  fingerprintsMatch,
+  extractClientIp,
+} from "@/lib/candidate-token-security";
+import { logger } from "@/lib/logger";
+
+// Track 5 Task 20: rate limit candidate validate attempts per
+// (ip, interviewId). A brute-force attempt across 10,000 tokens from
+// one IP would need 500 full windows — enough time for on-call to
+// notice via the audit log.
+const VALIDATE_RATE_LIMIT = {
+  maxRequests: 20,
+  windowMs: 60_000,
+} as const;
 
 /**
  * PATCH: Persist device readiness verification result.
@@ -13,6 +31,25 @@ export async function PATCH(
 ) {
   try {
     const { id } = await params;
+
+    // Track 5 Task 20: rate limit token-based PATCH attempts too.
+    const clientIp = extractClientIp(request.headers);
+    const rl = await checkRateLimit(
+      `validate-patch:${clientIp}:${id}`,
+      VALIDATE_RATE_LIMIT,
+    );
+    if (!rl.allowed) {
+      return NextResponse.json(
+        { error: "Too many attempts. Please wait a moment and try again." },
+        {
+          status: 429,
+          headers: {
+            "Retry-After": String(Math.ceil((rl.resetAt - Date.now()) / 1000)),
+          },
+        },
+      );
+    }
+
     const body = await request.json();
     const { accessToken, action } = body;
 
@@ -63,6 +100,30 @@ export async function POST(
 ) {
   const { id } = await params;
   try {
+    // Track 5 Task 20: rate limit brute-force token guessing.
+    // Key = (ip, interviewId) so a legitimate candidate hitting their
+    // own interview won't DOS themselves, but an attacker scanning
+    // tokens for a known id gets throttled after 20 attempts/min.
+    const clientIp = extractClientIp(request.headers);
+    const rl = await checkRateLimit(
+      `validate:${clientIp}:${id}`,
+      VALIDATE_RATE_LIMIT,
+    );
+    if (!rl.allowed) {
+      logger.warn(
+        `[Validate] Rate-limited candidate validate ip=${clientIp} interview=${id}`,
+      );
+      return NextResponse.json(
+        { error: "Too many attempts. Please wait a moment and try again." },
+        {
+          status: 429,
+          headers: {
+            "Retry-After": String(Math.ceil((rl.resetAt - Date.now()) / 1000)),
+          },
+        },
+      );
+    }
+
     const body = await request.json();
     const { consentRecording, consentProctoring, consentPrivacy } = body;
 
@@ -112,6 +173,14 @@ export async function POST(
         job: {
           select: { title: true },
         },
+        company: {
+          select: {
+            name: true,
+            logoUrl: true,
+            companyLogoCdnUrl: true,
+            brandColor: true,
+          },
+        },
       },
     });
 
@@ -123,6 +192,15 @@ export async function POST(
     }
 
     if (interview.accessToken !== accessToken) {
+      // Audit failed attempts so brute-force scans show up in logs
+      // even when rate limit absorbs the volume.
+      logInterviewActivity({
+        interviewId: id,
+        action: "interview.validate_bad_token",
+        userId: "anonymous",
+        userRole: "candidate",
+        ipAddress: clientIp,
+      }).catch(() => {});
       return NextResponse.json(
         { error: "Invalid access token" },
         { status: 401 }
@@ -138,6 +216,55 @@ export async function POST(
         { error: "Access token has expired" },
         { status: 401 }
       );
+    }
+
+    // Track 5 Task 20: device fingerprint binding. The first successful
+    // validate stamps a fingerprint derived from (token + UA + IP /24).
+    // Subsequent validates on the same token MUST match — this is the
+    // leaked-URL replay defense. A legitimate candidate reconnecting
+    // from the same browser / same /24 passes; a URL copied to a
+    // different device / network fails.
+    //
+    // Gated by TRACK_5_TOKEN_BINDING env flag so the rollout is safe.
+    // When enabled, the fingerprint is stamped on first validate and
+    // enforced on every subsequent validate.
+    const tokenBindingEnabled = process.env.TRACK_5_TOKEN_BINDING === "true";
+    if (tokenBindingEnabled) {
+      const currentFingerprint = computeCandidateFingerprint({
+        accessToken,
+        userAgent: request.headers.get("user-agent"),
+        ip: clientIp,
+      });
+      const storedFingerprint = interview.candidateDeviceFingerprint;
+      if (storedFingerprint && !fingerprintsMatch(storedFingerprint, currentFingerprint)) {
+        // Different device — this is either a legitimate cross-device
+        // move (rare for interviews in flight) or a leaked URL. Reject
+        // and emit a high-signal audit event.
+        logger.warn(
+          `[Validate] Fingerprint mismatch interview=${id} ip=${clientIp}`,
+        );
+        logInterviewActivity({
+          interviewId: id,
+          action: "interview.validate_fingerprint_mismatch",
+          userId: interview.candidate.id,
+          userRole: "candidate",
+          ipAddress: clientIp,
+        }).catch(() => {});
+        return NextResponse.json(
+          {
+            error: "This interview link is already active on another device.",
+            recoverable: false,
+          },
+          { status: 403 },
+        );
+      }
+      if (!storedFingerprint) {
+        // First successful validate — stamp the fingerprint.
+        await prisma.interview.update({
+          where: { id },
+          data: { candidateDeviceFingerprint: currentFingerprint },
+        });
+      }
     }
 
     if (interview.status === "COMPLETED") {
@@ -163,8 +290,9 @@ export async function POST(
       );
     }
 
-    // Persist recording consent — REQUIRED, not best-effort
-    if (consentRecording !== undefined || consentProctoring !== undefined || consentPrivacy !== undefined) {
+    // Persist recording consent + accommodations — REQUIRED, not best-effort
+    const { accommodations } = body;
+    if (consentRecording !== undefined || consentProctoring !== undefined || consentPrivacy !== undefined || accommodations) {
       try {
         await prisma.interview.update({
           where: { id },
@@ -172,6 +300,7 @@ export async function POST(
             ...(consentRecording !== undefined && { consentRecording }),
             ...(consentProctoring !== undefined && { consentProctoring }),
             ...(consentPrivacy !== undefined && { consentPrivacy }),
+            ...(accommodations && { accommodations }),
             consentedAt: new Date(),
           },
         });
@@ -226,6 +355,10 @@ export async function POST(
       candidateReportPolicy: interview.template?.candidateReportPolicy || null,
       retakePolicy: interview.template?.retakePolicy || null,
       maxDurationMinutes: interview.template?.maxDurationMinutes || interview.template?.durationMinutes || 30,
+      // P2-2: Company branding for white-labeling
+      companyName: interview.company?.name || null,
+      companyLogo: interview.company?.companyLogoCdnUrl || interview.company?.logoUrl || null,
+      brandColor: interview.company?.brandColor || null,
       // Include transcript for message restoration on resume
       ...(interview.status === "IN_PROGRESS" && interview.transcript
         ? { transcript: interview.transcript }
