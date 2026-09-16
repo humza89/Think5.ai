@@ -23,7 +23,7 @@ const GRID = Array.from({ length: 96 }, (_, i) => ((i * 37) % 23 === 0 ? "flag" 
 const SPARK = [18, 22, 20, 26, 31, 29, 34, 38, 36, 42, 41, 46, 50, 48, 54, 57, 55, 61, 64, 62, 68];
 
 /**
- * Forge: data operations for frontier labs. Dark, perspective-tilted stack
+ * Forge: data operations for frontier labs. Light, perspective-tilted stack
  * of panels: an eval leaderboard, run details with an item-level QA grid,
  * and a floating live expert-QA card.
  */
@@ -33,56 +33,56 @@ export function ForgeMock({ className }: { className?: string }) {
   return (
     <div className={cn("relative [contain:inline-size]", className)}>
       {/* Ambient glow */}
-      <div className="pointer-events-none absolute left-1/2 top-1/2 h-[70%] w-[70%] -translate-x-1/2 -translate-y-1/2 rounded-full bg-brand/25 blur-3xl" aria-hidden="true" />
+      <div className="pointer-events-none absolute left-1/2 top-1/2 h-[70%] w-[70%] -translate-x-1/2 -translate-y-1/2 rounded-full bg-brand/15 blur-3xl" aria-hidden="true" />
 
       <div className="relative aspect-[16/12] [perspective:1600px] md:aspect-[16/11]">
         {/* Back panel: eval leaderboard */}
         <Panel className="absolute left-0 top-0 w-[74%] md:[transform:rotateY(-12deg)_rotateX(5deg)]">
-          <div className="flex items-center gap-2 border-b border-white/10 px-4 py-3">
-            <span className="rounded-md bg-brand/20 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-[#aeb9ff]">Forge</span>
-            <p className="text-[12px] font-medium text-white">RL environment · Clinical reasoning</p>
-            <span className="ml-auto text-[10px] uppercase tracking-[0.14em] text-white/40">Held-out eval</span>
+          <div className="flex items-center gap-2 border-b border-stone px-4 py-3">
+            <span className="rounded-md bg-brand-soft px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-brand">Forge</span>
+            <p className="text-[12px] font-medium text-ink">RL environment · Clinical reasoning</p>
+            <span className="ml-auto text-[10px] uppercase tracking-[0.14em] text-graphite">Held-out eval</span>
           </div>
           <ul className="px-4 py-3">
             {MODELS.map((m, i) => (
               <li key={m.name} className="flex items-center gap-3 py-2">
-                <span className="w-4 text-[10px] tabular-nums text-white/35">{i + 1}</span>
-                <span className="w-[38%] truncate text-[12px] text-white/85">{m.name}</span>
-                <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-white/10">
+                <span className="w-4 text-[10px] tabular-nums text-graphite/70">{i + 1}</span>
+                <span className="w-[38%] truncate text-[12px] text-ink">{m.name}</span>
+                <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-stone">
                   <div className="forge-fill h-full rounded-full bg-gradient-to-r from-brand to-[#8fa0ff]" style={{ width: `${m.score}%`, animationDelay: `${i * 120}ms` }} />
                 </div>
-                <span className="w-12 text-right font-display text-[16px] leading-none text-white">{m.score}%</span>
-                <span className={cn("w-9 text-right text-[10px] tabular-nums", m.delta === "—" ? "text-white/30" : "text-emerald-400")}>{m.delta}</span>
+                <span className="w-12 text-right font-display text-[16px] leading-none text-ink">{m.score}%</span>
+                <span className={cn("w-9 text-right text-[10px] tabular-nums", m.delta === "—" ? "text-graphite/60" : "text-emerald-600")}>{m.delta}</span>
               </li>
             ))}
           </ul>
-          <div className="flex items-center justify-between border-t border-white/10 px-4 py-2.5 text-[10px] text-white/45">
+          <div className="flex items-center justify-between border-t border-stone px-4 py-2.5 text-[10px] text-graphite">
             <span>Trained on Forge batches 4,402–4,471</span>
-            <span className="text-white/70">Δ vs. crowd-sourced data</span>
+            <span className="text-ink">Δ vs. crowd-sourced data</span>
           </div>
         </Panel>
 
         {/* Front panel: run details */}
         <Panel className="forge-float absolute bottom-0 right-0 w-[70%] md:[transform:rotateY(-12deg)_rotateX(5deg)_translateZ(60px)]">
-          <div className="flex items-center gap-2 border-b border-white/10 px-4 py-3">
-            <p className="text-[12px] font-medium text-white">Run details · Batch 4471</p>
-            <span className="ml-auto inline-flex items-center gap-1.5 rounded-full border border-emerald-400/30 bg-emerald-400/10 px-2 py-0.5 text-[10px] font-medium text-emerald-300">
-              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" /> Delivering
+          <div className="flex items-center gap-2 border-b border-stone px-4 py-3">
+            <p className="text-[12px] font-medium text-ink">Run details · Batch 4471</p>
+            <span className="ml-auto inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700">
+              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-500" /> Delivering
             </span>
           </div>
           <div className="grid grid-cols-4 gap-2 px-4 pt-3">
             {STATS.map((s) => (
               <div key={s.label}>
-                <p className="text-[9px] uppercase tracking-[0.14em] text-white/40">{s.label}</p>
-                <p className="mt-0.5 font-display text-[18px] leading-none text-white">{s.value}</p>
+                <p className="text-[9px] uppercase tracking-[0.14em] text-graphite">{s.label}</p>
+                <p className="mt-0.5 font-display text-[18px] leading-none text-ink">{s.value}</p>
               </div>
             ))}
           </div>
           <div className="px-4 pt-3">
             <div className="flex items-baseline justify-between">
-              <p className="text-[10px] uppercase tracking-[0.14em] text-white/40">Expert QA · items 2,801–2,896</p>
-              <p className="text-[10px] text-white/40">
-                <span className="text-emerald-300">pass</span> · <span className="text-amber-300">review</span> · <span className="text-rose-400">flag</span>
+              <p className="text-[10px] uppercase tracking-[0.14em] text-graphite">Expert QA · items 2,801–2,896</p>
+              <p className="text-[10px] text-graphite">
+                <span className="text-emerald-600">pass</span> · <span className="text-amber-600">review</span> · <span className="text-rose-600">flag</span>
               </p>
             </div>
             <div className="mt-2 grid grid-cols-[repeat(24,minmax(0,1fr))] gap-[3px]">
@@ -91,9 +91,9 @@ export function ForgeMock({ className }: { className?: string }) {
                   key={i}
                   className={cn(
                     "forge-cell aspect-square rounded-[2px]",
-                    g === "pass" && "bg-emerald-400/70",
-                    g === "review" && "bg-amber-300/80",
-                    g === "flag" && "bg-rose-400/90"
+                    g === "pass" && "bg-emerald-500/75",
+                    g === "review" && "bg-amber-400",
+                    g === "flag" && "bg-rose-500"
                   )}
                   style={{ animationDelay: `${(i % 24) * 25 + Math.floor(i / 24) * 90}ms` }}
                 />
@@ -102,8 +102,8 @@ export function ForgeMock({ className }: { className?: string }) {
           </div>
           <div className="px-4 pb-3 pt-3">
             <div className="flex items-baseline justify-between">
-              <p className="text-[10px] uppercase tracking-[0.14em] text-white/40">Throughput · items / hr</p>
-              <p className="font-display text-[14px] leading-none text-white">412</p>
+              <p className="text-[10px] uppercase tracking-[0.14em] text-graphite">Throughput · items / hr</p>
+              <p className="font-display text-[14px] leading-none text-ink">412</p>
             </div>
             <svg viewBox="0 0 100 40" preserveAspectRatio="none" className="mt-1.5 h-9 w-full" aria-hidden="true">
               <defs>
@@ -113,7 +113,7 @@ export function ForgeMock({ className }: { className?: string }) {
                 </linearGradient>
               </defs>
               <polygon points={`0,40 ${points} 100,40`} fill="url(#forge-spark)" />
-              <polyline points={points} fill="none" stroke="#8fa0ff" strokeWidth="1.2" vectorEffect="non-scaling-stroke" />
+              <polyline points={points} fill="none" stroke="#1f3dff" strokeWidth="1.2" vectorEffect="non-scaling-stroke" />
             </svg>
           </div>
         </Panel>
@@ -121,18 +121,18 @@ export function ForgeMock({ className }: { className?: string }) {
         {/* Floating card: live expert QA */}
         <Panel className="forge-float-slow absolute right-[2%] top-[4%] w-[36%] md:[transform:rotateY(-12deg)_rotateX(5deg)_translateZ(110px)]">
           <div className="p-3">
-            <p className="text-[10px] uppercase tracking-[0.14em] text-white/45">Expert QA · live</p>
+            <p className="text-[10px] uppercase tracking-[0.14em] text-graphite">Expert QA · live</p>
             <div className="mt-2 flex items-center">
               <div className="flex -space-x-2">
                 {REVIEWERS.map((r, i) => (
-                  <span key={i} className="flex h-7 w-7 items-center justify-center rounded-full border-2 border-[#0f1117] bg-paper font-display text-[11px] text-ink">
+                  <span key={i} className="flex h-7 w-7 items-center justify-center rounded-full border-2 border-paper-2 bg-ink font-display text-[11px] text-paper">
                     {r}
                   </span>
                 ))}
               </div>
-              <span className="ml-auto font-display text-[22px] leading-none text-white">31</span>
+              <span className="ml-auto font-display text-[22px] leading-none text-ink">31</span>
             </div>
-            <p className="mt-1.5 text-[10px] text-white/50">reviewing now · 3 of 3 must agree</p>
+            <p className="mt-1.5 text-[10px] text-graphite">reviewing now · 3 of 3 must agree</p>
           </div>
         </Panel>
       </div>
@@ -155,7 +155,7 @@ function Panel({ className, children }: { className?: string; children: React.Re
   return (
     <div
       className={cn(
-        "overflow-hidden rounded-2xl border border-white/[0.12] bg-[#0f1117]/95 text-white shadow-[0_30px_80px_-20px_rgba(10,10,11,0.8),inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur",
+        "overflow-hidden rounded-2xl border border-stone bg-paper-2/95 text-ink shadow-[0_30px_80px_-30px_rgba(10,10,11,0.35),inset_0_1px_0_rgba(255,255,255,0.9)] backdrop-blur",
         "[transform-style:preserve-3d]",
         className
       )}
