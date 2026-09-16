@@ -12,9 +12,9 @@
     "test:eval": "npx tsx eval/interview-harness.ts",
     "manifest": "tsx scripts/preservation-manifest.ts",
     "manifest:check": "tsx scripts/preservation-manifest.ts && git diff --exit-code -- docs/preservation/manifest.json",
-    "route:matrix": "bash scripts/route-matrix.sh",
-    "test:e2e:golden": "playwright test e2e/golden --project=chromium",
-    "test:e2e:golden:update": "playwright test e2e/golden/visual.spec.ts --project=chromium --update-snapshots",
+    "route:matrix": "npm run manifest && bash scripts/route-matrix.sh",
+    "test:e2e:golden": "npm run manifest && playwright test e2e/golden --project=chromium",
+    "test:e2e:golden:update": "npm run manifest && playwright test e2e/golden/visual.spec.ts --project=chromium --update-snapshots",
     "predeploy": "npx tsx scripts/pre-deploy-check.ts",
     "postinstall": "prisma generate"
   },
