@@ -1,8 +1,16 @@
 import { test, expect, Page } from "@playwright/test";
 
 async function settleVisuals(page: Page) {
+  // Scroll-reveal sections start at opacity 0 and only animate in when
+  // scrolled into view, which a full-page capture never does. The site's
+  // reveal CSS is gated on prefers-reduced-motion: no-preference, so
+  // emulating reduced motion renders every section at full opacity.
+  await page.emulateMedia({ reducedMotion: "reduce" });
   await page.evaluate(async () => {
     await document.fonts.ready;
+    for (const el of Array.from(document.querySelectorAll(".reveal"))) {
+      el.classList.add("is-visible");
+    }
     for (const video of Array.from(document.querySelectorAll("video"))) {
       try {
         video.pause();
