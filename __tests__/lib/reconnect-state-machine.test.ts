@@ -93,8 +93,10 @@ describe("Reconnect State Machine", () => {
   });
 
   describe("MAX_RECOVERY_ATTEMPTS config", () => {
-    it("defaults to 3", () => {
-      expect(MAX_RECOVERY_ATTEMPTS).toBe(3);
+    // Budget was raised from 3 to 10 in e0a762d to match the relay's
+    // Gemini reconnect budget; client and relay must stay aligned.
+    it("defaults to 10, aligned with the relay reconnect budget", () => {
+      expect(MAX_RECOVERY_ATTEMPTS).toBe(10);
     });
   });
 });
