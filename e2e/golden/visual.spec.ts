@@ -25,6 +25,12 @@ async function settleVisuals(page: Page) {
     for (const el of Array.from(document.querySelectorAll(".reveal"))) {
       el.classList.add("is-visible");
     }
+    // Next.js devtools are runner chrome, not Think5 product UI. Keeping the
+    // portal in a golden image would preserve framework state (for example
+    // "N" or "1 Issue") instead of the application surface under test.
+    for (const portal of Array.from(document.querySelectorAll("nextjs-portal"))) {
+      portal.remove();
+    }
     // Footage frames are not code under test and decode non-deterministically.
     for (const video of Array.from(document.querySelectorAll("video"))) {
       (video as HTMLElement).style.visibility = "hidden";
