@@ -1,15 +1,33 @@
 import { test, expect, Page } from "@playwright/test";
 
-async function settleVisuals(page: Page) {
-  // Scroll-reveal sections start at opacity 0 and only animate in when
-  // scrolled into view, which a full-page capture never does. The site's
-  // reveal CSS is gated on prefers-reduced-motion: no-preference, so
-  // emulating reduced motion renders every section at full opacity.
+/**
+ * Must run BEFORE navigation: components read prefers-reduced-motion at
+ * mount (count-up numbers, rotating feeds), so emulating it afterwards
+ * leaves JS-driven motion running and makes captures non-deterministic.
+ */
+async function prepareDeterministicPage(page: Page) {
   await page.emulateMedia({ reducedMotion: "reduce" });
+}
+
+async function settleVisuals(page: Page) {
+  // Remote images (portraits, camera thumbnails) load after domcontentloaded;
+  // capture only once the network is idle and every image has settled.
+  await page.waitForLoadState("networkidle");
   await page.evaluate(async () => {
     await document.fonts.ready;
+    await Promise.all(
+      Array.from(document.images).map((img) =>
+        img.complete ? null : new Promise<void>((r) => { img.onload = () => r(); img.onerror = () => r(); }),
+      ),
+    );
+    // Scroll-reveal sections start at opacity 0 and only animate in when
+    // scrolled into view, which a full-page capture never does.
     for (const el of Array.from(document.querySelectorAll(".reveal"))) {
       el.classList.add("is-visible");
+    }
+    // Footage frames are not code under test and decode non-deterministically.
+    for (const video of Array.from(document.querySelectorAll("video"))) {
+      (video as HTMLElement).style.visibility = "hidden";
     }
     for (const video of Array.from(document.querySelectorAll("video"))) {
       try {
@@ -52,6 +70,7 @@ const publicTargets = [
 
 for (const target of publicTargets) {
   test(`visual public ${target.name}`, async ({ page }) => {
+    await prepareDeterministicPage(page);
     await page.goto(target.route, { waitUntil: "domcontentloaded" });
     await captureBoth(page, target.name);
   });
@@ -64,6 +83,7 @@ test("visual recruiter command surfaces", async ({ browser }) => {
   test.skip(!recruiterStorage, "Authenticated visual baseline requires E2E_RECRUITER_STORAGE_STATE");
   const context = await browser.newContext({ storageState: recruiterStorage! });
   const page = await context.newPage();
+  await prepareDeterministicPage(page);
 
   for (const [name, route] of [
     ["dashboard", "/dashboard"],
@@ -82,6 +102,7 @@ test("visual candidate dashboard", async ({ browser }) => {
   test.skip(!candidateStorage, "Authenticated visual baseline requires E2E_CANDIDATE_STORAGE_STATE");
   const context = await browser.newContext({ storageState: candidateStorage! });
   const page = await context.newPage();
+  await prepareDeterministicPage(page);
   await page.goto("/candidate/dashboard", { waitUntil: "domcontentloaded" });
   await captureBoth(page, "candidate-dashboard");
   await context.close();
