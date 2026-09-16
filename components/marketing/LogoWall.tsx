@@ -1,19 +1,22 @@
 "use client";
 
-import Image from "next/image";
 import { Marquee } from "@/components/ui/marquee";
 import { cn } from "@/lib/utils";
 
+/**
+ * Brand marks are the CC0 Simple Icons set (public/brand-marks/*.svg), rendered as
+ * CSS masks so every mark shares one height and one colour.
+ */
 const LOGOS = [
-  { name: "OpenAI", src: "/Logos/openai-logo-0.png" },
-  { name: "Anthropic", src: "/Logos/anthropic-logo.webp" },
-  { name: "Google DeepMind", src: "/Logos/google-deepmind-logo.png" },
-  { name: "Meta", src: "/Logos/png-clipart-meta-horizontal-logo-social-media-icons.png" },
-  { name: "Microsoft", src: "/Logos/png-clipart-microsoft-logo-company-microsoft-company-text-thumbnail.png" },
-  { name: "Netflix", src: "/Logos/png-clipart-netflix-logo-illustration-netflix-streaming-media-television-show-logo-netflix-logo-television-text.png" },
-  { name: "Cohere", src: "/Logos/Cohere_Logo_2023.png" },
-  { name: "Stability AI", src: "/Logos/stability-ai-tojrcvgxoppi2i0h4fggv.webp" },
-  { name: "Runway", src: "/Logos/Runway_Logo.png" },
+  { name: "OpenAI", file: "openai" },
+  { name: "Anthropic", file: "anthropic" },
+  { name: "Google", file: "google" },
+  { name: "Meta", file: "meta" },
+  { name: "Microsoft", file: "microsoft" },
+  { name: "NVIDIA", file: "nvidia" },
+  { name: "Netflix", file: "netflix" },
+  { name: "Hugging Face", file: "huggingface" },
+  { name: "Mistral AI", file: "mistralai" },
 ];
 
 interface LogoWallProps {
@@ -36,18 +39,26 @@ export function LogoWall({ tone = "dark", label = "Trusted by teams building fro
             <div
               key={logo.name}
               className={cn(
-                "flex h-20 w-44 shrink-0 items-center justify-center rounded-xl border",
-                dark ? "border-white/10 bg-white/[0.03]" : "border-stone bg-paper-2"
+                "flex h-16 w-48 shrink-0 items-center justify-center gap-3 rounded-xl border transition-colors",
+                dark ? "border-white/10 bg-white/[0.03] text-white/70 hover:text-white" : "border-stone bg-paper-2 text-ink/70 hover:text-ink"
               )}
+              title={logo.name}
             >
-              <Image
-                src={logo.src}
-                alt={logo.name}
-                width={120}
-                height={40}
-                className={cn("h-7 w-auto object-contain opacity-70 transition-opacity hover:opacity-100", dark ? "invert grayscale" : "grayscale")}
-                unoptimized
+              <span
+                aria-hidden="true"
+                className="h-6 w-6 shrink-0 bg-current"
+                style={{
+                  maskImage: `url(/brand-marks/${logo.file}.svg)`,
+                  WebkitMaskImage: `url(/brand-marks/${logo.file}.svg)`,
+                  maskRepeat: "no-repeat",
+                  WebkitMaskRepeat: "no-repeat",
+                  maskSize: "contain",
+                  WebkitMaskSize: "contain",
+                  maskPosition: "center",
+                  WebkitMaskPosition: "center",
+                }}
               />
+              <span className="text-[15px] font-medium tracking-[-0.01em]">{logo.name}</span>
             </div>
           ))}
         </Marquee>
