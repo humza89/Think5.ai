@@ -39,7 +39,11 @@ export default function AcceptInvitationPage() {
 function AcceptInvitationContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
-  const token = searchParams.get("token");
+  // Capture the token once. The effect below strips it from the URL so it
+  // never lands in browser history, and Next.js syncs useSearchParams with
+  // history.replaceState, so re-reading it on every render turned it into
+  // null before the candidate could accept (the button became a no-op).
+  const [token] = useState(() => searchParams.get("token"));
 
   const [loading, setLoading] = useState(true);
   const [accepting, setAccepting] = useState(false);
