@@ -25,14 +25,17 @@ async function settleVisuals(page: Page) {
 async function captureBoth(page: Page, name: string) {
   await settleVisuals(page);
   await page.setViewportSize({ width: 1280, height: 900 });
-  await expect(page).toHaveScreenshot(`${name}-1280.png`, {
+  // Soft screenshot assertions still fail the test, but let CI capture the
+  // second viewport (and later surfaces) so a single run produces complete
+  // regression evidence instead of stopping at the first mismatch.
+  await expect.soft(page).toHaveScreenshot(`${name}-1280.png`, {
     fullPage: true,
     animations: "disabled",
     caret: "hide",
   });
 
   await page.setViewportSize({ width: 375, height: 812 });
-  await expect(page).toHaveScreenshot(`${name}-375.png`, {
+  await expect.soft(page).toHaveScreenshot(`${name}-375.png`, {
     fullPage: true,
     animations: "disabled",
     caret: "hide",
