@@ -102,7 +102,7 @@ export default function TeamPage() {
             <Reveal>
               <SectionTitle eyebrow={`0${gi + 1}`} title={g.title} lede={g.lede} />
             </Reveal>
-            <ul className={gi === 0 ? "mt-14 grid gap-x-8 gap-y-14 sm:grid-cols-2 lg:grid-cols-3" : "mt-14 grid gap-x-6 gap-y-12 sm:grid-cols-2 lg:grid-cols-5"}>
+            <ul className={gi === 0 ? "mt-14 grid gap-x-5 gap-y-12 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6" : "mt-14 grid gap-x-6 gap-y-12 sm:grid-cols-2 lg:grid-cols-5"}>
               {g.people.map((p, i) => (
                 <Reveal key={p.slug} as="li" delay={i * 80}>
                   <TeamPortrait slug={p.slug} name={p.name} seed={p.seed} />
