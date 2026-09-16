@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { ArrowUpRight } from "lucide-react";
 import { Container, SectionTitle, Reveal } from "@/components/marketing/primitives";
-import { AriaAvatar } from "@/components/brand/AriaAvatar";
+import { AriaPortrait } from "@/components/brand/AriaPortrait";
 import { AriaMock } from "@/components/marketing/mocks/AriaMock";
 import { NexusMock } from "@/components/marketing/mocks/NexusMock";
 import { ForgeMock } from "@/components/marketing/mocks/ForgeMock";
@@ -68,7 +68,7 @@ export function Platform() {
                     <span className="h-1.5 w-1.5 rounded-full bg-brand" /> {p.badge}
                   </p>
                   <div className="mt-6 flex items-end gap-5">
-                    {p.id === "aria" && <AriaAvatar size={72} className="mb-1" />}
+                    {p.id === "aria" && <AriaPortrait size={72} className="mb-1" />}
                     <h3 className="font-display text-[56px] leading-none tracking-[-0.02em] text-ink md:text-[72px]">{p.name}</h3>
                   </div>
                   <p className="mt-5 max-w-md text-[17px] leading-relaxed text-graphite">{p.description}</p>

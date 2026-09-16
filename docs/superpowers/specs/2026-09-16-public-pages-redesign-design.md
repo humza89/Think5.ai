@@ -166,9 +166,9 @@ Changes:
 2. **New page `/ai-training`** — the Mercor / micro1 style page: hero, expert
    network stats, Forge data engine capabilities, how it works for labs,
    research link, CTA. Added to nav, footer, public routes and CSP rule.
-3. **Aria avatar** — `components/brand/AriaAvatar.tsx`, an animated SVG orb
-   (layered rings, brand-blue core, listening pulse) used wherever Aria is
-   shown. `AriaMock` is rebuilt as a dark, high-tech interview console:
-   avatar, live transcript, telemetry rail (signals, proctoring, latency),
-   waveform and scan line.
+3. **Aria avatar** — Aria is the branded portrait in `public/uploads/Emma.png`,
+   exposed as `components/brand/AriaPortrait.tsx` (circular crop) beside the
+   Aria headings. `AriaMock` is the candidate's view of a live interview in
+   the micro1 video-call style: lavender room, Aria front and centre, timer,
+   greeting caption with a Recording pill, candidate picture-in-picture.
 4. **Product page** copy reflects recruiting; Forge links to `/ai-training`.

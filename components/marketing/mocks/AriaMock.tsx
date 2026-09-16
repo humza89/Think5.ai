@@ -1,142 +1,77 @@
-import { AriaAvatar } from "@/components/brand/AriaAvatar";
+import Image from "next/image";
+import { Clock, Mic } from "lucide-react";
+import { Logo } from "@/components/brand/Logo";
 import { cn } from "@/lib/utils";
 
-const SIGNALS = [
-  { label: "System design", value: 92 },
-  { label: "Depth of reasoning", value: 88 },
-  { label: "Communication", value: 85 },
-  { label: "Role fit", value: 90 },
-];
-
-const BARS = [6, 14, 22, 12, 26, 18, 9, 20, 15, 8, 24, 11, 17, 7, 21, 13, 10, 19, 6, 16];
-
-/** Aria: live AI interview console, drawn in HTML/CSS. Dark surface. */
+/**
+ * Aria: the candidate's view of a live AI interview, drawn in HTML/CSS.
+ * Video-call framing: Aria front and centre, timer, live caption with a
+ * recording indicator, and the candidate's own camera picture-in-picture.
+ */
 export function AriaMock({ className }: { className?: string }) {
   return (
     <div className={cn("relative", className)}>
-      <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-ink text-white shadow-[0_40px_100px_-30px_rgba(10,10,11,0.6)] [contain:inline-size]">
-        {/* Ambient */}
-        <div className="pointer-events-none absolute -left-24 -top-24 h-72 w-72 rounded-full bg-brand/25 blur-3xl" aria-hidden="true" />
-        <div className="dot-grid pointer-events-none absolute inset-0 opacity-30 [mask-image:linear-gradient(to_bottom,black,transparent_70%)]" aria-hidden="true" />
-        {/* Scan line */}
-        <div className="aria-scan pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-brand to-transparent" aria-hidden="true" />
+      <div className="relative aspect-[16/10] overflow-hidden rounded-2xl border border-[#c9cdf5] bg-[#e4e6ff] shadow-[0_40px_100px_-30px_rgba(31,61,255,0.35)] [contain:inline-size]">
+        {/* Room light */}
+        <div
+          className="absolute inset-0"
+          aria-hidden="true"
+          style={{
+            background:
+              "radial-gradient(120% 90% at 50% 100%, #d5d9ff 0%, #e4e6ff 55%, #eceeff 100%)",
+          }}
+        />
 
-        {/* Header */}
-        <div className="relative flex items-center gap-3 border-b border-white/10 px-4 py-3">
-          <AriaAvatar size={36} />
-          <div className="min-w-0">
-            <p className="text-[13px] font-medium leading-none">Aria</p>
-            <p className="mt-1 truncate text-[11px] text-white/50">AI interviewer · Senior backend engineer · Round 1</p>
-          </div>
-          <div className="ml-auto flex items-center gap-2">
-            <span className="hidden items-center gap-1.5 rounded-full border border-white/10 px-2.5 py-1 text-[10px] uppercase tracking-[0.14em] text-white/60 md:inline-flex">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" /> 182 ms
+        {/* Aria: left of centre so the caption sits clear on the right */}
+        <div className="absolute bottom-0 left-0 right-[22%] top-[8%] [mask-image:radial-gradient(ellipse_62%_100%_at_50%_100%,black_60%,transparent_100%)]">
+          <Image
+            src="/uploads/Emma.png"
+            alt="Aria, Think5's AI interviewer"
+            fill
+            sizes="(min-width: 1024px) 560px, 80vw"
+            className="object-contain object-bottom mix-blend-multiply"
+            unoptimized
+          />
+        </div>
+
+        {/* Top bar */}
+        <div className="absolute inset-x-0 top-0 flex items-center justify-between px-4 py-3 md:px-5">
+          <Logo tone="dark" href={null} className="scale-90 origin-left" />
+          <span className="inline-flex items-center gap-1.5 rounded-lg border border-white/70 bg-white/70 px-2.5 py-1 text-[11px] font-medium tabular-nums text-ink backdrop-blur">
+            <Clock className="h-3 w-3" /> 29:59
+          </span>
+        </div>
+
+        {/* Caption + recording */}
+        <div className="absolute right-4 top-[44%] w-[30%] max-w-[220px] md:right-6">
+          <p className="text-[11px] leading-relaxed text-ink md:text-[12px]">
+            Hello! I&apos;m Aria, Think5&apos;s AI interviewer. Welcome, I&apos;m excited to get to know you. Could
+            you briefly introduce yourself?
+          </p>
+          <div className="mt-3 flex h-8 items-center justify-center gap-2 rounded-lg border border-white/80 bg-white/80 text-[11px] font-medium text-ink backdrop-blur">
+            <span className="relative flex h-2 w-2">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-500 opacity-60" />
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-red-500" />
             </span>
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-brand px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.14em] text-white">
-              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" /> Live · 14:02
-            </span>
+            Recording
           </div>
         </div>
 
-        <div className="relative grid md:grid-cols-[1fr_190px]">
-          {/* Transcript */}
-          <div className="space-y-4 p-5">
-            <Turn who="Aria">
-              You mentioned a 40% latency regression after sharding the index. Walk me through how you isolated the cause.
-            </Turn>
-            <Turn who="Candidate" self>
-              I bisected the deploys, then compared p99 traces. The hot path was a cross-shard fan-out serialising on a
-              single coordinator&hellip;
-            </Turn>
-            <div className="flex flex-wrap gap-1.5 pl-1">
-              <Chip>Probing · coordinator bottleneck</Chip>
-              <Chip tone="brand">Follow-up queued</Chip>
-            </div>
-            <Turn who="Aria">
-              Good. If the coordinator were the bottleneck, what would you expect to see in CPU versus wait time?
-            </Turn>
-
-            {/* Waveform */}
-            <div className="flex items-center gap-3 border-t border-white/10 pt-4">
-              <div className="flex h-7 items-center gap-[3px]" aria-hidden="true">
-                {BARS.map((h, i) => (
-                  <span
-                    key={i}
-                    className="w-[3px] rounded-full bg-white/80"
-                    style={{ height: h, transformOrigin: "center", animation: `aria-bar 1.1s ease-in-out ${i * 0.06}s infinite alternate` }}
-                  />
-                ))}
-              </div>
-              <p className="text-[11px] text-white/50">
-                Candidate speaking · <span className="text-white/80">transcribing</span>
-              </p>
-            </div>
-          </div>
-
-          {/* Telemetry rail */}
-          <div className="border-t border-white/10 bg-white/[0.03] p-4 md:border-l md:border-t-0">
-            <p className="text-[10px] font-medium uppercase tracking-[0.16em] text-white/45">Live signal</p>
-            <ul className="mt-3 space-y-3">
-              {SIGNALS.map((s) => (
-                <li key={s.label}>
-                  <div className="flex items-baseline justify-between text-[11px]">
-                    <span className="text-white/75">{s.label}</span>
-                    <span className="font-display text-[18px] leading-none">{s.value}</span>
-                  </div>
-                  <div className="mt-1 h-1 overflow-hidden rounded-full bg-white/10">
-                    <div className="h-full rounded-full bg-brand" style={{ width: `${s.value}%` }} />
-                  </div>
-                </li>
-              ))}
-            </ul>
-
-            <p className="mt-5 text-[10px] font-medium uppercase tracking-[0.16em] text-white/45">Proctoring</p>
-            <ul className="mt-2 space-y-1.5 text-[11px] text-white/70">
-              <li className="flex justify-between"><span>Face match</span><span className="text-emerald-400">✓</span></li>
-              <li className="flex justify-between"><span>Single tab</span><span className="text-emerald-400">✓</span></li>
-              <li className="flex justify-between"><span>Paste events</span><span className="text-white/50">0</span></li>
-              <li className="flex justify-between"><span>Language</span><span className="text-white/50">EN</span></li>
-            </ul>
+        {/* Candidate picture-in-picture */}
+        <div className="absolute bottom-3 left-3 w-[34%] max-w-[200px] overflow-hidden rounded-xl border-2 border-white bg-ink shadow-[0_16px_40px_-16px_rgba(10,10,11,0.6)] md:bottom-4 md:left-4">
+          <div className="relative aspect-[4/3]">
+            <img
+              src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=480&h=360&fit=crop"
+              alt="Candidate camera view"
+              className="absolute inset-0 h-full w-full object-cover"
+            />
+            <span className="absolute bottom-1.5 right-1.5 inline-flex items-center gap-1 rounded-md bg-ink/70 px-1.5 py-0.5 text-[10px] font-medium text-white backdrop-blur">
+              <Mic className="h-2.5 w-2.5" /> You
+            </span>
           </div>
         </div>
       </div>
-
-      <style>{`
-        @keyframes aria-bar { from { transform: scaleY(0.35) } to { transform: scaleY(1) } }
-        @keyframes aria-scan { from { transform: translateY(0) } to { transform: translateY(420px) } }
-        .aria-scan { animation: aria-scan 6s linear infinite; opacity: 0.7; }
-        @media (prefers-reduced-motion: reduce) { .aria-scan { animation: none; } }
-      `}</style>
     </div>
-  );
-}
-
-function Turn({ who, self, children }: { who: string; self?: boolean; children: React.ReactNode }) {
-  return (
-    <div className={cn("max-w-[92%]", self && "ml-auto")}>
-      <p className={cn("mb-1 text-[10px] font-medium uppercase tracking-[0.14em]", self ? "text-right text-white/45" : "text-brand")}>{who}</p>
-      <p
-        className={cn(
-          "rounded-2xl px-4 py-3 text-[13px] leading-relaxed",
-          self ? "rounded-tr-sm bg-white text-ink" : "rounded-tl-sm border border-white/10 bg-white/[0.06] text-white/90 backdrop-blur"
-        )}
-      >
-        {children}
-      </p>
-    </div>
-  );
-}
-
-function Chip({ children, tone = "neutral" }: { children: React.ReactNode; tone?: "neutral" | "brand" }) {
-  return (
-    <span
-      className={cn(
-        "inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-[0.12em]",
-        tone === "brand" ? "border-brand/40 bg-brand/15 text-[#aeb9ff]" : "border-white/10 bg-white/[0.04] text-white/60"
-      )}
-    >
-      {children}
-    </span>
   );
 }
 

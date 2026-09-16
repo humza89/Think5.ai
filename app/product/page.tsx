@@ -6,7 +6,7 @@ import { SiteHeader } from "@/components/marketing/SiteHeader";
 import { SiteFooter } from "@/components/marketing/SiteFooter";
 import { CtaBand } from "@/components/marketing/CtaBand";
 import { Container, Eyebrow, StatRow, Reveal } from "@/components/marketing/primitives";
-import { AriaAvatar } from "@/components/brand/AriaAvatar";
+import { AriaPortrait } from "@/components/brand/AriaPortrait";
 import { AriaMock } from "@/components/marketing/mocks/AriaMock";
 import { NexusMock } from "@/components/marketing/mocks/NexusMock";
 import { ForgeMock } from "@/components/marketing/mocks/ForgeMock";
@@ -143,7 +143,7 @@ export default function ProductPage() {
                     </span>
                   </div>
                   <div className="mt-6 flex items-end gap-5">
-                    {p.id === "aria" && <AriaAvatar size={88} className="mb-1" />}
+                    {p.id === "aria" && <AriaPortrait size={88} className="mb-1" />}
                     <h2 className="font-display text-[64px] leading-none tracking-[-0.02em] text-ink md:text-[96px]">{p.name}</h2>
                   </div>
                   <p className="mt-4 font-display text-[24px] leading-tight text-graphite md:text-[28px]">{p.tagline}</p>
