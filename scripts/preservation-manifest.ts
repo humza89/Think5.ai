@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { matchesRoutePrefix } from "../lib/route-prefix";
 import path from "node:path";
 
 const root = process.cwd();
@@ -124,7 +125,7 @@ const pages = walk(path.join(root, "app"))
     const roles = roleMap
       .filter((entry) => route === entry.prefix || route.startsWith(`${entry.prefix}/`))
       .sort((a, b) => b.prefix.length - a.prefix.length)[0]?.roles ?? [];
-    const isPublic = publicRoutes.includes(route) || publicPrefixes.some((prefix) => route.startsWith(prefix));
+    const isPublic = publicRoutes.includes(route) || publicPrefixes.some((prefix) => matchesRoutePrefix(route, prefix));
     return {
       route,
       file: rel(file),

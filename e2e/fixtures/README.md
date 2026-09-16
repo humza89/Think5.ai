@@ -31,7 +31,8 @@ There is no route-guard bypass, no forged cookie, no test-only auth exemption an
 ## Running it locally
 
 ```bash
-npm run e2e:stack
+# CI has the CLI on PATH (supabase/setup-cli); locally use the npm-distributed binary.
+npx supabase start -x studio,imgproxy,edge-runtime,logflare,vector,realtime,mailpit,postgres-meta,supavisor
 eval "$(npx supabase status -o env)"
 export NEXT_PUBLIC_SUPABASE_URL="$API_URL" NEXT_PUBLIC_SUPABASE_ANON_KEY="$ANON_KEY" \
   SUPABASE_SERVICE_ROLE_KEY="$SERVICE_ROLE_KEY" DATABASE_URL="$DB_URL" DIRECT_URL="$DB_URL" \

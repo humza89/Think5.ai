@@ -532,7 +532,7 @@
     {
       "route": "/interviews",
       "file": "app/(dashboard)/interviews/page.tsx",
-      "public": true,
+      "public": false,
       "roles": [
         "hiring_manager",
         "recruiter"
@@ -543,7 +543,7 @@
     {
       "route": "/interviews/[id]/report",
       "file": "app/(dashboard)/interviews/[id]/report/page.tsx",
-      "public": true,
+      "public": false,
       "roles": [
         "hiring_manager",
         "recruiter"
@@ -554,7 +554,7 @@
     {
       "route": "/interviews/compare",
       "file": "app/(dashboard)/interviews/compare/page.tsx",
-      "public": true,
+      "public": false,
       "roles": [
         "hiring_manager",
         "recruiter"
@@ -565,7 +565,7 @@
     {
       "route": "/interviews/invitations",
       "file": "app/(dashboard)/interviews/invitations/page.tsx",
-      "public": true,
+      "public": false,
       "roles": [
         "hiring_manager",
         "recruiter"
@@ -576,7 +576,7 @@
     {
       "route": "/interviews/templates",
       "file": "app/(dashboard)/interviews/templates/page.tsx",
-      "public": true,
+      "public": false,
       "roles": [
         "hiring_manager",
         "recruiter"
@@ -587,7 +587,7 @@
     {
       "route": "/interviews/templates/[id]",
       "file": "app/(dashboard)/interviews/templates/[id]/page.tsx",
-      "public": true,
+      "public": false,
       "roles": [
         "hiring_manager",
         "recruiter"
@@ -598,7 +598,7 @@
     {
       "route": "/interviews/templates/new",
       "file": "app/(dashboard)/interviews/templates/new/page.tsx",
-      "public": true,
+      "public": false,
       "roles": [
         "hiring_manager",
         "recruiter"
