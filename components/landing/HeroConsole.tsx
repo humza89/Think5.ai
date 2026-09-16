@@ -13,10 +13,10 @@ import { cn } from "@/lib/utils";
  */
 const VIDEO_W = 3840;
 const VIDEO_H = 2876;
-const SCREEN = { x: 0.185, y: 0.507, w: 0.529, h: 0.37 }; // inside the bezel glow on every side (measured per row)
+const SCREEN = { x: 0.185, y: 0.507, w: 0.539, h: 0.37 }; // right edge meets the bezel glow (bright line at 72.9%)
 /** Fixed design canvas; the whole console scales to the screen rectangle. */
 const DESIGN_W = 1040;
-const DESIGN_H = 545; // 1040 / 545 matches the screen rectangle's aspect
+const DESIGN_H = 535; // 1040 / 535 matches the screen rectangle's aspect
 
 /* ── Content ───────────────────────────────────────────────────────────── */
 const STAGES = [
