@@ -11,8 +11,10 @@ import { cn } from "@/lib/utils";
 
 const NAV_LINKS = [
   { href: "/product", label: "Product" },
+  { href: "/recruitment", label: "Recruitment" },
   { href: "/ai-training", label: "AI training" },
   { href: "/research", label: "Research" },
+  { href: "/team", label: "Team" },
   { href: "/contact", label: "Contact" },
 ];
 
@@ -35,7 +37,7 @@ export function SiteHeader(_props: SiteHeaderProps) {
 
   const dashboardHref = profile?.role === "candidate" ? "/candidate/dashboard" : "/dashboard";
 
-  const link = "rounded-full px-4 py-2 text-[14px] font-medium text-graphite transition-colors hover:bg-ink/[0.05] hover:text-ink";
+  const link = "rounded-full px-3.5 py-2 text-[14px] font-medium text-graphite transition-colors hover:bg-ink/[0.05] hover:text-ink";
   const primaryBtn =
     "inline-flex h-9 items-center gap-1.5 rounded-full bg-ink pl-5 pr-4 text-[14px] font-medium text-white transition-colors hover:bg-ink-2";
 

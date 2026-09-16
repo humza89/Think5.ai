@@ -77,7 +77,7 @@ const nextConfig: NextConfig = {
       // Next.js hydrates through inline scripts, so 'unsafe-inline' for
       // script-src is required for these client-rendered pages to work.
       {
-        source: "/(product|ai-training|research|contact|unauthorized|auth)(.*)",
+        source: "/(product|recruitment|team|ai-training|research|contact|unauthorized|auth)(.*)",
         headers: [
           ...securityHeaders,
           { key: "Content-Security-Policy", value: landingCsp },
@@ -93,7 +93,7 @@ const nextConfig: NextConfig = {
       },
       // All other routes: strict CSP (no unsafe-eval)
       {
-        source: "/((?!interview|api|candidate|admin|dashboard|spline-embed|product|ai-training|research|contact|unauthorized|auth).+)",
+        source: "/((?!interview|api|candidate|admin|dashboard|spline-embed|product|recruitment|team|ai-training|research|contact|unauthorized|auth).+)",
         headers: [
           ...securityHeaders,
           { key: "Content-Security-Policy", value: strictCsp },

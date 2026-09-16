@@ -5,13 +5,14 @@ import { Container } from "./primitives";
 const FOOTER_LINKS: Record<string, { name: string; href: string }[]> = {
   Platform: [
     { name: "Product", href: "/product" },
+    { name: "Recruitment", href: "/recruitment" },
     { name: "Aria", href: "/product#aria" },
     { name: "Nexus", href: "/product#nexus" },
     { name: "Forge", href: "/product#forge" },
     { name: "AI training data", href: "/ai-training" },
   ],
   Company: [
-    { name: "About", href: "/about" },
+    { name: "Team", href: "/team" },
     { name: "Careers", href: "/careers" },
     { name: "Blog", href: "/blog" },
     { name: "Research", href: "/research" },
