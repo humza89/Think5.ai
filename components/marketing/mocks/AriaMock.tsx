@@ -62,7 +62,7 @@ export function AriaMock({ className }: { className?: string }) {
         <div className="absolute bottom-3 left-3 w-[34%] max-w-[200px] overflow-hidden rounded-xl border-2 border-paper-2 bg-ink shadow-[0_16px_40px_-16px_rgba(10,10,11,0.6)] md:bottom-4 md:left-4">
           <div className="relative aspect-[4/3]">
             <img
-              src="https://images.unsplash.com/photo-1702669010463-3f2088abc0e9?w=480&h=360&fit=crop&crop=faces"
+              src="https://images.unsplash.com/photo-1758518730642-539be45925a7?w=480&h=360&fit=crop&crop=faces"
               alt="Candidate camera view"
               className="absolute inset-0 h-full w-full object-cover"
             />
