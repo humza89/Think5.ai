@@ -23,7 +23,7 @@ const fixtures = (() => {
 
 const resolved = (entry: PageEntry) => (entry.dynamic ? fixtures[entry.route] : entry.route);
 const publicPages = manifest.pages.filter((p) => p.public && resolved(p));
-const protectedPages = manifest.pages.filter((p) => !p.public && p.roles.length > 0 && resolved(p));
+const protectedPages = manifest.pages.filter((p) => !p.public && resolved(p));
 
 test.describe("preservation route matrix", () => {
   for (const entry of publicPages) {
