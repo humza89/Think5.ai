@@ -1,0 +1,6511 @@
+{
+  "manifestVersion": 1,
+  "pages": [
+    {
+      "route": "/",
+      "file": "app/page.tsx",
+      "public": true,
+      "roles": [],
+      "protectedRouteComponent": false,
+      "dynamic": false
+    },
+    {
+      "route": "/about",
+      "file": "app/about/page.tsx",
+      "public": true,
+      "roles": [],
+      "protectedRouteComponent": false,
+      "dynamic": false
+    },
+    {
+      "route": "/admin",
+      "file": "app/admin/page.tsx",
+      "public": false,
+      "roles": [
+        "admin"
+      ],
+      "protectedRouteComponent": true,
+      "dynamic": false
+    },
+    {
+      "route": "/admin/approvals",
+      "file": "app/admin/approvals/page.tsx",
+      "public": false,
+      "roles": [
+        "admin"
+      ],
+      "protectedRouteComponent": true,
+      "dynamic": false
+    },
+    {
+      "route": "/admin/dev/candidates",
+      "file": "app/admin/dev/candidates/page.tsx",
+      "public": false,
+      "roles": [
+        "admin"
+      ],
+      "protectedRouteComponent": false,
+      "dynamic": false
+    },
+    {
+      "route": "/admin/hm-memberships",
+      "file": "app/(dashboard)/admin/hm-memberships/page.tsx",
+      "public": false,
+      "roles": [
+        "admin"
+      ],
+      "protectedRouteComponent": false,
+      "dynamic": false
+    },
+    {
+      "route": "/admin/interview-analytics",
+      "file": "app/(dashboard)/admin/interview-analytics/page.tsx",
+      "public": false,
+      "roles": [
+        "admin"
+      ],
+      "protectedRouteComponent": false,
+      "dynamic": false
+    },
+    {
+      "route": "/admin/interview-templates",
+      "file": "app/(dashboard)/admin/interview-templates/page.tsx",
+      "public": false,
+      "roles": [
+        "admin"
+      ],
+      "protectedRouteComponent": false,
+      "dynamic": false
+    },
+    {
+      "route": "/admin/operations",
+      "file": "app/admin/operations/page.tsx",
+      "public": false,
+      "roles": [
+        "admin"
+      ],
+      "protectedRouteComponent": false,
+      "dynamic": false
+    },
+    {
+      "route": "/admin/proctoring-events",
+      "file": "app/(dashboard)/admin/proctoring-events/page.tsx",
+      "public": false,
+      "roles": [
+        "admin"
+      ],
+      "protectedRouteComponent": false,
+      "dynamic": false
+    },
+    {
+      "route": "/admin/reliability",
+      "file": "app/(dashboard)/admin/reliability/page.tsx",
+      "public": false,
+      "roles": [
+        "admin"
+      ],
+      "protectedRouteComponent": false,
+      "dynamic": false
+    },
+    {
+      "route": "/admin/shared-reports",
+      "file": "app/(dashboard)/admin/shared-reports/page.tsx",
+      "public": false,
+      "roles": [
+        "admin"
+      ],
+      "protectedRouteComponent": false,
+      "dynamic": false
+    },
+    {
+      "route": "/ai-training",
+      "file": "app/ai-training/page.tsx",
+      "public": true,
+      "roles": [],
+      "protectedRouteComponent": false,
+      "dynamic": false
+    },
+    {
+      "route": "/analytics",
+      "file": "app/(dashboard)/analytics/page.tsx",
+      "public": false,
+      "roles": [
+        "hiring_manager",
+        "recruiter"
+      ],
+      "protectedRouteComponent": false,
+      "dynamic": false
+    },
+    {
+      "route": "/auth/forgot-password",
+      "file": "app/auth/forgot-password/page.tsx",
+      "public": true,
+      "roles": [],
+      "protectedRouteComponent": false,
+      "dynamic": false
+    },
+    {
+      "route": "/auth/reset-password",
+      "file": "app/auth/reset-password/page.tsx",
+      "public": true,
+      "roles": [],
+      "protectedRouteComponent": false,
+      "dynamic": false
+    },
+    {
+      "route": "/auth/signin",
+      "file": "app/auth/signin/page.tsx",
+      "public": true,
+      "roles": [],
+      "protectedRouteComponent": false,
+      "dynamic": false
+    },
+    {
+      "route": "/auth/signup",
+      "file": "app/auth/signup/page.tsx",
+      "public": true,
+      "roles": [],
+      "protectedRouteComponent": false,
+      "dynamic": false
+    },
+    {
+      "route": "/auth/verify",
+      "file": "app/auth/verify/page.tsx",
+      "public": true,
+      "roles": [],
+      "protectedRouteComponent": false,
+      "dynamic": false
+    },
+    {
+      "route": "/candidate",
+      "file": "app/candidate/page.tsx",
+      "public": false,
+      "roles": [
+        "candidate"
+      ],
+      "protectedRouteComponent": false,
+      "dynamic": false
+    },
+    {
+      "route": "/candidate/applications",
+      "file": "app/candidate/applications/page.tsx",
+      "public": false,
+      "roles": [
+        "candidate"
+      ],
+      "protectedRouteComponent": false,
+      "dynamic": false
+    },
+    {
+      "route": "/candidate/career-tools",
+      "file": "app/candidate/career-tools/page.tsx",
+      "public": false,
+      "roles": [
+        "candidate"
+      ],
+      "protectedRouteComponent": false,
+      "dynamic": false
+    },
+    {
+      "route": "/candidate/dashboard",
+      "file": "app/candidate/dashboard/page.tsx",
+      "public": false,
+      "roles": [
+        "candidate"
+      ],
+      "protectedRouteComponent": false,
+      "dynamic": false
+    },
+    {
+      "route": "/candidate/documents",
+      "file": "app/candidate/documents/page.tsx",
+      "public": false,
+      "roles": [
+        "candidate"
+      ],
+      "protectedRouteComponent": false,
+      "dynamic": false
+    },
+    {
+      "route": "/candidate/interview/[id]",
+      "file": "app/candidate/interview/[id]/page.tsx",
+      "public": false,
+      "roles": [
+        "candidate"
+      ],
+      "protectedRouteComponent": false,
+      "dynamic": true
+    },
+    {
+      "route": "/candidate/interview/results/[id]",
+      "file": "app/candidate/interview/results/[id]/page.tsx",
+      "public": false,
+      "roles": [
+        "candidate"
+      ],
+      "protectedRouteComponent": false,
+      "dynamic": true
+    },
+    {
+      "route": "/candidate/interviews",
+      "file": "app/candidate/interviews/page.tsx",
+      "public": false,
+      "roles": [
+        "candidate"
+      ],
+      "protectedRouteComponent": false,
+      "dynamic": false
+    },
+    {
+      "route": "/candidate/interviews/[id]/report",
+      "file": "app/candidate/interviews/[id]/report/page.tsx",
+      "public": false,
+      "roles": [
+        "candidate"
+      ],
+      "protectedRouteComponent": false,
+      "dynamic": true
+    },
+    {
+      "route": "/candidate/jobs",
+      "file": "app/candidate/jobs/page.tsx",
+      "public": false,
+      "roles": [
+        "candidate"
+      ],
+      "protectedRouteComponent": false,
+      "dynamic": false
+    },
+    {
+      "route": "/candidate/jobs/[id]",
+      "file": "app/candidate/jobs/[id]/page.tsx",
+      "public": false,
+      "roles": [
+        "candidate"
+      ],
+      "protectedRouteComponent": false,
+      "dynamic": true
+    },
+    {
+      "route": "/candidate/messaging",
+      "file": "app/candidate/messaging/page.tsx",
+      "public": false,
+      "roles": [
+        "candidate"
+      ],
+      "protectedRouteComponent": false,
+      "dynamic": false
+    },
+    {
+      "route": "/candidate/notifications",
+      "file": "app/candidate/notifications/page.tsx",
+      "public": false,
+      "roles": [
+        "candidate"
+      ],
+      "protectedRouteComponent": false,
+      "dynamic": false
+    },
+    {
+      "route": "/candidate/onboarding",
+      "file": "app/candidate/onboarding/page.tsx",
+      "public": false,
+      "roles": [
+        "candidate"
+      ],
+      "protectedRouteComponent": false,
+      "dynamic": false
+    },
+    {
+      "route": "/candidate/onboarding/status",
+      "file": "app/candidate/onboarding/status/page.tsx",
+      "public": false,
+      "roles": [
+        "candidate"
+      ],
+      "protectedRouteComponent": false,
+      "dynamic": false
+    },
+    {
+      "route": "/candidate/policy",
+      "file": "app/candidate/policy/page.tsx",
+      "public": false,
+      "roles": [
+        "candidate"
+      ],
+      "protectedRouteComponent": false,
+      "dynamic": false
+    },
+    {
+      "route": "/candidate/practice",
+      "file": "app/candidate/practice/page.tsx",
+      "public": false,
+      "roles": [
+        "candidate"
+      ],
+      "protectedRouteComponent": false,
+      "dynamic": false
+    },
+    {
+      "route": "/candidate/profile",
+      "file": "app/candidate/profile/page.tsx",
+      "public": false,
+      "roles": [
+        "candidate"
+      ],
+      "protectedRouteComponent": false,
+      "dynamic": false
+    },
+    {
+      "route": "/candidate/settings",
+      "file": "app/candidate/settings/page.tsx",
+      "public": false,
+      "roles": [
+        "candidate"
+      ],
+      "protectedRouteComponent": false,
+      "dynamic": false
+    },
+    {
+      "route": "/candidate/skills",
+      "file": "app/candidate/skills/page.tsx",
+      "public": false,
+      "roles": [
+        "candidate"
+      ],
+      "protectedRouteComponent": false,
+      "dynamic": false
+    },
+    {
+      "route": "/candidates",
+      "file": "app/(dashboard)/candidates/page.tsx",
+      "public": false,
+      "roles": [
+        "recruiter"
+      ],
+      "protectedRouteComponent": false,
+      "dynamic": false
+    },
+    {
+      "route": "/candidates/[id]",
+      "file": "app/(dashboard)/candidates/[id]/page.tsx",
+      "public": false,
+      "roles": [
+        "recruiter"
+      ],
+      "protectedRouteComponent": false,
+      "dynamic": true
+    },
+    {
+      "route": "/candidates/[id]/activity",
+      "file": "app/(dashboard)/candidates/[id]/activity/page.tsx",
+      "public": false,
+      "roles": [
+        "recruiter"
+      ],
+      "protectedRouteComponent": false,
+      "dynamic": true
+    },
+    {
+      "route": "/candidates/[id]/emails",
+      "file": "app/(dashboard)/candidates/[id]/emails/page.tsx",
+      "public": false,
+      "roles": [
+        "recruiter"
+      ],
+      "protectedRouteComponent": false,
+      "dynamic": true
+    },
+    {
+      "route": "/candidates/[id]/interviews",
+      "file": "app/(dashboard)/candidates/[id]/interviews/page.tsx",
+      "public": false,
+      "roles": [
+        "recruiter"
+      ],
+      "protectedRouteComponent": false,
+      "dynamic": true
+    },
+    {
+      "route": "/candidates/[id]/linkedin",
+      "file": "app/(dashboard)/candidates/[id]/linkedin/page.tsx",
+      "public": false,
+      "roles": [
+        "recruiter"
+      ],
+      "protectedRouteComponent": false,
+      "dynamic": true
+    },
+    {
+      "route": "/candidates/[id]/notes",
+      "file": "app/(dashboard)/candidates/[id]/notes/page.tsx",
+      "public": false,
+      "roles": [
+        "recruiter"
+      ],
+      "protectedRouteComponent": false,
+      "dynamic": true
+    },
+    {
+      "route": "/candidates/[id]/overview",
+      "file": "app/(dashboard)/candidates/[id]/overview/page.tsx",
+      "public": false,
+      "roles": [
+        "recruiter"
+      ],
+      "protectedRouteComponent": false,
+      "dynamic": true
+    },
+    {
+      "route": "/candidates/[id]/resume",
+      "file": "app/(dashboard)/candidates/[id]/resume/page.tsx",
+      "public": false,
+      "roles": [
+        "recruiter"
+      ],
+      "protectedRouteComponent": false,
+      "dynamic": true
+    },
+    {
+      "route": "/clients",
+      "file": "app/(dashboard)/clients/page.tsx",
+      "public": false,
+      "roles": [
+        "recruiter"
+      ],
+      "protectedRouteComponent": false,
+      "dynamic": false
+    },
+    {
+      "route": "/clients/[id]",
+      "file": "app/(dashboard)/clients/[id]/page.tsx",
+      "public": false,
+      "roles": [
+        "recruiter"
+      ],
+      "protectedRouteComponent": false,
+      "dynamic": true
+    },
+    {
+      "route": "/contact",
+      "file": "app/contact/page.tsx",
+      "public": true,
+      "roles": [],
+      "protectedRouteComponent": false,
+      "dynamic": false
+    },
+    {
+      "route": "/dashboard",
+      "file": "app/(dashboard)/dashboard/page.tsx",
+      "public": false,
+      "roles": [
+        "hiring_manager",
+        "recruiter"
+      ],
+      "protectedRouteComponent": false,
+      "dynamic": false
+    },
+    {
+      "route": "/interview/[id]",
+      "file": "app/interview/[id]/page.tsx",
+      "public": true,
+      "roles": [],
+      "protectedRouteComponent": false,
+      "dynamic": true
+    },
+    {
+      "route": "/interview/accept",
+      "file": "app/interview/accept/page.tsx",
+      "public": true,
+      "roles": [],
+      "protectedRouteComponent": false,
+      "dynamic": false
+    },
+    {
+      "route": "/interview/reconnect/[id]",
+      "file": "app/interview/reconnect/[id]/page.tsx",
+      "public": true,
+      "roles": [],
+      "protectedRouteComponent": false,
+      "dynamic": true
+    },
+    {
+      "route": "/interviews",
+      "file": "app/(dashboard)/interviews/page.tsx",
+      "public": false,
+      "roles": [
+        "hiring_manager",
+        "recruiter"
+      ],
+      "protectedRouteComponent": false,
+      "dynamic": false
+    },
+    {
+      "route": "/interviews/[id]/report",
+      "file": "app/(dashboard)/interviews/[id]/report/page.tsx",
+      "public": false,
+      "roles": [
+        "hiring_manager",
+        "recruiter"
+      ],
+      "protectedRouteComponent": false,
+      "dynamic": true
+    },
+    {
+      "route": "/interviews/compare",
+      "file": "app/(dashboard)/interviews/compare/page.tsx",
+      "public": false,
+      "roles": [
+        "hiring_manager",
+        "recruiter"
+      ],
+      "protectedRouteComponent": false,
+      "dynamic": false
+    },
+    {
+      "route": "/interviews/invitations",
+      "file": "app/(dashboard)/interviews/invitations/page.tsx",
+      "public": false,
+      "roles": [
+        "hiring_manager",
+        "recruiter"
+      ],
+      "protectedRouteComponent": true,
+      "dynamic": false
+    },
+    {
+      "route": "/interviews/templates",
+      "file": "app/(dashboard)/interviews/templates/page.tsx",
+      "public": false,
+      "roles": [
+        "hiring_manager",
+        "recruiter"
+      ],
+      "protectedRouteComponent": true,
+      "dynamic": false
+    },
+    {
+      "route": "/interviews/templates/[id]",
+      "file": "app/(dashboard)/interviews/templates/[id]/page.tsx",
+      "public": false,
+      "roles": [
+        "hiring_manager",
+        "recruiter"
+      ],
+      "protectedRouteComponent": true,
+      "dynamic": true
+    },
+    {
+      "route": "/interviews/templates/new",
+      "file": "app/(dashboard)/interviews/templates/new/page.tsx",
+      "public": false,
+      "roles": [
+        "hiring_manager",
+        "recruiter"
+      ],
+      "protectedRouteComponent": true,
+      "dynamic": false
+    },
+    {
+      "route": "/invitations",
+      "file": "app/(dashboard)/invitations/page.tsx",
+      "public": false,
+      "roles": [
+        "recruiter"
+      ],
+      "protectedRouteComponent": false,
+      "dynamic": false
+    },
+    {
+      "route": "/jobs",
+      "file": "app/(dashboard)/jobs/page.tsx",
+      "public": false,
+      "roles": [
+        "hiring_manager",
+        "recruiter"
+      ],
+      "protectedRouteComponent": true,
+      "dynamic": false
+    },
+    {
+      "route": "/jobs/[id]",
+      "file": "app/(dashboard)/jobs/[id]/page.tsx",
+      "public": false,
+      "roles": [
+        "hiring_manager",
+        "recruiter"
+      ],
+      "protectedRouteComponent": true,
+      "dynamic": true
+    },
+    {
+      "route": "/jobs/[id]/edit",
+      "file": "app/(dashboard)/jobs/[id]/edit/page.tsx",
+      "public": false,
+      "roles": [
+        "hiring_manager",
+        "recruiter"
+      ],
+      "protectedRouteComponent": true,
+      "dynamic": true
+    },
+    {
+      "route": "/jobs/new",
+      "file": "app/(dashboard)/jobs/new/page.tsx",
+      "public": false,
+      "roles": [
+        "hiring_manager",
+        "recruiter"
+      ],
+      "protectedRouteComponent": true,
+      "dynamic": false
+    },
+    {
+      "route": "/messaging",
+      "file": "app/(dashboard)/messaging/page.tsx",
+      "public": false,
+      "roles": [
+        "hiring_manager",
+        "recruiter"
+      ],
+      "protectedRouteComponent": false,
+      "dynamic": false
+    },
+    {
+      "route": "/passive-profiles",
+      "file": "app/(dashboard)/passive-profiles/page.tsx",
+      "public": false,
+      "roles": [
+        "recruiter"
+      ],
+      "protectedRouteComponent": true,
+      "dynamic": false
+    },
+    {
+      "route": "/pipeline",
+      "file": "app/(dashboard)/pipeline/page.tsx",
+      "public": false,
+      "roles": [
+        "hiring_manager",
+        "recruiter"
+      ],
+      "protectedRouteComponent": false,
+      "dynamic": false
+    },
+    {
+      "route": "/product",
+      "file": "app/product/page.tsx",
+      "public": true,
+      "roles": [],
+      "protectedRouteComponent": false,
+      "dynamic": false
+    },
+    {
+      "route": "/recruiter/onboarding",
+      "file": "app/recruiter/onboarding/page.tsx",
+      "public": false,
+      "roles": [
+        "recruiter"
+      ],
+      "protectedRouteComponent": false,
+      "dynamic": false
+    },
+    {
+      "route": "/recruiter/onboarding/status",
+      "file": "app/recruiter/onboarding/status/page.tsx",
+      "public": false,
+      "roles": [
+        "recruiter"
+      ],
+      "protectedRouteComponent": false,
+      "dynamic": false
+    },
+    {
+      "route": "/recruitment",
+      "file": "app/recruitment/page.tsx",
+      "public": true,
+      "roles": [],
+      "protectedRouteComponent": false,
+      "dynamic": false
+    },
+    {
+      "route": "/reports/shared/[token]",
+      "file": "app/reports/shared/[token]/page.tsx",
+      "public": true,
+      "roles": [],
+      "protectedRouteComponent": false,
+      "dynamic": true
+    },
+    {
+      "route": "/research",
+      "file": "app/research/page.tsx",
+      "public": true,
+      "roles": [],
+      "protectedRouteComponent": false,
+      "dynamic": false
+    },
+    {
+      "route": "/search",
+      "file": "app/(dashboard)/search/page.tsx",
+      "public": false,
+      "roles": [
+        "recruiter"
+      ],
+      "protectedRouteComponent": false,
+      "dynamic": false
+    },
+    {
+      "route": "/settings",
+      "file": "app/(dashboard)/settings/page.tsx",
+      "public": false,
+      "roles": [
+        "candidate",
+        "hiring_manager",
+        "recruiter"
+      ],
+      "protectedRouteComponent": true,
+      "dynamic": false
+    },
+    {
+      "route": "/settings/api-keys",
+      "file": "app/(dashboard)/settings/api-keys/page.tsx",
+      "public": false,
+      "roles": [
+        "candidate",
+        "hiring_manager",
+        "recruiter"
+      ],
+      "protectedRouteComponent": true,
+      "dynamic": false
+    },
+    {
+      "route": "/settings/notifications",
+      "file": "app/(dashboard)/settings/notifications/page.tsx",
+      "public": false,
+      "roles": [
+        "candidate",
+        "hiring_manager",
+        "recruiter"
+      ],
+      "protectedRouteComponent": true,
+      "dynamic": false
+    },
+    {
+      "route": "/settings/security",
+      "file": "app/(dashboard)/settings/security/page.tsx",
+      "public": false,
+      "roles": [
+        "candidate",
+        "hiring_manager",
+        "recruiter"
+      ],
+      "protectedRouteComponent": true,
+      "dynamic": false
+    },
+    {
+      "route": "/source",
+      "file": "app/(dashboard)/source/page.tsx",
+      "public": false,
+      "roles": [
+        "recruiter"
+      ],
+      "protectedRouteComponent": false,
+      "dynamic": false
+    },
+    {
+      "route": "/talent-pools",
+      "file": "app/(dashboard)/talent-pools/page.tsx",
+      "public": false,
+      "roles": [
+        "recruiter"
+      ],
+      "protectedRouteComponent": false,
+      "dynamic": false
+    },
+    {
+      "route": "/team",
+      "file": "app/(dashboard)/team/page.tsx",
+      "public": false,
+      "roles": [
+        "recruiter"
+      ],
+      "protectedRouteComponent": false,
+      "dynamic": false
+    },
+    {
+      "route": "/unauthorized",
+      "file": "app/unauthorized/page.tsx",
+      "public": true,
+      "roles": [],
+      "protectedRouteComponent": false,
+      "dynamic": false
+    }
+  ],
+  "apis": [
+    {
+      "route": "/api/admin",
+      "file": "app/api/admin/route.ts",
+      "methods": [
+        "GET"
+      ]
+    },
+    {
+      "route": "/api/admin/analytics",
+      "file": "app/api/admin/analytics/route.ts",
+      "methods": [
+        "GET"
+      ]
+    },
+    {
+      "route": "/api/admin/approvals",
+      "file": "app/api/admin/approvals/route.ts",
+      "methods": [
+        "GET"
+      ]
+    },
+    {
+      "route": "/api/admin/approvals/[id]",
+      "file": "app/api/admin/approvals/[id]/route.ts",
+      "methods": [
+        "GET",
+        "PATCH"
+      ]
+    },
+    {
+      "route": "/api/admin/approvals/bulk",
+      "file": "app/api/admin/approvals/bulk/route.ts",
+      "methods": [
+        "POST"
+      ]
+    },
+    {
+      "route": "/api/admin/audit-logs",
+      "file": "app/api/admin/audit-logs/route.ts",
+      "methods": [
+        "GET"
+      ]
+    },
+    {
+      "route": "/api/admin/bias-audit",
+      "file": "app/api/admin/bias-audit/route.ts",
+      "methods": [
+        "GET"
+      ]
+    },
+    {
+      "route": "/api/admin/compliance-report",
+      "file": "app/api/admin/compliance-report/route.ts",
+      "methods": [
+        "GET"
+      ]
+    },
+    {
+      "route": "/api/admin/continuity-scorecard",
+      "file": "app/api/admin/continuity-scorecard/route.ts",
+      "methods": [
+        "GET"
+      ]
+    },
+    {
+      "route": "/api/admin/governance",
+      "file": "app/api/admin/governance/route.ts",
+      "methods": [
+        "GET",
+        "PATCH"
+      ]
+    },
+    {
+      "route": "/api/admin/hm-memberships",
+      "file": "app/api/admin/hm-memberships/route.ts",
+      "methods": [
+        "DELETE",
+        "GET",
+        "POST"
+      ]
+    },
+    {
+      "route": "/api/admin/interviews/bulk-invite",
+      "file": "app/api/admin/interviews/bulk-invite/route.ts",
+      "methods": [
+        "POST"
+      ]
+    },
+    {
+      "route": "/api/admin/interviews/bulk-invite-csv",
+      "file": "app/api/admin/interviews/bulk-invite-csv/route.ts",
+      "methods": [
+        "POST"
+      ]
+    },
+    {
+      "route": "/api/admin/interviews/export-csv",
+      "file": "app/api/admin/interviews/export-csv/route.ts",
+      "methods": [
+        "GET"
+      ]
+    },
+    {
+      "route": "/api/admin/legal-hold",
+      "file": "app/api/admin/legal-hold/route.ts",
+      "methods": [
+        "DELETE",
+        "GET",
+        "POST"
+      ]
+    },
+    {
+      "route": "/api/admin/model-governance",
+      "file": "app/api/admin/model-governance/route.ts",
+      "methods": [
+        "GET",
+        "POST",
+        "PUT"
+      ]
+    },
+    {
+      "route": "/api/admin/operations",
+      "file": "app/api/admin/operations/route.ts",
+      "methods": [
+        "GET"
+      ]
+    },
+    {
+      "route": "/api/admin/proctoring-events",
+      "file": "app/api/admin/proctoring-events/route.ts",
+      "methods": [
+        "GET"
+      ]
+    },
+    {
+      "route": "/api/admin/reliability",
+      "file": "app/api/admin/reliability/route.ts",
+      "methods": [
+        "GET"
+      ]
+    },
+    {
+      "route": "/api/admin/replay/[id]",
+      "file": "app/api/admin/replay/[id]/route.ts",
+      "methods": [
+        "GET"
+      ]
+    },
+    {
+      "route": "/api/admin/retention",
+      "file": "app/api/admin/retention/route.ts",
+      "methods": [
+        "GET",
+        "PATCH",
+        "POST"
+      ]
+    },
+    {
+      "route": "/api/admin/scoring-calibration",
+      "file": "app/api/admin/scoring-calibration/route.ts",
+      "methods": [
+        "GET",
+        "POST"
+      ]
+    },
+    {
+      "route": "/api/admin/shared-reports",
+      "file": "app/api/admin/shared-reports/route.ts",
+      "methods": [
+        "GET"
+      ]
+    },
+    {
+      "route": "/api/admin/sso",
+      "file": "app/api/admin/sso/route.ts",
+      "methods": [
+        "DELETE",
+        "GET",
+        "POST"
+      ]
+    },
+    {
+      "route": "/api/admin/templates",
+      "file": "app/api/admin/templates/route.ts",
+      "methods": [
+        "GET",
+        "PATCH"
+      ]
+    },
+    {
+      "route": "/api/admin/templates/[id]/versions",
+      "file": "app/api/admin/templates/[id]/versions/route.ts",
+      "methods": [
+        "GET",
+        "POST"
+      ]
+    },
+    {
+      "route": "/api/admin/transcript-qa",
+      "file": "app/api/admin/transcript-qa/route.ts",
+      "methods": [
+        "POST"
+      ]
+    },
+    {
+      "route": "/api/admin/users",
+      "file": "app/api/admin/users/route.ts",
+      "methods": [
+        "GET"
+      ]
+    },
+    {
+      "route": "/api/admin/users/[id]",
+      "file": "app/api/admin/users/[id]/route.ts",
+      "methods": [
+        "PATCH"
+      ]
+    },
+    {
+      "route": "/api/admin/webhooks",
+      "file": "app/api/admin/webhooks/route.ts",
+      "methods": [
+        "GET",
+        "POST"
+      ]
+    },
+    {
+      "route": "/api/admin/webhooks/[id]",
+      "file": "app/api/admin/webhooks/[id]/route.ts",
+      "methods": [
+        "DELETE",
+        "PATCH"
+      ]
+    },
+    {
+      "route": "/api/analytics",
+      "file": "app/api/analytics/route.ts",
+      "methods": [
+        "GET"
+      ]
+    },
+    {
+      "route": "/api/analytics/vitals",
+      "file": "app/api/analytics/vitals/route.ts",
+      "methods": [
+        "POST"
+      ]
+    },
+    {
+      "route": "/api/auth/forgot-password",
+      "file": "app/api/auth/forgot-password/route.ts",
+      "methods": [
+        "POST"
+      ]
+    },
+    {
+      "route": "/api/auth/invite",
+      "file": "app/api/auth/invite/route.ts",
+      "methods": [
+        "GET"
+      ]
+    },
+    {
+      "route": "/api/auth/me",
+      "file": "app/api/auth/me/route.ts",
+      "methods": [
+        "GET"
+      ]
+    },
+    {
+      "route": "/api/auth/profile",
+      "file": "app/api/auth/profile/route.ts",
+      "methods": [
+        "GET"
+      ]
+    },
+    {
+      "route": "/api/auth/register",
+      "file": "app/api/auth/register/route.ts",
+      "methods": [
+        "POST"
+      ]
+    },
+    {
+      "route": "/api/auth/register/invited",
+      "file": "app/api/auth/register/invited/route.ts",
+      "methods": [
+        "POST"
+      ]
+    },
+    {
+      "route": "/api/auth/reset-password",
+      "file": "app/api/auth/reset-password/route.ts",
+      "methods": [
+        "POST"
+      ]
+    },
+    {
+      "route": "/api/auth/sso",
+      "file": "app/api/auth/sso/route.ts",
+      "methods": [
+        "GET"
+      ]
+    },
+    {
+      "route": "/api/auth/sso/callback",
+      "file": "app/api/auth/sso/callback/route.ts",
+      "methods": [
+        "GET",
+        "POST"
+      ]
+    },
+    {
+      "route": "/api/auth/verify",
+      "file": "app/api/auth/verify/route.ts",
+      "methods": [
+        "GET",
+        "POST"
+      ]
+    },
+    {
+      "route": "/api/candidate/applications",
+      "file": "app/api/candidate/applications/route.ts",
+      "methods": [
+        "GET"
+      ]
+    },
+    {
+      "route": "/api/candidate/data-deletion-request",
+      "file": "app/api/candidate/data-deletion-request/route.ts",
+      "methods": [
+        "DELETE",
+        "GET",
+        "POST"
+      ]
+    },
+    {
+      "route": "/api/candidate/data-export",
+      "file": "app/api/candidate/data-export/route.ts",
+      "methods": [
+        "GET"
+      ]
+    },
+    {
+      "route": "/api/candidate/documents",
+      "file": "app/api/candidate/documents/route.ts",
+      "methods": [
+        "DELETE",
+        "GET",
+        "POST"
+      ]
+    },
+    {
+      "route": "/api/candidate/interviews",
+      "file": "app/api/candidate/interviews/route.ts",
+      "methods": [
+        "GET"
+      ]
+    },
+    {
+      "route": "/api/candidate/interviews/[id]/report",
+      "file": "app/api/candidate/interviews/[id]/report/route.ts",
+      "methods": [
+        "GET"
+      ]
+    },
+    {
+      "route": "/api/candidate/jobs",
+      "file": "app/api/candidate/jobs/route.ts",
+      "methods": [
+        "GET"
+      ]
+    },
+    {
+      "route": "/api/candidate/jobs/[id]",
+      "file": "app/api/candidate/jobs/[id]/route.ts",
+      "methods": [
+        "GET",
+        "POST"
+      ]
+    },
+    {
+      "route": "/api/candidate/notifications",
+      "file": "app/api/candidate/notifications/route.ts",
+      "methods": [
+        "GET",
+        "PUT"
+      ]
+    },
+    {
+      "route": "/api/candidate/onboarding",
+      "file": "app/api/candidate/onboarding/route.ts",
+      "methods": [
+        "GET",
+        "PATCH"
+      ]
+    },
+    {
+      "route": "/api/candidate/onboarding/photo-upload",
+      "file": "app/api/candidate/onboarding/photo-upload/route.ts",
+      "methods": [
+        "POST"
+      ]
+    },
+    {
+      "route": "/api/candidate/onboarding/resume-upload",
+      "file": "app/api/candidate/onboarding/resume-upload/route.ts",
+      "methods": [
+        "POST"
+      ]
+    },
+    {
+      "route": "/api/candidate/practice",
+      "file": "app/api/candidate/practice/route.ts",
+      "methods": [
+        "POST"
+      ]
+    },
+    {
+      "route": "/api/candidate/profile",
+      "file": "app/api/candidate/profile/route.ts",
+      "methods": [
+        "GET",
+        "PUT"
+      ]
+    },
+    {
+      "route": "/api/candidate/settings",
+      "file": "app/api/candidate/settings/route.ts",
+      "methods": [
+        "GET",
+        "PUT"
+      ]
+    },
+    {
+      "route": "/api/candidate/skills",
+      "file": "app/api/candidate/skills/route.ts",
+      "methods": [
+        "DELETE",
+        "GET",
+        "POST"
+      ]
+    },
+    {
+      "route": "/api/candidates",
+      "file": "app/api/candidates/route.ts",
+      "methods": [
+        "GET",
+        "POST"
+      ]
+    },
+    {
+      "route": "/api/candidates/[id]",
+      "file": "app/api/candidates/[id]/route.ts",
+      "methods": [
+        "DELETE",
+        "GET",
+        "PATCH"
+      ]
+    },
+    {
+      "route": "/api/candidates/[id]/interviews",
+      "file": "app/api/candidates/[id]/interviews/route.ts",
+      "methods": [
+        "GET"
+      ]
+    },
+    {
+      "route": "/api/candidates/[id]/notes",
+      "file": "app/api/candidates/[id]/notes/route.ts",
+      "methods": [
+        "GET",
+        "POST"
+      ]
+    },
+    {
+      "route": "/api/candidates/[id]/notes/[noteId]",
+      "file": "app/api/candidates/[id]/notes/[noteId]/route.ts",
+      "methods": [
+        "DELETE",
+        "PUT"
+      ]
+    },
+    {
+      "route": "/api/candidates/[id]/resume",
+      "file": "app/api/candidates/[id]/resume/route.ts",
+      "methods": [
+        "POST"
+      ]
+    },
+    {
+      "route": "/api/clients",
+      "file": "app/api/clients/route.ts",
+      "methods": [
+        "GET",
+        "POST"
+      ]
+    },
+    {
+      "route": "/api/clients/[id]",
+      "file": "app/api/clients/[id]/route.ts",
+      "methods": [
+        "GET"
+      ]
+    },
+    {
+      "route": "/api/clients/import-linkedin",
+      "file": "app/api/clients/import-linkedin/route.ts",
+      "methods": [
+        "POST"
+      ]
+    },
+    {
+      "route": "/api/cron/fragment-cleanup",
+      "file": "app/api/cron/fragment-cleanup/route.ts",
+      "methods": [
+        "GET"
+      ]
+    },
+    {
+      "route": "/api/cron/report-retry",
+      "file": "app/api/cron/report-retry/route.ts",
+      "methods": [
+        "GET"
+      ]
+    },
+    {
+      "route": "/api/cron/retention",
+      "file": "app/api/cron/retention/route.ts",
+      "methods": [
+        "GET"
+      ]
+    },
+    {
+      "route": "/api/cron/retention-purge",
+      "file": "app/api/cron/retention-purge/route.ts",
+      "methods": [
+        "POST"
+      ]
+    },
+    {
+      "route": "/api/csp-report",
+      "file": "app/api/csp-report/route.ts",
+      "methods": [
+        "POST"
+      ]
+    },
+    {
+      "route": "/api/health",
+      "file": "app/api/health/route.ts",
+      "methods": [
+        "GET"
+      ]
+    },
+    {
+      "route": "/api/inngest",
+      "file": "app/api/inngest/route.ts",
+      "methods": [
+        "GET",
+        "POST",
+        "PUT"
+      ]
+    },
+    {
+      "route": "/api/interview-templates",
+      "file": "app/api/interview-templates/route.ts",
+      "methods": [
+        "GET",
+        "POST"
+      ]
+    },
+    {
+      "route": "/api/interview-templates/[id]",
+      "file": "app/api/interview-templates/[id]/route.ts",
+      "methods": [
+        "DELETE",
+        "GET",
+        "PUT"
+      ]
+    },
+    {
+      "route": "/api/interviews",
+      "file": "app/api/interviews/route.ts",
+      "methods": [
+        "GET",
+        "POST"
+      ]
+    },
+    {
+      "route": "/api/interviews/[id]",
+      "file": "app/api/interviews/[id]/route.ts",
+      "methods": [
+        "GET",
+        "PATCH"
+      ]
+    },
+    {
+      "route": "/api/interviews/[id]/consent",
+      "file": "app/api/interviews/[id]/consent/route.ts",
+      "methods": [
+        "DELETE"
+      ]
+    },
+    {
+      "route": "/api/interviews/[id]/continuity-report",
+      "file": "app/api/interviews/[id]/continuity-report/route.ts",
+      "methods": [
+        "GET"
+      ]
+    },
+    {
+      "route": "/api/interviews/[id]/evidence-bundle",
+      "file": "app/api/interviews/[id]/evidence-bundle/route.ts",
+      "methods": [
+        "GET",
+        "POST"
+      ]
+    },
+    {
+      "route": "/api/interviews/[id]/invite",
+      "file": "app/api/interviews/[id]/invite/route.ts",
+      "methods": [
+        "POST"
+      ]
+    },
+    {
+      "route": "/api/interviews/[id]/memory-status",
+      "file": "app/api/interviews/[id]/memory-status/route.ts",
+      "methods": [
+        "GET"
+      ]
+    },
+    {
+      "route": "/api/interviews/[id]/pause",
+      "file": "app/api/interviews/[id]/pause/route.ts",
+      "methods": [
+        "POST"
+      ]
+    },
+    {
+      "route": "/api/interviews/[id]/proctoring",
+      "file": "app/api/interviews/[id]/proctoring/route.ts",
+      "methods": [
+        "POST"
+      ]
+    },
+    {
+      "route": "/api/interviews/[id]/recording",
+      "file": "app/api/interviews/[id]/recording/route.ts",
+      "methods": [
+        "POST"
+      ]
+    },
+    {
+      "route": "/api/interviews/[id]/replay",
+      "file": "app/api/interviews/[id]/replay/route.ts",
+      "methods": [
+        "GET"
+      ]
+    },
+    {
+      "route": "/api/interviews/[id]/report",
+      "file": "app/api/interviews/[id]/report/route.ts",
+      "methods": [
+        "GET",
+        "POST"
+      ]
+    },
+    {
+      "route": "/api/interviews/[id]/report-status",
+      "file": "app/api/interviews/[id]/report-status/route.ts",
+      "methods": [
+        "POST"
+      ]
+    },
+    {
+      "route": "/api/interviews/[id]/report-stream",
+      "file": "app/api/interviews/[id]/report-stream/route.ts",
+      "methods": [
+        "GET"
+      ]
+    },
+    {
+      "route": "/api/interviews/[id]/report/pdf",
+      "file": "app/api/interviews/[id]/report/pdf/route.ts",
+      "methods": [
+        "GET"
+      ]
+    },
+    {
+      "route": "/api/interviews/[id]/report/review",
+      "file": "app/api/interviews/[id]/report/review/route.ts",
+      "methods": [
+        "GET",
+        "POST"
+      ]
+    },
+    {
+      "route": "/api/interviews/[id]/report/share",
+      "file": "app/api/interviews/[id]/report/share/route.ts",
+      "methods": [
+        "POST"
+      ]
+    },
+    {
+      "route": "/api/interviews/[id]/report/share/revoke",
+      "file": "app/api/interviews/[id]/report/share/revoke/route.ts",
+      "methods": [
+        "DELETE"
+      ]
+    },
+    {
+      "route": "/api/interviews/[id]/report/verify",
+      "file": "app/api/interviews/[id]/report/verify/route.ts",
+      "methods": [
+        "GET"
+      ]
+    },
+    {
+      "route": "/api/interviews/[id]/screen-capture",
+      "file": "app/api/interviews/[id]/screen-capture/route.ts",
+      "methods": [
+        "DELETE",
+        "PATCH",
+        "POST"
+      ]
+    },
+    {
+      "route": "/api/interviews/[id]/stream",
+      "file": "app/api/interviews/[id]/stream/route.ts",
+      "methods": [
+        "POST"
+      ]
+    },
+    {
+      "route": "/api/interviews/[id]/timeline",
+      "file": "app/api/interviews/[id]/timeline/route.ts",
+      "methods": [
+        "GET"
+      ]
+    },
+    {
+      "route": "/api/interviews/[id]/validate",
+      "file": "app/api/interviews/[id]/validate/route.ts",
+      "methods": [
+        "PATCH",
+        "POST"
+      ]
+    },
+    {
+      "route": "/api/interviews/[id]/voice",
+      "file": "app/api/interviews/[id]/voice/route.ts",
+      "methods": [
+        "POST"
+      ]
+    },
+    {
+      "route": "/api/interviews/[id]/voice-init",
+      "file": "app/api/interviews/[id]/voice-init/route.ts",
+      "methods": [
+        "POST"
+      ]
+    },
+    {
+      "route": "/api/interviews/[id]/voice/context",
+      "file": "app/api/interviews/[id]/voice/context/route.ts",
+      "methods": [
+        "GET"
+      ]
+    },
+    {
+      "route": "/api/interviews/[id]/voice/context-capsule",
+      "file": "app/api/interviews/[id]/voice/context-capsule/route.ts",
+      "methods": [
+        "GET"
+      ]
+    },
+    {
+      "route": "/api/interviews/[id]/voice/fragment",
+      "file": "app/api/interviews/[id]/voice/fragment/route.ts",
+      "methods": [
+        "POST"
+      ]
+    },
+    {
+      "route": "/api/interviews/[id]/voice/recover",
+      "file": "app/api/interviews/[id]/voice/recover/route.ts",
+      "methods": [
+        "POST"
+      ]
+    },
+    {
+      "route": "/api/interviews/[id]/voice/turn-commit",
+      "file": "app/api/interviews/[id]/voice/turn-commit/route.ts",
+      "methods": [
+        "POST"
+      ]
+    },
+    {
+      "route": "/api/interviews/accept",
+      "file": "app/api/interviews/accept/route.ts",
+      "methods": [
+        "POST"
+      ]
+    },
+    {
+      "route": "/api/interviews/compare",
+      "file": "app/api/interviews/compare/route.ts",
+      "methods": [
+        "GET"
+      ]
+    },
+    {
+      "route": "/api/interviews/invitations",
+      "file": "app/api/interviews/invitations/route.ts",
+      "methods": [
+        "GET"
+      ]
+    },
+    {
+      "route": "/api/interviews/invite",
+      "file": "app/api/interviews/invite/route.ts",
+      "methods": [
+        "POST"
+      ]
+    },
+    {
+      "route": "/api/invitations",
+      "file": "app/api/invitations/route.ts",
+      "methods": [
+        "GET"
+      ]
+    },
+    {
+      "route": "/api/invitations/[id]",
+      "file": "app/api/invitations/[id]/route.ts",
+      "methods": [
+        "PUT"
+      ]
+    },
+    {
+      "route": "/api/invitations/bulk",
+      "file": "app/api/invitations/bulk/route.ts",
+      "methods": [
+        "POST"
+      ]
+    },
+    {
+      "route": "/api/jobs",
+      "file": "app/api/jobs/route.ts",
+      "methods": [
+        "GET",
+        "POST"
+      ]
+    },
+    {
+      "route": "/api/jobs/[id]",
+      "file": "app/api/jobs/[id]/route.ts",
+      "methods": [
+        "DELETE",
+        "GET",
+        "PATCH",
+        "PUT"
+      ]
+    },
+    {
+      "route": "/api/jobs/[id]/applications/[appId]",
+      "file": "app/api/jobs/[id]/applications/[appId]/route.ts",
+      "methods": [
+        "GET",
+        "PATCH"
+      ]
+    },
+    {
+      "route": "/api/matches",
+      "file": "app/api/matches/route.ts",
+      "methods": [
+        "GET",
+        "POST"
+      ]
+    },
+    {
+      "route": "/api/messages",
+      "file": "app/api/messages/route.ts",
+      "methods": [
+        "GET",
+        "POST"
+      ]
+    },
+    {
+      "route": "/api/metrics",
+      "file": "app/api/metrics/route.ts",
+      "methods": [
+        "GET"
+      ]
+    },
+    {
+      "route": "/api/notifications",
+      "file": "app/api/notifications/route.ts",
+      "methods": [
+        "GET",
+        "PATCH"
+      ]
+    },
+    {
+      "route": "/api/notifications/[id]",
+      "file": "app/api/notifications/[id]/route.ts",
+      "methods": [
+        "PATCH"
+      ]
+    },
+    {
+      "route": "/api/notifications/stream",
+      "file": "app/api/notifications/stream/route.ts",
+      "methods": [
+        "GET"
+      ]
+    },
+    {
+      "route": "/api/passive-profiles",
+      "file": "app/api/passive-profiles/route.ts",
+      "methods": [
+        "GET",
+        "POST"
+      ]
+    },
+    {
+      "route": "/api/passive-profiles/[id]",
+      "file": "app/api/passive-profiles/[id]/route.ts",
+      "methods": [
+        "DELETE",
+        "GET",
+        "PUT"
+      ]
+    },
+    {
+      "route": "/api/passive-profiles/[id]/invite",
+      "file": "app/api/passive-profiles/[id]/invite/route.ts",
+      "methods": [
+        "POST"
+      ]
+    },
+    {
+      "route": "/api/passive-profiles/upload",
+      "file": "app/api/passive-profiles/upload/route.ts",
+      "methods": [
+        "POST"
+      ]
+    },
+    {
+      "route": "/api/recruiter/onboarding",
+      "file": "app/api/recruiter/onboarding/route.ts",
+      "methods": [
+        "GET",
+        "PATCH"
+      ]
+    },
+    {
+      "route": "/api/reports/shared/[token]/data",
+      "file": "app/api/reports/shared/[token]/data/route.ts",
+      "methods": [
+        "GET"
+      ]
+    },
+    {
+      "route": "/api/reports/shared/[token]/verify-email",
+      "file": "app/api/reports/shared/[token]/verify-email/route.ts",
+      "methods": [
+        "POST"
+      ]
+    },
+    {
+      "route": "/api/roles",
+      "file": "app/api/roles/route.ts",
+      "methods": [
+        "GET",
+        "POST"
+      ]
+    },
+    {
+      "route": "/api/talent-pools",
+      "file": "app/api/talent-pools/route.ts",
+      "methods": [
+        "GET",
+        "POST"
+      ]
+    },
+    {
+      "route": "/api/team",
+      "file": "app/api/team/route.ts",
+      "methods": [
+        "GET"
+      ]
+    },
+    {
+      "route": "/api/team/invite",
+      "file": "app/api/team/invite/route.ts",
+      "methods": [
+        "POST"
+      ]
+    },
+    {
+      "route": "/api/upload",
+      "file": "app/api/upload/route.ts",
+      "methods": [
+        "POST"
+      ]
+    },
+    {
+      "route": "/api/upload-resume",
+      "file": "app/api/upload-resume/route.ts",
+      "methods": [
+        "POST"
+      ]
+    },
+    {
+      "route": "/api/v1/candidates/import/linkedin",
+      "file": "app/api/v1/candidates/import/linkedin/route.ts",
+      "methods": [
+        "POST"
+      ]
+    },
+    {
+      "route": "/api/v1/candidates/import/resume",
+      "file": "app/api/v1/candidates/import/resume/route.ts",
+      "methods": [
+        "POST"
+      ]
+    },
+    {
+      "route": "/api/v1/candidates/onboarding/complete",
+      "file": "app/api/v1/candidates/onboarding/complete/route.ts",
+      "methods": [
+        "POST"
+      ]
+    },
+    {
+      "route": "/api/v1/interviews/feedback",
+      "file": "app/api/v1/interviews/feedback/route.ts",
+      "methods": [
+        "POST"
+      ]
+    },
+    {
+      "route": "/api/v1/interviews/invite",
+      "file": "app/api/v1/interviews/invite/route.ts",
+      "methods": [
+        "POST"
+      ]
+    },
+    {
+      "route": "/api/v1/interviews/proctoring",
+      "file": "app/api/v1/interviews/proctoring/route.ts",
+      "methods": [
+        "POST"
+      ]
+    },
+    {
+      "route": "/api/v1/interviews/upload-recording",
+      "file": "app/api/v1/interviews/upload-recording/route.ts",
+      "methods": [
+        "POST"
+      ]
+    }
+  ],
+  "prisma": {
+    "models": [
+      {
+        "name": "ActivityLog",
+        "fields": [
+          {
+            "name": "id",
+            "type": "String"
+          },
+          {
+            "name": "userId",
+            "type": "String"
+          },
+          {
+            "name": "userRole",
+            "type": "String"
+          },
+          {
+            "name": "action",
+            "type": "String"
+          },
+          {
+            "name": "entityType",
+            "type": "String"
+          },
+          {
+            "name": "entityId",
+            "type": "String"
+          },
+          {
+            "name": "metadata",
+            "type": "Json?"
+          },
+          {
+            "name": "ipAddress",
+            "type": "String?"
+          },
+          {
+            "name": "sessionId",
+            "type": "String?"
+          },
+          {
+            "name": "requestPath",
+            "type": "String?"
+          },
+          {
+            "name": "requestMethod",
+            "type": "String?"
+          },
+          {
+            "name": "responseStatus",
+            "type": "Int?"
+          },
+          {
+            "name": "userAgent",
+            "type": "String?"
+          },
+          {
+            "name": "createdAt",
+            "type": "DateTime"
+          }
+        ],
+        "indexes": [
+          "index([userId])",
+          "index([entityType])",
+          "index([action])",
+          "index([createdAt])",
+          "index([userId, createdAt])",
+          "index([entityType, createdAt])"
+        ]
+      },
+      {
+        "name": "AIUsageLog",
+        "fields": [
+          {
+            "name": "id",
+            "type": "String"
+          },
+          {
+            "name": "interviewId",
+            "type": "String?"
+          },
+          {
+            "name": "operation",
+            "type": "String"
+          },
+          {
+            "name": "model",
+            "type": "String"
+          },
+          {
+            "name": "inputTokens",
+            "type": "Int"
+          },
+          {
+            "name": "outputTokens",
+            "type": "Int"
+          },
+          {
+            "name": "durationMs",
+            "type": "Int"
+          },
+          {
+            "name": "estimatedCost",
+            "type": "Float"
+          },
+          {
+            "name": "companyId",
+            "type": "String?"
+          },
+          {
+            "name": "recruiterId",
+            "type": "String?"
+          },
+          {
+            "name": "metadata",
+            "type": "Json?"
+          },
+          {
+            "name": "createdAt",
+            "type": "DateTime"
+          }
+        ],
+        "indexes": [
+          "index([interviewId])",
+          "index([companyId])",
+          "index([createdAt])",
+          "index([operation])"
+        ]
+      },
+      {
+        "name": "Application",
+        "fields": [
+          {
+            "name": "id",
+            "type": "String"
+          },
+          {
+            "name": "candidateId",
+            "type": "String"
+          },
+          {
+            "name": "candidate",
+            "type": "Candidate"
+          },
+          {
+            "name": "jobId",
+            "type": "String"
+          },
+          {
+            "name": "job",
+            "type": "Job"
+          },
+          {
+            "name": "status",
+            "type": "ApplicationStatus"
+          },
+          {
+            "name": "appliedAt",
+            "type": "DateTime"
+          },
+          {
+            "name": "source",
+            "type": "String?"
+          },
+          {
+            "name": "coverLetterUrl",
+            "type": "String?"
+          },
+          {
+            "name": "notes",
+            "type": "String?"
+          },
+          {
+            "name": "reviewedAt",
+            "type": "DateTime?"
+          },
+          {
+            "name": "reviewedBy",
+            "type": "String?"
+          },
+          {
+            "name": "createdAt",
+            "type": "DateTime"
+          },
+          {
+            "name": "updatedAt",
+            "type": "DateTime"
+          }
+        ],
+        "indexes": [
+          "unique([candidateId, jobId])",
+          "index([candidateId])",
+          "index([jobId])",
+          "index([status])",
+          "index([appliedAt])"
+        ]
+      },
+      {
+        "name": "ApprovalAction",
+        "fields": [
+          {
+            "name": "id",
+            "type": "String"
+          },
+          {
+            "name": "candidateId",
+            "type": "String"
+          },
+          {
+            "name": "candidate",
+            "type": "Candidate"
+          },
+          {
+            "name": "action",
+            "type": "String"
+          },
+          {
+            "name": "reason",
+            "type": "String?"
+          },
+          {
+            "name": "adminUserId",
+            "type": "String"
+          },
+          {
+            "name": "adminEmail",
+            "type": "String?"
+          },
+          {
+            "name": "createdAt",
+            "type": "DateTime"
+          }
+        ],
+        "indexes": [
+          "index([candidateId])",
+          "index([adminUserId])",
+          "index([createdAt])"
+        ]
+      },
+      {
+        "name": "ATSIntegration",
+        "fields": [
+          {
+            "name": "id",
+            "type": "String"
+          },
+          {
+            "name": "companyId",
+            "type": "String"
+          },
+          {
+            "name": "company",
+            "type": "Client"
+          },
+          {
+            "name": "provider",
+            "type": "String"
+          },
+          {
+            "name": "apiKey",
+            "type": "String"
+          },
+          {
+            "name": "webhookSecret",
+            "type": "String?"
+          },
+          {
+            "name": "baseUrl",
+            "type": "String?"
+          },
+          {
+            "name": "config",
+            "type": "Json?"
+          },
+          {
+            "name": "enabled",
+            "type": "Boolean"
+          },
+          {
+            "name": "lastSyncAt",
+            "type": "DateTime?"
+          },
+          {
+            "name": "syncStatus",
+            "type": "String?"
+          },
+          {
+            "name": "syncError",
+            "type": "String?"
+          },
+          {
+            "name": "createdAt",
+            "type": "DateTime"
+          },
+          {
+            "name": "updatedAt",
+            "type": "DateTime"
+          }
+        ],
+        "indexes": [
+          "unique([companyId, provider])",
+          "index([companyId])",
+          "index([provider])"
+        ]
+      },
+      {
+        "name": "Candidate",
+        "fields": [
+          {
+            "name": "id",
+            "type": "String"
+          },
+          {
+            "name": "fullName",
+            "type": "String"
+          },
+          {
+            "name": "email",
+            "type": "String?"
+          },
+          {
+            "name": "phone",
+            "type": "String?"
+          },
+          {
+            "name": "linkedinUrl",
+            "type": "String?"
+          },
+          {
+            "name": "profileImage",
+            "type": "String?"
+          },
+          {
+            "name": "currentTitle",
+            "type": "String?"
+          },
+          {
+            "name": "currentCompany",
+            "type": "String?"
+          },
+          {
+            "name": "skills",
+            "type": "Json"
+          },
+          {
+            "name": "experienceYears",
+            "type": "Int?"
+          },
+          {
+            "name": "industries",
+            "type": "Json"
+          },
+          {
+            "name": "resumeText",
+            "type": "String?"
+          },
+          {
+            "name": "resumeUrl",
+            "type": "String?"
+          },
+          {
+            "name": "status",
+            "type": "CandidateStatus"
+          },
+          {
+            "name": "recruiterId",
+            "type": "String"
+          },
+          {
+            "name": "recruiter",
+            "type": "Recruiter"
+          },
+          {
+            "name": "embedding",
+            "type": "Json?"
+          },
+          {
+            "name": "aiSummary",
+            "type": "String?"
+          },
+          {
+            "name": "experiences",
+            "type": "Json?"
+          },
+          {
+            "name": "education",
+            "type": "Json?"
+          },
+          {
+            "name": "headline",
+            "type": "String?"
+          },
+          {
+            "name": "location",
+            "type": "String?"
+          },
+          {
+            "name": "notes",
+            "type": "Note[]"
+          },
+          {
+            "name": "matches",
+            "type": "Match[]"
+          },
+          {
+            "name": "interviews",
+            "type": "Interview[]"
+          },
+          {
+            "name": "ariaInterviewed",
+            "type": "Boolean"
+          },
+          {
+            "name": "ariaOverallScore",
+            "type": "Float?"
+          },
+          {
+            "name": "onboardingCompleted",
+            "type": "Boolean"
+          },
+          {
+            "name": "onboardingStep",
+            "type": "Int"
+          },
+          {
+            "name": "onboardingStatus",
+            "type": "OnboardingStatus"
+          },
+          {
+            "name": "approvedAt",
+            "type": "DateTime?"
+          },
+          {
+            "name": "approvedBy",
+            "type": "String?"
+          },
+          {
+            "name": "rejectionReason",
+            "type": "String?"
+          },
+          {
+            "name": "invitationSource",
+            "type": "String?"
+          },
+          {
+            "name": "profileCompleteness",
+            "type": "Float?"
+          },
+          {
+            "name": "riskScore",
+            "type": "Float?"
+          },
+          {
+            "name": "riskFlags",
+            "type": "Json?"
+          },
+          {
+            "name": "linkedinConsistencyScore",
+            "type": "Float?"
+          },
+          {
+            "name": "linkedinConsistencyFlags",
+            "type": "Json?"
+          },
+          {
+            "name": "demographicData",
+            "type": "Json?"
+          },
+          {
+            "name": "demographicConsentGiven",
+            "type": "Boolean"
+          },
+          {
+            "name": "visaStatus",
+            "type": "String?"
+          },
+          {
+            "name": "preferredTitles",
+            "type": "String[]"
+          },
+          {
+            "name": "consentGdpr",
+            "type": "Boolean"
+          },
+          {
+            "name": "consentDataProcessing",
+            "type": "Boolean"
+          },
+          {
+            "name": "consentedAt",
+            "type": "DateTime?"
+          },
+          {
+            "name": "legalHold",
+            "type": "Boolean"
+          },
+          {
+            "name": "legalHoldReason",
+            "type": "String?"
+          },
+          {
+            "name": "applications",
+            "type": "Application[]"
+          },
+          {
+            "name": "invitations",
+            "type": "InterviewInvitation[]"
+          },
+          {
+            "name": "documents",
+            "type": "Document[]"
+          },
+          {
+            "name": "candidateSkills",
+            "type": "CandidateSkill[]"
+          },
+          {
+            "name": "candidateExperiences",
+            "type": "CandidateExperience[]"
+          },
+          {
+            "name": "candidateEducation",
+            "type": "CandidateEducation[]"
+          },
+          {
+            "name": "certifications",
+            "type": "CandidateCertification[]"
+          },
+          {
+            "name": "notifications",
+            "type": "Notification[]"
+          },
+          {
+            "name": "jobPreferences",
+            "type": "JobPreference?"
+          },
+          {
+            "name": "approvalActions",
+            "type": "ApprovalAction[]"
+          },
+          {
+            "name": "deletionRequests",
+            "type": "DataDeletionRequest[]"
+          },
+          {
+            "name": "embeddingUpdatedAt",
+            "type": "DateTime?"
+          },
+          {
+            "name": "deletedAt",
+            "type": "DateTime?"
+          },
+          {
+            "name": "createdAt",
+            "type": "DateTime"
+          },
+          {
+            "name": "updatedAt",
+            "type": "DateTime"
+          }
+        ],
+        "indexes": [
+          "index([recruiterId])",
+          "index([status])",
+          "index([ariaInterviewed])",
+          "index([email])",
+          "index([onboardingStatus])",
+          "index([deletedAt])",
+          "unique([email, recruiterId])"
+        ]
+      },
+      {
+        "name": "CandidateCertification",
+        "fields": [
+          {
+            "name": "id",
+            "type": "String"
+          },
+          {
+            "name": "candidateId",
+            "type": "String"
+          },
+          {
+            "name": "candidate",
+            "type": "Candidate"
+          },
+          {
+            "name": "name",
+            "type": "String"
+          },
+          {
+            "name": "issuingOrg",
+            "type": "String?"
+          },
+          {
+            "name": "issueDate",
+            "type": "DateTime?"
+          },
+          {
+            "name": "expiryDate",
+            "type": "DateTime?"
+          },
+          {
+            "name": "credentialId",
+            "type": "String?"
+          },
+          {
+            "name": "createdAt",
+            "type": "DateTime"
+          }
+        ],
+        "indexes": [
+          "index([candidateId])"
+        ]
+      },
+      {
+        "name": "CandidateEducation",
+        "fields": [
+          {
+            "name": "id",
+            "type": "String"
+          },
+          {
+            "name": "candidateId",
+            "type": "String"
+          },
+          {
+            "name": "candidate",
+            "type": "Candidate"
+          },
+          {
+            "name": "institution",
+            "type": "String"
+          },
+          {
+            "name": "degree",
+            "type": "String?"
+          },
+          {
+            "name": "field",
+            "type": "String?"
+          },
+          {
+            "name": "startDate",
+            "type": "DateTime?"
+          },
+          {
+            "name": "endDate",
+            "type": "DateTime?"
+          },
+          {
+            "name": "gpa",
+            "type": "Float?"
+          },
+          {
+            "name": "createdAt",
+            "type": "DateTime"
+          }
+        ],
+        "indexes": [
+          "index([candidateId])"
+        ]
+      },
+      {
+        "name": "CandidateExperience",
+        "fields": [
+          {
+            "name": "id",
+            "type": "String"
+          },
+          {
+            "name": "candidateId",
+            "type": "String"
+          },
+          {
+            "name": "candidate",
+            "type": "Candidate"
+          },
+          {
+            "name": "company",
+            "type": "String"
+          },
+          {
+            "name": "title",
+            "type": "String"
+          },
+          {
+            "name": "startDate",
+            "type": "DateTime?"
+          },
+          {
+            "name": "endDate",
+            "type": "DateTime?"
+          },
+          {
+            "name": "isCurrent",
+            "type": "Boolean"
+          },
+          {
+            "name": "description",
+            "type": "String?"
+          },
+          {
+            "name": "location",
+            "type": "String?"
+          },
+          {
+            "name": "createdAt",
+            "type": "DateTime"
+          }
+        ],
+        "indexes": [
+          "index([candidateId])"
+        ]
+      },
+      {
+        "name": "CandidateSkill",
+        "fields": [
+          {
+            "name": "id",
+            "type": "String"
+          },
+          {
+            "name": "candidateId",
+            "type": "String"
+          },
+          {
+            "name": "candidate",
+            "type": "Candidate"
+          },
+          {
+            "name": "skillName",
+            "type": "String"
+          },
+          {
+            "name": "category",
+            "type": "String?"
+          },
+          {
+            "name": "proficiency",
+            "type": "Int?"
+          },
+          {
+            "name": "yearsExp",
+            "type": "Float?"
+          },
+          {
+            "name": "verified",
+            "type": "Boolean"
+          },
+          {
+            "name": "source",
+            "type": "String?"
+          },
+          {
+            "name": "createdAt",
+            "type": "DateTime"
+          }
+        ],
+        "indexes": [
+          "unique([candidateId, skillName])",
+          "index([candidateId])",
+          "index([skillName])"
+        ]
+      },
+      {
+        "name": "Client",
+        "fields": [
+          {
+            "name": "id",
+            "type": "String"
+          },
+          {
+            "name": "name",
+            "type": "String"
+          },
+          {
+            "name": "industry",
+            "type": "String?"
+          },
+          {
+            "name": "funding",
+            "type": "String?"
+          },
+          {
+            "name": "companySize",
+            "type": "String?"
+          },
+          {
+            "name": "logoUrl",
+            "type": "String?"
+          },
+          {
+            "name": "website",
+            "type": "String?"
+          },
+          {
+            "name": "description",
+            "type": "String?"
+          },
+          {
+            "name": "linkedinUrl",
+            "type": "String?"
+          },
+          {
+            "name": "linkedinId",
+            "type": "String?"
+          },
+          {
+            "name": "companyLogoCdnUrl",
+            "type": "String?"
+          },
+          {
+            "name": "employeeCount",
+            "type": "Int?"
+          },
+          {
+            "name": "foundedYear",
+            "type": "Int?"
+          },
+          {
+            "name": "headquarters",
+            "type": "String?"
+          },
+          {
+            "name": "specialties",
+            "type": "Json?"
+          },
+          {
+            "name": "domain",
+            "type": "String?"
+          },
+          {
+            "name": "brandColor",
+            "type": "String?"
+          },
+          {
+            "name": "tagline",
+            "type": "String?"
+          },
+          {
+            "name": "regions",
+            "type": "String[]"
+          },
+          {
+            "name": "roles",
+            "type": "Role[]"
+          },
+          {
+            "name": "jobs",
+            "type": "Job[]"
+          },
+          {
+            "name": "recruiters",
+            "type": "Recruiter[]"
+          },
+          {
+            "name": "interviewTemplates",
+            "type": "InterviewTemplate[]"
+          },
+          {
+            "name": "teamInvitations",
+            "type": "TeamInvitation[]"
+          },
+          {
+            "name": "interviews",
+            "type": "Interview[]"
+          },
+          {
+            "name": "retentionPolicy",
+            "type": "RetentionPolicy?"
+          },
+          {
+            "name": "ssoConfig",
+            "type": "SSOConfig?"
+          },
+          {
+            "name": "hmMemberships",
+            "type": "HiringManagerMembership[]"
+          },
+          {
+            "name": "webhookEndpoints",
+            "type": "WebhookEndpoint[]"
+          },
+          {
+            "name": "governancePolicy",
+            "type": "GovernancePolicy?"
+          },
+          {
+            "name": "atsIntegrations",
+            "type": "ATSIntegration[]"
+          },
+          {
+            "name": "monthlyAiBudgetUsd",
+            "type": "Float?"
+          },
+          {
+            "name": "createdAt",
+            "type": "DateTime"
+          },
+          {
+            "name": "updatedAt",
+            "type": "DateTime"
+          }
+        ],
+        "indexes": []
+      },
+      {
+        "name": "DataDeletionRequest",
+        "fields": [
+          {
+            "name": "id",
+            "type": "String"
+          },
+          {
+            "name": "candidateId",
+            "type": "String"
+          },
+          {
+            "name": "candidate",
+            "type": "Candidate"
+          },
+          {
+            "name": "status",
+            "type": "String"
+          },
+          {
+            "name": "requestedAt",
+            "type": "DateTime"
+          },
+          {
+            "name": "gracePeriodEndsAt",
+            "type": "DateTime"
+          },
+          {
+            "name": "processedAt",
+            "type": "DateTime?"
+          },
+          {
+            "name": "cancelledAt",
+            "type": "DateTime?"
+          },
+          {
+            "name": "reason",
+            "type": "String?"
+          },
+          {
+            "name": "dataManifest",
+            "type": "Json?"
+          },
+          {
+            "name": "createdAt",
+            "type": "DateTime"
+          },
+          {
+            "name": "updatedAt",
+            "type": "DateTime"
+          }
+        ],
+        "indexes": [
+          "index([candidateId])",
+          "index([status])",
+          "index([gracePeriodEndsAt])"
+        ]
+      },
+      {
+        "name": "Document",
+        "fields": [
+          {
+            "name": "id",
+            "type": "String"
+          },
+          {
+            "name": "candidateId",
+            "type": "String"
+          },
+          {
+            "name": "candidate",
+            "type": "Candidate"
+          },
+          {
+            "name": "type",
+            "type": "DocumentType"
+          },
+          {
+            "name": "fileUrl",
+            "type": "String"
+          },
+          {
+            "name": "filename",
+            "type": "String"
+          },
+          {
+            "name": "mimeType",
+            "type": "String?"
+          },
+          {
+            "name": "fileSize",
+            "type": "Int?"
+          },
+          {
+            "name": "parsedData",
+            "type": "Json?"
+          },
+          {
+            "name": "createdAt",
+            "type": "DateTime"
+          },
+          {
+            "name": "updatedAt",
+            "type": "DateTime"
+          }
+        ],
+        "indexes": [
+          "index([candidateId])",
+          "index([type])"
+        ]
+      },
+      {
+        "name": "EvidenceBundle",
+        "fields": [
+          {
+            "name": "id",
+            "type": "String"
+          },
+          {
+            "name": "interviewId",
+            "type": "String"
+          },
+          {
+            "name": "interview",
+            "type": "Interview"
+          },
+          {
+            "name": "version",
+            "type": "String"
+          },
+          {
+            "name": "compiledAt",
+            "type": "DateTime"
+          },
+          {
+            "name": "artifactManifest",
+            "type": "Json"
+          },
+          {
+            "name": "scores",
+            "type": "Json"
+          },
+          {
+            "name": "evidenceItems",
+            "type": "Json"
+          },
+          {
+            "name": "versioning",
+            "type": "Json"
+          },
+          {
+            "name": "consent",
+            "type": "Json?"
+          },
+          {
+            "name": "integrityHash",
+            "type": "String"
+          },
+          {
+            "name": "exportedAt",
+            "type": "DateTime?"
+          },
+          {
+            "name": "exportFormat",
+            "type": "String?"
+          },
+          {
+            "name": "legalHold",
+            "type": "Boolean"
+          },
+          {
+            "name": "createdAt",
+            "type": "DateTime"
+          },
+          {
+            "name": "updatedAt",
+            "type": "DateTime"
+          }
+        ],
+        "indexes": []
+      },
+      {
+        "name": "GovernancePolicy",
+        "fields": [
+          {
+            "name": "id",
+            "type": "String"
+          },
+          {
+            "name": "companyId",
+            "type": "String"
+          },
+          {
+            "name": "company",
+            "type": "Client"
+          },
+          {
+            "name": "canOverrideScore",
+            "type": "String[]"
+          },
+          {
+            "name": "canRedactTranscript",
+            "type": "String[]"
+          },
+          {
+            "name": "canSuppressReport",
+            "type": "String[]"
+          },
+          {
+            "name": "requireReviewBelow",
+            "type": "Float?"
+          },
+          {
+            "name": "autoPublishAbove",
+            "type": "Float?"
+          },
+          {
+            "name": "activeModelVersion",
+            "type": "String?"
+          },
+          {
+            "name": "scoringTemperature",
+            "type": "Float"
+          },
+          {
+            "name": "modelABTestEnabled",
+            "type": "Boolean"
+          },
+          {
+            "name": "modelABTestSplit",
+            "type": "Float"
+          },
+          {
+            "name": "enforced",
+            "type": "Boolean"
+          },
+          {
+            "name": "createdAt",
+            "type": "DateTime"
+          },
+          {
+            "name": "updatedAt",
+            "type": "DateTime"
+          }
+        ],
+        "indexes": []
+      },
+      {
+        "name": "HiringManagerMembership",
+        "fields": [
+          {
+            "name": "id",
+            "type": "String"
+          },
+          {
+            "name": "userId",
+            "type": "String"
+          },
+          {
+            "name": "email",
+            "type": "String"
+          },
+          {
+            "name": "companyId",
+            "type": "String"
+          },
+          {
+            "name": "company",
+            "type": "Client"
+          },
+          {
+            "name": "role",
+            "type": "String"
+          },
+          {
+            "name": "grantedBy",
+            "type": "String?"
+          },
+          {
+            "name": "grantedAt",
+            "type": "DateTime"
+          },
+          {
+            "name": "expiresAt",
+            "type": "DateTime?"
+          },
+          {
+            "name": "isActive",
+            "type": "Boolean"
+          }
+        ],
+        "indexes": [
+          "unique([userId, companyId])",
+          "index([companyId])",
+          "index([userId])",
+          "index([email])"
+        ]
+      },
+      {
+        "name": "Interview",
+        "fields": [
+          {
+            "name": "id",
+            "type": "String"
+          },
+          {
+            "name": "candidateId",
+            "type": "String"
+          },
+          {
+            "name": "candidate",
+            "type": "Candidate"
+          },
+          {
+            "name": "scheduledBy",
+            "type": "String"
+          },
+          {
+            "name": "recruiter",
+            "type": "Recruiter"
+          },
+          {
+            "name": "jobId",
+            "type": "String?"
+          },
+          {
+            "name": "job",
+            "type": "Job?"
+          },
+          {
+            "name": "templateId",
+            "type": "String?"
+          },
+          {
+            "name": "template",
+            "type": "InterviewTemplate?"
+          },
+          {
+            "name": "invitationId",
+            "type": "String?"
+          },
+          {
+            "name": "invitation",
+            "type": "InterviewInvitation?"
+          },
+          {
+            "name": "status",
+            "type": "InterviewStatus"
+          },
+          {
+            "name": "type",
+            "type": "InterviewType"
+          },
+          {
+            "name": "mode",
+            "type": "InterviewMode"
+          },
+          {
+            "name": "duration",
+            "type": "Int?"
+          },
+          {
+            "name": "startedAt",
+            "type": "DateTime?"
+          },
+          {
+            "name": "completedAt",
+            "type": "DateTime?"
+          },
+          {
+            "name": "transcript",
+            "type": "Json?"
+          },
+          {
+            "name": "videoUrl",
+            "type": "String?"
+          },
+          {
+            "name": "audioUrl",
+            "type": "String?"
+          },
+          {
+            "name": "knowledgeGraph",
+            "type": "Json?"
+          },
+          {
+            "name": "knowledgeGraphUpdatedAt",
+            "type": "DateTime?"
+          },
+          {
+            "name": "transcripts",
+            "type": "InterviewTranscript[]"
+          },
+          {
+            "name": "voiceProvider",
+            "type": "String?"
+          },
+          {
+            "name": "language",
+            "type": "String"
+          },
+          {
+            "name": "recordingUrl",
+            "type": "String?"
+          },
+          {
+            "name": "recordingFormat",
+            "type": "String?"
+          },
+          {
+            "name": "recordingSize",
+            "type": "Int?"
+          },
+          {
+            "name": "interviewPlan",
+            "type": "Json?"
+          },
+          {
+            "name": "skillModuleScores",
+            "type": "Json?"
+          },
+          {
+            "name": "isPractice",
+            "type": "Boolean"
+          },
+          {
+            "name": "overallScore",
+            "type": "Float?"
+          },
+          {
+            "name": "reportStatus",
+            "type": "String?"
+          },
+          {
+            "name": "reportRetryCount",
+            "type": "Int"
+          },
+          {
+            "name": "accessToken",
+            "type": "String?"
+          },
+          {
+            "name": "accessTokenExpiresAt",
+            "type": "DateTime?"
+          },
+          {
+            "name": "invitedEmail",
+            "type": "String?"
+          },
+          {
+            "name": "integrityEvents",
+            "type": "Json?"
+          },
+          {
+            "name": "consentRecording",
+            "type": "Boolean"
+          },
+          {
+            "name": "consentProctoring",
+            "type": "Boolean"
+          },
+          {
+            "name": "consentPrivacy",
+            "type": "Boolean"
+          },
+          {
+            "name": "consentedAt",
+            "type": "DateTime?"
+          },
+          {
+            "name": "interviewPlanVersion",
+            "type": "String?"
+          },
+          {
+            "name": "screenRecordingUrl",
+            "type": "String?"
+          },
+          {
+            "name": "screenRecordingSize",
+            "type": "Int?"
+          },
+          {
+            "name": "templateSnapshot",
+            "type": "Json?"
+          },
+          {
+            "name": "templateSnapshotHash",
+            "type": "String?"
+          },
+          {
+            "name": "recordingState",
+            "type": "RecordingState?"
+          },
+          {
+            "name": "recordingManifestHash",
+            "type": "String?"
+          },
+          {
+            "name": "reconnectToken",
+            "type": "String?"
+          },
+          {
+            "name": "accommodations",
+            "type": "Json?"
+          },
+          {
+            "name": "retakeOfInterviewId",
+            "type": "String?"
+          },
+          {
+            "name": "readinessVerified",
+            "type": "Boolean"
+          },
+          {
+            "name": "companyId",
+            "type": "String?"
+          },
+          {
+            "name": "company",
+            "type": "Client?"
+          },
+          {
+            "name": "recruiterObjectives",
+            "type": "Json?"
+          },
+          {
+            "name": "hmNotes",
+            "type": "Json?"
+          },
+          {
+            "name": "candidateSelfAssessment",
+            "type": "Json?"
+          },
+          {
+            "name": "coverageMap",
+            "type": "Json?"
+          },
+          {
+            "name": "evidenceBundle",
+            "type": "Json?"
+          },
+          {
+            "name": "pausedAt",
+            "type": "DateTime?"
+          },
+          {
+            "name": "totalPauseDurationMs",
+            "type": "Int"
+          },
+          {
+            "name": "legalHold",
+            "type": "Boolean"
+          },
+          {
+            "name": "legalHoldReason",
+            "type": "String?"
+          },
+          {
+            "name": "legalHoldSetBy",
+            "type": "String?"
+          },
+          {
+            "name": "legalHoldSetAt",
+            "type": "DateTime?"
+          },
+          {
+            "name": "report",
+            "type": "InterviewReport?"
+          },
+          {
+            "name": "responses",
+            "type": "InterviewResponse[]"
+          },
+          {
+            "name": "feedback",
+            "type": "InterviewFeedback[]"
+          },
+          {
+            "name": "proctoringEvents",
+            "type": "ProctoringEvent[]"
+          },
+          {
+            "name": "reviewDecisions",
+            "type": "ReviewDecision[]"
+          },
+          {
+            "name": "hypotheses",
+            "type": "InterviewHypothesis[]"
+          },
+          {
+            "name": "facts",
+            "type": "InterviewFact[]"
+          },
+          {
+            "name": "sections",
+            "type": "InterviewSection[]"
+          },
+          {
+            "name": "evidenceBundleRecord",
+            "type": "EvidenceBundle?"
+          },
+          {
+            "name": "stateSnapshots",
+            "type": "InterviewerStateSnapshot[]"
+          },
+          {
+            "name": "events",
+            "type": "InterviewEvent[]"
+          },
+          {
+            "name": "screenCaptures",
+            "type": "ScreenCaptureSession[]"
+          },
+          {
+            "name": "turnFragments",
+            "type": "TurnFragment[]"
+          },
+          {
+            "name": "interviewCommitments",
+            "type": "InterviewCommitment[]"
+          },
+          {
+            "name": "interviewContradictions",
+            "type": "InterviewContradiction[]"
+          },
+          {
+            "name": "deletedAt",
+            "type": "DateTime?"
+          },
+          {
+            "name": "createdAt",
+            "type": "DateTime"
+          },
+          {
+            "name": "updatedAt",
+            "type": "DateTime"
+          }
+        ],
+        "indexes": [
+          "index([candidateId])",
+          "index([scheduledBy])",
+          "index([status])",
+          "index([jobId])",
+          "index([mode])",
+          "index([reconnectToken])",
+          "index([completedAt])",
+          "index([companyId])",
+          "index([deletedAt])"
+        ]
+      },
+      {
+        "name": "InterviewCommitment",
+        "fields": [
+          {
+            "name": "id",
+            "type": "String"
+          },
+          {
+            "name": "interviewId",
+            "type": "String"
+          },
+          {
+            "name": "interview",
+            "type": "Interview"
+          },
+          {
+            "name": "turnId",
+            "type": "String"
+          },
+          {
+            "name": "description",
+            "type": "String"
+          },
+          {
+            "name": "status",
+            "type": "String"
+          },
+          {
+            "name": "createdAt",
+            "type": "DateTime"
+          },
+          {
+            "name": "resolvedAt",
+            "type": "DateTime?"
+          }
+        ],
+        "indexes": [
+          "index([interviewId])"
+        ]
+      },
+      {
+        "name": "InterviewContradiction",
+        "fields": [
+          {
+            "name": "id",
+            "type": "String"
+          },
+          {
+            "name": "interviewId",
+            "type": "String"
+          },
+          {
+            "name": "interview",
+            "type": "Interview"
+          },
+          {
+            "name": "claimTurnId",
+            "type": "String"
+          },
+          {
+            "name": "evidenceTurnId",
+            "type": "String"
+          },
+          {
+            "name": "description",
+            "type": "String"
+          },
+          {
+            "name": "type",
+            "type": "String"
+          },
+          {
+            "name": "confidence",
+            "type": "Float"
+          },
+          {
+            "name": "detectedAt",
+            "type": "DateTime"
+          }
+        ],
+        "indexes": [
+          "index([interviewId])"
+        ]
+      },
+      {
+        "name": "InterviewerStateSnapshot",
+        "fields": [
+          {
+            "name": "id",
+            "type": "String"
+          },
+          {
+            "name": "interviewId",
+            "type": "String"
+          },
+          {
+            "name": "interview",
+            "type": "Interview"
+          },
+          {
+            "name": "turnIndex",
+            "type": "Int"
+          },
+          {
+            "name": "stateJson",
+            "type": "String"
+          },
+          {
+            "name": "stateHash",
+            "type": "String"
+          },
+          {
+            "name": "createdAt",
+            "type": "DateTime"
+          }
+        ],
+        "indexes": [
+          "unique([interviewId, turnIndex])",
+          "index([interviewId])"
+        ]
+      },
+      {
+        "name": "InterviewEvent",
+        "fields": [
+          {
+            "name": "id",
+            "type": "String"
+          },
+          {
+            "name": "interviewId",
+            "type": "String"
+          },
+          {
+            "name": "interview",
+            "type": "Interview"
+          },
+          {
+            "name": "eventType",
+            "type": "String"
+          },
+          {
+            "name": "payload",
+            "type": "Json?"
+          },
+          {
+            "name": "turnIndex",
+            "type": "Int?"
+          },
+          {
+            "name": "causalEventId",
+            "type": "String?"
+          },
+          {
+            "name": "timestamp",
+            "type": "DateTime"
+          }
+        ],
+        "indexes": [
+          "index([interviewId, timestamp])",
+          "index([interviewId, eventType])"
+        ]
+      },
+      {
+        "name": "InterviewFact",
+        "fields": [
+          {
+            "name": "id",
+            "type": "String"
+          },
+          {
+            "name": "interviewId",
+            "type": "String"
+          },
+          {
+            "name": "interview",
+            "type": "Interview"
+          },
+          {
+            "name": "turnId",
+            "type": "String"
+          },
+          {
+            "name": "factType",
+            "type": "String"
+          },
+          {
+            "name": "content",
+            "type": "String"
+          },
+          {
+            "name": "confidence",
+            "type": "Float"
+          },
+          {
+            "name": "extractedAt",
+            "type": "DateTime"
+          },
+          {
+            "name": "extractedBy",
+            "type": "String"
+          }
+        ],
+        "indexes": [
+          "index([interviewId, factType])",
+          "index([interviewId])"
+        ]
+      },
+      {
+        "name": "InterviewFeedback",
+        "fields": [
+          {
+            "name": "id",
+            "type": "String"
+          },
+          {
+            "name": "interviewId",
+            "type": "String"
+          },
+          {
+            "name": "interview",
+            "type": "Interview"
+          },
+          {
+            "name": "category",
+            "type": "String"
+          },
+          {
+            "name": "score",
+            "type": "Float"
+          },
+          {
+            "name": "narrative",
+            "type": "String?"
+          },
+          {
+            "name": "strengths",
+            "type": "Json?"
+          },
+          {
+            "name": "improvements",
+            "type": "Json?"
+          },
+          {
+            "name": "createdAt",
+            "type": "DateTime"
+          }
+        ],
+        "indexes": [
+          "index([interviewId])"
+        ]
+      },
+      {
+        "name": "InterviewHypothesis",
+        "fields": [
+          {
+            "name": "id",
+            "type": "String"
+          },
+          {
+            "name": "interviewId",
+            "type": "String"
+          },
+          {
+            "name": "interview",
+            "type": "Interview"
+          },
+          {
+            "name": "hypothesis",
+            "type": "String"
+          },
+          {
+            "name": "source",
+            "type": "String"
+          },
+          {
+            "name": "outcome",
+            "type": "String?"
+          },
+          {
+            "name": "evidence",
+            "type": "String?"
+          },
+          {
+            "name": "confidenceLevel",
+            "type": "String?"
+          },
+          {
+            "name": "version",
+            "type": "Int"
+          },
+          {
+            "name": "supersededById",
+            "type": "String?"
+          },
+          {
+            "name": "supportingFactIds",
+            "type": "String[]"
+          },
+          {
+            "name": "createdAt",
+            "type": "DateTime"
+          }
+        ],
+        "indexes": [
+          "index([interviewId])"
+        ]
+      },
+      {
+        "name": "InterviewInvitation",
+        "fields": [
+          {
+            "name": "id",
+            "type": "String"
+          },
+          {
+            "name": "recruiterId",
+            "type": "String"
+          },
+          {
+            "name": "recruiter",
+            "type": "Recruiter"
+          },
+          {
+            "name": "candidateId",
+            "type": "String?"
+          },
+          {
+            "name": "candidate",
+            "type": "Candidate?"
+          },
+          {
+            "name": "jobId",
+            "type": "String?"
+          },
+          {
+            "name": "job",
+            "type": "Job?"
+          },
+          {
+            "name": "templateId",
+            "type": "String?"
+          },
+          {
+            "name": "template",
+            "type": "InterviewTemplate?"
+          },
+          {
+            "name": "token",
+            "type": "String"
+          },
+          {
+            "name": "status",
+            "type": "InvitationStatus"
+          },
+          {
+            "name": "sentAt",
+            "type": "DateTime?"
+          },
+          {
+            "name": "deliveredAt",
+            "type": "DateTime?"
+          },
+          {
+            "name": "expiresAt",
+            "type": "DateTime"
+          },
+          {
+            "name": "openedAt",
+            "type": "DateTime?"
+          },
+          {
+            "name": "acceptedAt",
+            "type": "DateTime?"
+          },
+          {
+            "name": "completedAt",
+            "type": "DateTime?"
+          },
+          {
+            "name": "revokedAt",
+            "type": "DateTime?"
+          },
+          {
+            "name": "revokedBy",
+            "type": "String?"
+          },
+          {
+            "name": "reminderCount",
+            "type": "Int"
+          },
+          {
+            "name": "lastReminderAt",
+            "type": "DateTime?"
+          },
+          {
+            "name": "email",
+            "type": "String?"
+          },
+          {
+            "name": "interview",
+            "type": "Interview?"
+          },
+          {
+            "name": "createdAt",
+            "type": "DateTime"
+          },
+          {
+            "name": "updatedAt",
+            "type": "DateTime"
+          }
+        ],
+        "indexes": [
+          "index([recruiterId])",
+          "index([candidateId])",
+          "index([jobId])",
+          "index([status])",
+          "index([token])"
+        ]
+      },
+      {
+        "name": "InterviewQualityMetrics",
+        "fields": [
+          {
+            "name": "id",
+            "type": "String"
+          },
+          {
+            "name": "interviewId",
+            "type": "String"
+          },
+          {
+            "name": "totalQuestions",
+            "type": "Int"
+          },
+          {
+            "name": "followUpQuestions",
+            "type": "Int"
+          },
+          {
+            "name": "avgResponseDepth",
+            "type": "Float?"
+          },
+          {
+            "name": "topicTransitions",
+            "type": "Int"
+          },
+          {
+            "name": "adaptiveDifficulty",
+            "type": "Json?"
+          },
+          {
+            "name": "coveragePercentage",
+            "type": "Float?"
+          },
+          {
+            "name": "timeUtilization",
+            "type": "Float?"
+          },
+          {
+            "name": "depthScore",
+            "type": "Float?"
+          },
+          {
+            "name": "personalizationScore",
+            "type": "Float?"
+          },
+          {
+            "name": "createdAt",
+            "type": "DateTime"
+          }
+        ],
+        "indexes": [
+          "index([interviewId])"
+        ]
+      },
+      {
+        "name": "InterviewReport",
+        "fields": [
+          {
+            "name": "id",
+            "type": "String"
+          },
+          {
+            "name": "interviewId",
+            "type": "String"
+          },
+          {
+            "name": "interview",
+            "type": "Interview"
+          },
+          {
+            "name": "technicalSkills",
+            "type": "Json"
+          },
+          {
+            "name": "softSkills",
+            "type": "Json"
+          },
+          {
+            "name": "domainExpertise",
+            "type": "Float?"
+          },
+          {
+            "name": "clarityStructure",
+            "type": "Float?"
+          },
+          {
+            "name": "problemSolving",
+            "type": "Float?"
+          },
+          {
+            "name": "communicationScore",
+            "type": "Float?"
+          },
+          {
+            "name": "measurableImpact",
+            "type": "Float?"
+          },
+          {
+            "name": "summary",
+            "type": "String"
+          },
+          {
+            "name": "strengths",
+            "type": "Json"
+          },
+          {
+            "name": "areasToImprove",
+            "type": "Json"
+          },
+          {
+            "name": "recommendation",
+            "type": "String?"
+          },
+          {
+            "name": "hiringAdvice",
+            "type": "String?"
+          },
+          {
+            "name": "overallScore",
+            "type": "Float?"
+          },
+          {
+            "name": "professionalExperience",
+            "type": "Float?"
+          },
+          {
+            "name": "roleFit",
+            "type": "Float?"
+          },
+          {
+            "name": "culturalFit",
+            "type": "Float?"
+          },
+          {
+            "name": "thinkingJudgment",
+            "type": "Float?"
+          },
+          {
+            "name": "confidenceLevel",
+            "type": "String?"
+          },
+          {
+            "name": "confidenceIntervals",
+            "type": "Json?"
+          },
+          {
+            "name": "headline",
+            "type": "String?"
+          },
+          {
+            "name": "riskSignals",
+            "type": "Json?"
+          },
+          {
+            "name": "hypothesisOutcomes",
+            "type": "Json?"
+          },
+          {
+            "name": "evidenceHighlights",
+            "type": "Json?"
+          },
+          {
+            "name": "qaScore",
+            "type": "Float?"
+          },
+          {
+            "name": "qaScoreDetails",
+            "type": "Json?"
+          },
+          {
+            "name": "rubricSnapshot",
+            "type": "Json?"
+          },
+          {
+            "name": "jobMatchScore",
+            "type": "Float?"
+          },
+          {
+            "name": "requirementMatches",
+            "type": "Json?"
+          },
+          {
+            "name": "environmentFitNotes",
+            "type": "String?"
+          },
+          {
+            "name": "candidateSelfAssessment",
+            "type": "Json?"
+          },
+          {
+            "name": "integrityScore",
+            "type": "Float?"
+          },
+          {
+            "name": "integrityFlags",
+            "type": "Json?"
+          },
+          {
+            "name": "scorerModelVersion",
+            "type": "String?"
+          },
+          {
+            "name": "scorerPromptVersion",
+            "type": "String?"
+          },
+          {
+            "name": "rubricVersion",
+            "type": "String?"
+          },
+          {
+            "name": "evidenceHash",
+            "type": "String?"
+          },
+          {
+            "name": "continuityGrade",
+            "type": "String?"
+          },
+          {
+            "name": "continuityIncidents",
+            "type": "Json?"
+          },
+          {
+            "name": "memoryConfidenceMin",
+            "type": "Float?"
+          },
+          {
+            "name": "reviewStatus",
+            "type": "ReviewStatus"
+          },
+          {
+            "name": "reviewedAt",
+            "type": "DateTime?"
+          },
+          {
+            "name": "reviewedBy",
+            "type": "String?"
+          },
+          {
+            "name": "shareToken",
+            "type": "String?"
+          },
+          {
+            "name": "shareExpiresAt",
+            "type": "DateTime?"
+          },
+          {
+            "name": "recipientEmail",
+            "type": "String?"
+          },
+          {
+            "name": "sharePurpose",
+            "type": "String?"
+          },
+          {
+            "name": "shareScopes",
+            "type": "Json?"
+          },
+          {
+            "name": "shareRevoked",
+            "type": "Boolean"
+          },
+          {
+            "name": "memoryMetadata",
+            "type": "Json?"
+          },
+          {
+            "name": "memoryIntegrityScorecard",
+            "type": "Json?"
+          },
+          {
+            "name": "views",
+            "type": "ReportShareView[]"
+          },
+          {
+            "name": "deletedAt",
+            "type": "DateTime?"
+          },
+          {
+            "name": "createdAt",
+            "type": "DateTime"
+          }
+        ],
+        "indexes": [
+          "index([reviewStatus, createdAt])",
+          "index([deletedAt])"
+        ]
+      },
+      {
+        "name": "InterviewResponse",
+        "fields": [
+          {
+            "name": "id",
+            "type": "String"
+          },
+          {
+            "name": "interviewId",
+            "type": "String"
+          },
+          {
+            "name": "interview",
+            "type": "Interview"
+          },
+          {
+            "name": "questionIndex",
+            "type": "Int"
+          },
+          {
+            "name": "questionText",
+            "type": "String"
+          },
+          {
+            "name": "responseTranscript",
+            "type": "String?"
+          },
+          {
+            "name": "videoUrl",
+            "type": "String?"
+          },
+          {
+            "name": "startTime",
+            "type": "DateTime?"
+          },
+          {
+            "name": "endTime",
+            "type": "DateTime?"
+          },
+          {
+            "name": "aiScore",
+            "type": "Float?"
+          },
+          {
+            "name": "aiFeedback",
+            "type": "String?"
+          },
+          {
+            "name": "skillsDemonstrated",
+            "type": "Json?"
+          },
+          {
+            "name": "answerQuality",
+            "type": "Int?"
+          },
+          {
+            "name": "evidenceStrength",
+            "type": "Int?"
+          },
+          {
+            "name": "flags",
+            "type": "Json?"
+          },
+          {
+            "name": "hypothesesTested",
+            "type": "Json?"
+          },
+          {
+            "name": "mediaTimestampStartMs",
+            "type": "Int?"
+          },
+          {
+            "name": "mediaTimestampEndMs",
+            "type": "Int?"
+          },
+          {
+            "name": "sectionName",
+            "type": "String?"
+          },
+          {
+            "name": "difficultyLevel",
+            "type": "String?"
+          },
+          {
+            "name": "createdAt",
+            "type": "DateTime"
+          }
+        ],
+        "indexes": [
+          "index([interviewId])"
+        ]
+      },
+      {
+        "name": "InterviewSection",
+        "fields": [
+          {
+            "name": "id",
+            "type": "String"
+          },
+          {
+            "name": "interviewId",
+            "type": "String"
+          },
+          {
+            "name": "interview",
+            "type": "Interview"
+          },
+          {
+            "name": "sectionName",
+            "type": "String"
+          },
+          {
+            "name": "sectionOrder",
+            "type": "Int"
+          },
+          {
+            "name": "skillModuleName",
+            "type": "String?"
+          },
+          {
+            "name": "plannedDuration",
+            "type": "Int"
+          },
+          {
+            "name": "actualDuration",
+            "type": "Int?"
+          },
+          {
+            "name": "coverageScore",
+            "type": "Float?"
+          },
+          {
+            "name": "evidenceSufficiency",
+            "type": "String?"
+          },
+          {
+            "name": "objectivesCovered",
+            "type": "Json?"
+          },
+          {
+            "name": "startedAt",
+            "type": "DateTime?"
+          },
+          {
+            "name": "endedAt",
+            "type": "DateTime?"
+          },
+          {
+            "name": "questionsAsked",
+            "type": "Int"
+          }
+        ],
+        "indexes": [
+          "index([interviewId])"
+        ]
+      },
+      {
+        "name": "InterviewTemplate",
+        "fields": [
+          {
+            "name": "id",
+            "type": "String"
+          },
+          {
+            "name": "name",
+            "type": "String"
+          },
+          {
+            "name": "description",
+            "type": "String?"
+          },
+          {
+            "name": "roleType",
+            "type": "String?"
+          },
+          {
+            "name": "durationMinutes",
+            "type": "Int"
+          },
+          {
+            "name": "questions",
+            "type": "Json"
+          },
+          {
+            "name": "aiConfig",
+            "type": "Json"
+          },
+          {
+            "name": "isDefault",
+            "type": "Boolean"
+          },
+          {
+            "name": "status",
+            "type": "TemplateStatus"
+          },
+          {
+            "name": "mode",
+            "type": "InterviewMode"
+          },
+          {
+            "name": "strategicObjectives",
+            "type": "Json?"
+          },
+          {
+            "name": "customScreeningQuestions",
+            "type": "Json?"
+          },
+          {
+            "name": "hmNotesTemplate",
+            "type": "String?"
+          },
+          {
+            "name": "scoringWeights",
+            "type": "Json?"
+          },
+          {
+            "name": "maxDurationMinutes",
+            "type": "Int"
+          },
+          {
+            "name": "minDurationMinutes",
+            "type": "Int"
+          },
+          {
+            "name": "candidateReportPolicy",
+            "type": "Json?"
+          },
+          {
+            "name": "retakePolicy",
+            "type": "Json?"
+          },
+          {
+            "name": "readinessCheckRequired",
+            "type": "Boolean"
+          },
+          {
+            "name": "screenShareRequired",
+            "type": "Boolean"
+          },
+          {
+            "name": "maxTopicDepth",
+            "type": "Int"
+          },
+          {
+            "name": "approvedBy",
+            "type": "String?"
+          },
+          {
+            "name": "approvedAt",
+            "type": "DateTime?"
+          },
+          {
+            "name": "approvalNotes",
+            "type": "String?"
+          },
+          {
+            "name": "version",
+            "type": "Int"
+          },
+          {
+            "name": "recruiterId",
+            "type": "String?"
+          },
+          {
+            "name": "recruiter",
+            "type": "Recruiter?"
+          },
+          {
+            "name": "companyId",
+            "type": "String?"
+          },
+          {
+            "name": "company",
+            "type": "Client?"
+          },
+          {
+            "name": "isShadow",
+            "type": "Boolean"
+          },
+          {
+            "name": "deprecatedAt",
+            "type": "DateTime?"
+          },
+          {
+            "name": "deprecationReason",
+            "type": "String?"
+          },
+          {
+            "name": "jobs",
+            "type": "Job[]"
+          },
+          {
+            "name": "interviews",
+            "type": "Interview[]"
+          },
+          {
+            "name": "invitations",
+            "type": "InterviewInvitation[]"
+          },
+          {
+            "name": "skillModules",
+            "type": "InterviewTemplateModule[]"
+          },
+          {
+            "name": "versions",
+            "type": "InterviewTemplateVersion[]"
+          },
+          {
+            "name": "createdAt",
+            "type": "DateTime"
+          },
+          {
+            "name": "updatedAt",
+            "type": "DateTime"
+          }
+        ],
+        "indexes": [
+          "index([recruiterId])",
+          "index([companyId])"
+        ]
+      },
+      {
+        "name": "InterviewTemplateModule",
+        "fields": [
+          {
+            "name": "id",
+            "type": "String"
+          },
+          {
+            "name": "templateId",
+            "type": "String"
+          },
+          {
+            "name": "moduleId",
+            "type": "String"
+          },
+          {
+            "name": "order",
+            "type": "Int"
+          },
+          {
+            "name": "template",
+            "type": "InterviewTemplate"
+          },
+          {
+            "name": "module",
+            "type": "SkillModule"
+          },
+          {
+            "name": "createdAt",
+            "type": "DateTime"
+          }
+        ],
+        "indexes": [
+          "unique([templateId, moduleId])",
+          "index([templateId])",
+          "index([moduleId])"
+        ]
+      },
+      {
+        "name": "InterviewTemplateVersion",
+        "fields": [
+          {
+            "name": "id",
+            "type": "String"
+          },
+          {
+            "name": "templateId",
+            "type": "String"
+          },
+          {
+            "name": "template",
+            "type": "InterviewTemplate"
+          },
+          {
+            "name": "version",
+            "type": "Int"
+          },
+          {
+            "name": "snapshot",
+            "type": "Json"
+          },
+          {
+            "name": "changeNotes",
+            "type": "String?"
+          },
+          {
+            "name": "promotedBy",
+            "type": "String?"
+          },
+          {
+            "name": "promotedAt",
+            "type": "DateTime"
+          },
+          {
+            "name": "isShadow",
+            "type": "Boolean"
+          },
+          {
+            "name": "isActive",
+            "type": "Boolean"
+          },
+          {
+            "name": "createdAt",
+            "type": "DateTime"
+          }
+        ],
+        "indexes": [
+          "unique([templateId, version])",
+          "index([templateId])"
+        ]
+      },
+      {
+        "name": "InterviewTranscript",
+        "fields": [
+          {
+            "name": "id",
+            "type": "String"
+          },
+          {
+            "name": "interviewId",
+            "type": "String"
+          },
+          {
+            "name": "interview",
+            "type": "Interview"
+          },
+          {
+            "name": "role",
+            "type": "String"
+          },
+          {
+            "name": "content",
+            "type": "String"
+          },
+          {
+            "name": "turnIndex",
+            "type": "Int"
+          },
+          {
+            "name": "turnId",
+            "type": "String"
+          },
+          {
+            "name": "causalParentTurnId",
+            "type": "String?"
+          },
+          {
+            "name": "generationMetadata",
+            "type": "Json?"
+          },
+          {
+            "name": "checkpointVersion",
+            "type": "Int"
+          },
+          {
+            "name": "timestamp",
+            "type": "DateTime"
+          },
+          {
+            "name": "serverReceivedAt",
+            "type": "DateTime"
+          },
+          {
+            "name": "clientTimestamp",
+            "type": "DateTime?"
+          },
+          {
+            "name": "contentChecksum",
+            "type": "String?"
+          },
+          {
+            "name": "finalized",
+            "type": "Boolean"
+          },
+          {
+            "name": "memoryChecksum",
+            "type": "String?"
+          },
+          {
+            "name": "sequenceNumber",
+            "type": "Int?"
+          },
+          {
+            "name": "createdAt",
+            "type": "DateTime"
+          }
+        ],
+        "indexes": [
+          "unique([interviewId, turnIndex])",
+          "unique([interviewId, turnId])",
+          "index([interviewId])"
+        ]
+      },
+      {
+        "name": "Job",
+        "fields": [
+          {
+            "name": "id",
+            "type": "String"
+          },
+          {
+            "name": "title",
+            "type": "String"
+          },
+          {
+            "name": "description",
+            "type": "String"
+          },
+          {
+            "name": "location",
+            "type": "String?"
+          },
+          {
+            "name": "department",
+            "type": "String?"
+          },
+          {
+            "name": "industry",
+            "type": "String?"
+          },
+          {
+            "name": "status",
+            "type": "JobStatus"
+          },
+          {
+            "name": "employmentType",
+            "type": "EmploymentType"
+          },
+          {
+            "name": "remoteType",
+            "type": "RemoteType"
+          },
+          {
+            "name": "salaryMin",
+            "type": "Float?"
+          },
+          {
+            "name": "salaryMax",
+            "type": "Float?"
+          },
+          {
+            "name": "salaryCurrency",
+            "type": "String?"
+          },
+          {
+            "name": "experienceMin",
+            "type": "Int?"
+          },
+          {
+            "name": "experienceMax",
+            "type": "Int?"
+          },
+          {
+            "name": "urgencyLevel",
+            "type": "Int?"
+          },
+          {
+            "name": "skillsRequired",
+            "type": "Json"
+          },
+          {
+            "name": "embedding",
+            "type": "Json?"
+          },
+          {
+            "name": "postedAt",
+            "type": "DateTime?"
+          },
+          {
+            "name": "closesAt",
+            "type": "DateTime?"
+          },
+          {
+            "name": "recruiterId",
+            "type": "String"
+          },
+          {
+            "name": "recruiter",
+            "type": "Recruiter"
+          },
+          {
+            "name": "companyId",
+            "type": "String"
+          },
+          {
+            "name": "company",
+            "type": "Client"
+          },
+          {
+            "name": "templateId",
+            "type": "String?"
+          },
+          {
+            "name": "template",
+            "type": "InterviewTemplate?"
+          },
+          {
+            "name": "jobSkills",
+            "type": "JobSkill[]"
+          },
+          {
+            "name": "applications",
+            "type": "Application[]"
+          },
+          {
+            "name": "matches",
+            "type": "Match[]"
+          },
+          {
+            "name": "invitations",
+            "type": "InterviewInvitation[]"
+          },
+          {
+            "name": "interviews",
+            "type": "Interview[]"
+          },
+          {
+            "name": "createdAt",
+            "type": "DateTime"
+          },
+          {
+            "name": "updatedAt",
+            "type": "DateTime"
+          }
+        ],
+        "indexes": [
+          "index([recruiterId])",
+          "index([companyId])",
+          "index([status])",
+          "index([employmentType])",
+          "index([remoteType])",
+          "index([postedAt])"
+        ]
+      },
+      {
+        "name": "JobPreference",
+        "fields": [
+          {
+            "name": "id",
+            "type": "String"
+          },
+          {
+            "name": "candidateId",
+            "type": "String"
+          },
+          {
+            "name": "candidate",
+            "type": "Candidate"
+          },
+          {
+            "name": "jobTypes",
+            "type": "String[]"
+          },
+          {
+            "name": "preferredLocations",
+            "type": "String[]"
+          },
+          {
+            "name": "remotePreference",
+            "type": "RemotePreference"
+          },
+          {
+            "name": "salaryMin",
+            "type": "Int?"
+          },
+          {
+            "name": "salaryMax",
+            "type": "Int?"
+          },
+          {
+            "name": "salaryCurrency",
+            "type": "String"
+          },
+          {
+            "name": "availability",
+            "type": "CandidateAvailability"
+          },
+          {
+            "name": "willingToRelocate",
+            "type": "Boolean"
+          },
+          {
+            "name": "noticePeriod",
+            "type": "String?"
+          },
+          {
+            "name": "preferredCurrency",
+            "type": "String?"
+          },
+          {
+            "name": "preferredIndustries",
+            "type": "String[]"
+          },
+          {
+            "name": "preferredCompanies",
+            "type": "String[]"
+          },
+          {
+            "name": "createdAt",
+            "type": "DateTime"
+          },
+          {
+            "name": "updatedAt",
+            "type": "DateTime"
+          }
+        ],
+        "indexes": [
+          "index([candidateId])"
+        ]
+      },
+      {
+        "name": "JobSkill",
+        "fields": [
+          {
+            "name": "id",
+            "type": "String"
+          },
+          {
+            "name": "jobId",
+            "type": "String"
+          },
+          {
+            "name": "job",
+            "type": "Job"
+          },
+          {
+            "name": "skillName",
+            "type": "String"
+          },
+          {
+            "name": "skillCategory",
+            "type": "String?"
+          },
+          {
+            "name": "importance",
+            "type": "SkillImportance"
+          },
+          {
+            "name": "minYears",
+            "type": "Int?"
+          },
+          {
+            "name": "createdAt",
+            "type": "DateTime"
+          }
+        ],
+        "indexes": [
+          "unique([jobId, skillName])",
+          "index([jobId])",
+          "index([skillName])"
+        ]
+      },
+      {
+        "name": "Match",
+        "fields": [
+          {
+            "name": "id",
+            "type": "String"
+          },
+          {
+            "name": "candidateId",
+            "type": "String"
+          },
+          {
+            "name": "candidate",
+            "type": "Candidate"
+          },
+          {
+            "name": "roleId",
+            "type": "String"
+          },
+          {
+            "name": "role",
+            "type": "Role"
+          },
+          {
+            "name": "jobId",
+            "type": "String?"
+          },
+          {
+            "name": "job",
+            "type": "Job?"
+          },
+          {
+            "name": "fitScore",
+            "type": "Float"
+          },
+          {
+            "name": "skillMatchScore",
+            "type": "Float?"
+          },
+          {
+            "name": "experienceMatchScore",
+            "type": "Float?"
+          },
+          {
+            "name": "reasoning",
+            "type": "String?"
+          },
+          {
+            "name": "status",
+            "type": "String?"
+          },
+          {
+            "name": "createdAt",
+            "type": "DateTime"
+          },
+          {
+            "name": "updatedAt",
+            "type": "DateTime"
+          }
+        ],
+        "indexes": [
+          "unique([candidateId, roleId])",
+          "index([candidateId])",
+          "index([roleId])",
+          "index([jobId])",
+          "index([fitScore])"
+        ]
+      },
+      {
+        "name": "Message",
+        "fields": [
+          {
+            "name": "id",
+            "type": "String"
+          },
+          {
+            "name": "conversationId",
+            "type": "String"
+          },
+          {
+            "name": "senderId",
+            "type": "String"
+          },
+          {
+            "name": "senderRole",
+            "type": "MessageSenderRole"
+          },
+          {
+            "name": "recipientId",
+            "type": "String"
+          },
+          {
+            "name": "recipientRole",
+            "type": "MessageSenderRole"
+          },
+          {
+            "name": "content",
+            "type": "String"
+          },
+          {
+            "name": "read",
+            "type": "Boolean"
+          },
+          {
+            "name": "readAt",
+            "type": "DateTime?"
+          },
+          {
+            "name": "attachmentUrl",
+            "type": "String?"
+          },
+          {
+            "name": "attachmentName",
+            "type": "String?"
+          },
+          {
+            "name": "createdAt",
+            "type": "DateTime"
+          }
+        ],
+        "indexes": [
+          "index([conversationId])",
+          "index([senderId])",
+          "index([recipientId])",
+          "index([conversationId, createdAt])"
+        ]
+      },
+      {
+        "name": "Note",
+        "fields": [
+          {
+            "name": "id",
+            "type": "String"
+          },
+          {
+            "name": "content",
+            "type": "String"
+          },
+          {
+            "name": "isPrivate",
+            "type": "Boolean"
+          },
+          {
+            "name": "candidateId",
+            "type": "String"
+          },
+          {
+            "name": "candidate",
+            "type": "Candidate"
+          },
+          {
+            "name": "authorId",
+            "type": "String"
+          },
+          {
+            "name": "callAnswered",
+            "type": "Boolean?"
+          },
+          {
+            "name": "voicemailLeft",
+            "type": "Boolean?"
+          },
+          {
+            "name": "smsSent",
+            "type": "Boolean?"
+          },
+          {
+            "name": "emailSent",
+            "type": "Boolean?"
+          },
+          {
+            "name": "createdAt",
+            "type": "DateTime"
+          },
+          {
+            "name": "updatedAt",
+            "type": "DateTime"
+          }
+        ],
+        "indexes": [
+          "index([candidateId])"
+        ]
+      },
+      {
+        "name": "Notification",
+        "fields": [
+          {
+            "name": "id",
+            "type": "String"
+          },
+          {
+            "name": "userId",
+            "type": "String"
+          },
+          {
+            "name": "candidateId",
+            "type": "String?"
+          },
+          {
+            "name": "candidate",
+            "type": "Candidate?"
+          },
+          {
+            "name": "type",
+            "type": "NotificationType"
+          },
+          {
+            "name": "title",
+            "type": "String"
+          },
+          {
+            "name": "message",
+            "type": "String"
+          },
+          {
+            "name": "data",
+            "type": "Json?"
+          },
+          {
+            "name": "read",
+            "type": "Boolean"
+          },
+          {
+            "name": "createdAt",
+            "type": "DateTime"
+          }
+        ],
+        "indexes": [
+          "index([userId])",
+          "index([userId, read])",
+          "index([type])",
+          "index([createdAt])"
+        ]
+      },
+      {
+        "name": "NotificationPreference",
+        "fields": [
+          {
+            "name": "id",
+            "type": "String"
+          },
+          {
+            "name": "userId",
+            "type": "String"
+          },
+          {
+            "name": "emailNotifications",
+            "type": "Boolean"
+          },
+          {
+            "name": "pushNotifications",
+            "type": "Boolean"
+          },
+          {
+            "name": "interviewInvites",
+            "type": "Boolean"
+          },
+          {
+            "name": "applicationUpdates",
+            "type": "Boolean"
+          },
+          {
+            "name": "matchAlerts",
+            "type": "Boolean"
+          },
+          {
+            "name": "feedbackReady",
+            "type": "Boolean"
+          },
+          {
+            "name": "systemAlerts",
+            "type": "Boolean"
+          },
+          {
+            "name": "createdAt",
+            "type": "DateTime"
+          },
+          {
+            "name": "updatedAt",
+            "type": "DateTime"
+          }
+        ],
+        "indexes": []
+      },
+      {
+        "name": "PassiveProfile",
+        "fields": [
+          {
+            "name": "id",
+            "type": "String"
+          },
+          {
+            "name": "email",
+            "type": "String?"
+          },
+          {
+            "name": "linkedinUrl",
+            "type": "String?"
+          },
+          {
+            "name": "firstName",
+            "type": "String?"
+          },
+          {
+            "name": "lastName",
+            "type": "String?"
+          },
+          {
+            "name": "phone",
+            "type": "String?"
+          },
+          {
+            "name": "currentTitle",
+            "type": "String?"
+          },
+          {
+            "name": "currentCompany",
+            "type": "String?"
+          },
+          {
+            "name": "yearsExperience",
+            "type": "Int?"
+          },
+          {
+            "name": "skills",
+            "type": "String[]"
+          },
+          {
+            "name": "resumeUrl",
+            "type": "String?"
+          },
+          {
+            "name": "notes",
+            "type": "String?"
+          },
+          {
+            "name": "extractedData",
+            "type": "Json?"
+          },
+          {
+            "name": "source",
+            "type": "String?"
+          },
+          {
+            "name": "status",
+            "type": "PassiveProfileStatus"
+          },
+          {
+            "name": "sourceRecruiterId",
+            "type": "String?"
+          },
+          {
+            "name": "sourceRecruiter",
+            "type": "Recruiter?"
+          },
+          {
+            "name": "linkedCandidateId",
+            "type": "String?"
+          },
+          {
+            "name": "createdAt",
+            "type": "DateTime"
+          },
+          {
+            "name": "updatedAt",
+            "type": "DateTime"
+          }
+        ],
+        "indexes": [
+          "index([email])",
+          "index([sourceRecruiterId])",
+          "index([status])"
+        ]
+      },
+      {
+        "name": "ProctoringEvent",
+        "fields": [
+          {
+            "name": "id",
+            "type": "String"
+          },
+          {
+            "name": "interviewId",
+            "type": "String"
+          },
+          {
+            "name": "interview",
+            "type": "Interview"
+          },
+          {
+            "name": "eventType",
+            "type": "String"
+          },
+          {
+            "name": "timestamp",
+            "type": "DateTime"
+          },
+          {
+            "name": "details",
+            "type": "Json?"
+          },
+          {
+            "name": "severity",
+            "type": "ProctoringEventSeverity"
+          }
+        ],
+        "indexes": [
+          "index([interviewId])",
+          "index([eventType])"
+        ]
+      },
+      {
+        "name": "Recruiter",
+        "fields": [
+          {
+            "name": "id",
+            "type": "String"
+          },
+          {
+            "name": "supabaseUserId",
+            "type": "String?"
+          },
+          {
+            "name": "name",
+            "type": "String"
+          },
+          {
+            "name": "email",
+            "type": "String"
+          },
+          {
+            "name": "phone",
+            "type": "String?"
+          },
+          {
+            "name": "title",
+            "type": "String?"
+          },
+          {
+            "name": "department",
+            "type": "String?"
+          },
+          {
+            "name": "companyId",
+            "type": "String?"
+          },
+          {
+            "name": "company",
+            "type": "Client?"
+          },
+          {
+            "name": "onboardingStep",
+            "type": "Int"
+          },
+          {
+            "name": "onboardingCompleted",
+            "type": "Boolean"
+          },
+          {
+            "name": "onboardingStatus",
+            "type": "RecruiterOnboardingStatus"
+          },
+          {
+            "name": "linkedinUrl",
+            "type": "String?"
+          },
+          {
+            "name": "profileImage",
+            "type": "String?"
+          },
+          {
+            "name": "bio",
+            "type": "String?"
+          },
+          {
+            "name": "hiringPreferences",
+            "type": "Json?"
+          },
+          {
+            "name": "createdAt",
+            "type": "DateTime"
+          },
+          {
+            "name": "updatedAt",
+            "type": "DateTime"
+          },
+          {
+            "name": "candidates",
+            "type": "Candidate[]"
+          },
+          {
+            "name": "interviews",
+            "type": "Interview[]"
+          },
+          {
+            "name": "jobs",
+            "type": "Job[]"
+          },
+          {
+            "name": "interviewTemplates",
+            "type": "InterviewTemplate[]"
+          },
+          {
+            "name": "interviewInvitations",
+            "type": "InterviewInvitation[]"
+          },
+          {
+            "name": "passiveProfiles",
+            "type": "PassiveProfile[]"
+          },
+          {
+            "name": "skillModules",
+            "type": "SkillModule[]"
+          }
+        ],
+        "indexes": [
+          "index([companyId])",
+          "index([onboardingStatus])"
+        ]
+      },
+      {
+        "name": "ReportShareView",
+        "fields": [
+          {
+            "name": "id",
+            "type": "String"
+          },
+          {
+            "name": "reportId",
+            "type": "String"
+          },
+          {
+            "name": "report",
+            "type": "InterviewReport"
+          },
+          {
+            "name": "shareToken",
+            "type": "String"
+          },
+          {
+            "name": "viewerIp",
+            "type": "String?"
+          },
+          {
+            "name": "userAgent",
+            "type": "String?"
+          },
+          {
+            "name": "viewedAt",
+            "type": "DateTime"
+          }
+        ],
+        "indexes": [
+          "index([reportId])",
+          "index([shareToken])"
+        ]
+      },
+      {
+        "name": "RetentionPolicy",
+        "fields": [
+          {
+            "name": "id",
+            "type": "String"
+          },
+          {
+            "name": "name",
+            "type": "String"
+          },
+          {
+            "name": "recordingDays",
+            "type": "Int"
+          },
+          {
+            "name": "transcriptDays",
+            "type": "Int"
+          },
+          {
+            "name": "candidateDataDays",
+            "type": "Int"
+          },
+          {
+            "name": "isDefault",
+            "type": "Boolean"
+          },
+          {
+            "name": "metadata",
+            "type": "Json?"
+          },
+          {
+            "name": "companyId",
+            "type": "String?"
+          },
+          {
+            "name": "company",
+            "type": "Client?"
+          },
+          {
+            "name": "createdAt",
+            "type": "DateTime"
+          },
+          {
+            "name": "updatedAt",
+            "type": "DateTime"
+          }
+        ],
+        "indexes": []
+      },
+      {
+        "name": "ReviewDecision",
+        "fields": [
+          {
+            "name": "id",
+            "type": "String"
+          },
+          {
+            "name": "interviewId",
+            "type": "String"
+          },
+          {
+            "name": "interview",
+            "type": "Interview"
+          },
+          {
+            "name": "reviewerId",
+            "type": "String"
+          },
+          {
+            "name": "reviewerEmail",
+            "type": "String?"
+          },
+          {
+            "name": "decision",
+            "type": "ReviewDecisionType"
+          },
+          {
+            "name": "overrideReason",
+            "type": "String?"
+          },
+          {
+            "name": "previousRecommendation",
+            "type": "String?"
+          },
+          {
+            "name": "newRecommendation",
+            "type": "String?"
+          },
+          {
+            "name": "createdAt",
+            "type": "DateTime"
+          }
+        ],
+        "indexes": [
+          "index([interviewId])",
+          "index([reviewerId])",
+          "index([createdAt])"
+        ]
+      },
+      {
+        "name": "Role",
+        "fields": [
+          {
+            "name": "id",
+            "type": "String"
+          },
+          {
+            "name": "title",
+            "type": "String"
+          },
+          {
+            "name": "location",
+            "type": "String?"
+          },
+          {
+            "name": "salaryRange",
+            "type": "String?"
+          },
+          {
+            "name": "skillsRequired",
+            "type": "Json"
+          },
+          {
+            "name": "description",
+            "type": "String"
+          },
+          {
+            "name": "experienceYears",
+            "type": "String?"
+          },
+          {
+            "name": "clientId",
+            "type": "String"
+          },
+          {
+            "name": "client",
+            "type": "Client"
+          },
+          {
+            "name": "embedding",
+            "type": "Json?"
+          },
+          {
+            "name": "matches",
+            "type": "Match[]"
+          },
+          {
+            "name": "createdAt",
+            "type": "DateTime"
+          },
+          {
+            "name": "updatedAt",
+            "type": "DateTime"
+          }
+        ],
+        "indexes": [
+          "index([clientId])"
+        ]
+      },
+      {
+        "name": "ScreenCaptureSession",
+        "fields": [
+          {
+            "name": "id",
+            "type": "String"
+          },
+          {
+            "name": "interviewId",
+            "type": "String"
+          },
+          {
+            "name": "interview",
+            "type": "Interview"
+          },
+          {
+            "name": "captureType",
+            "type": "String"
+          },
+          {
+            "name": "startedAt",
+            "type": "DateTime"
+          },
+          {
+            "name": "endedAt",
+            "type": "DateTime?"
+          },
+          {
+            "name": "thumbnailUrls",
+            "type": "Json?"
+          },
+          {
+            "name": "recordingUrl",
+            "type": "String?"
+          },
+          {
+            "name": "recordingSize",
+            "type": "Int?"
+          },
+          {
+            "name": "consentGiven",
+            "type": "Boolean"
+          },
+          {
+            "name": "status",
+            "type": "String"
+          },
+          {
+            "name": "createdAt",
+            "type": "DateTime"
+          },
+          {
+            "name": "updatedAt",
+            "type": "DateTime"
+          }
+        ],
+        "indexes": [
+          "index([interviewId])"
+        ]
+      },
+      {
+        "name": "SkillModule",
+        "fields": [
+          {
+            "name": "id",
+            "type": "String"
+          },
+          {
+            "name": "name",
+            "type": "String"
+          },
+          {
+            "name": "category",
+            "type": "String"
+          },
+          {
+            "name": "duration",
+            "type": "Int"
+          },
+          {
+            "name": "rubric",
+            "type": "Json"
+          },
+          {
+            "name": "prompts",
+            "type": "Json"
+          },
+          {
+            "name": "difficulty",
+            "type": "String"
+          },
+          {
+            "name": "isGlobal",
+            "type": "Boolean"
+          },
+          {
+            "name": "recruiterId",
+            "type": "String?"
+          },
+          {
+            "name": "recruiter",
+            "type": "Recruiter?"
+          },
+          {
+            "name": "templates",
+            "type": "InterviewTemplateModule[]"
+          },
+          {
+            "name": "createdAt",
+            "type": "DateTime"
+          },
+          {
+            "name": "updatedAt",
+            "type": "DateTime"
+          }
+        ],
+        "indexes": [
+          "index([category])",
+          "index([recruiterId])"
+        ]
+      },
+      {
+        "name": "SSOConfig",
+        "fields": [
+          {
+            "name": "id",
+            "type": "String"
+          },
+          {
+            "name": "companyId",
+            "type": "String"
+          },
+          {
+            "name": "company",
+            "type": "Client"
+          },
+          {
+            "name": "provider",
+            "type": "String"
+          },
+          {
+            "name": "metadataUrl",
+            "type": "String?"
+          },
+          {
+            "name": "entityId",
+            "type": "String?"
+          },
+          {
+            "name": "certificate",
+            "type": "String?"
+          },
+          {
+            "name": "domain",
+            "type": "String"
+          },
+          {
+            "name": "enabled",
+            "type": "Boolean"
+          },
+          {
+            "name": "clientId",
+            "type": "String?"
+          },
+          {
+            "name": "clientSecret",
+            "type": "String?"
+          },
+          {
+            "name": "issuerUrl",
+            "type": "String?"
+          },
+          {
+            "name": "callbackUrl",
+            "type": "String?"
+          },
+          {
+            "name": "scopes",
+            "type": "String"
+          },
+          {
+            "name": "ssoUrl",
+            "type": "String?"
+          },
+          {
+            "name": "sloUrl",
+            "type": "String?"
+          },
+          {
+            "name": "nameIdFormat",
+            "type": "String?"
+          },
+          {
+            "name": "createdAt",
+            "type": "DateTime"
+          },
+          {
+            "name": "updatedAt",
+            "type": "DateTime"
+          }
+        ],
+        "indexes": [
+          "index([domain])"
+        ]
+      },
+      {
+        "name": "TeamInvitation",
+        "fields": [
+          {
+            "name": "id",
+            "type": "String"
+          },
+          {
+            "name": "email",
+            "type": "String"
+          },
+          {
+            "name": "name",
+            "type": "String?"
+          },
+          {
+            "name": "role",
+            "type": "String"
+          },
+          {
+            "name": "department",
+            "type": "String?"
+          },
+          {
+            "name": "companyId",
+            "type": "String"
+          },
+          {
+            "name": "company",
+            "type": "Client"
+          },
+          {
+            "name": "invitedById",
+            "type": "String"
+          },
+          {
+            "name": "token",
+            "type": "String"
+          },
+          {
+            "name": "status",
+            "type": "String"
+          },
+          {
+            "name": "expiresAt",
+            "type": "DateTime"
+          },
+          {
+            "name": "acceptedAt",
+            "type": "DateTime?"
+          },
+          {
+            "name": "createdAt",
+            "type": "DateTime"
+          }
+        ],
+        "indexes": [
+          "index([email])",
+          "index([companyId])",
+          "index([token])",
+          "index([status])"
+        ]
+      },
+      {
+        "name": "TurnFragment",
+        "fields": [
+          {
+            "name": "id",
+            "type": "String"
+          },
+          {
+            "name": "interviewId",
+            "type": "String"
+          },
+          {
+            "name": "interview",
+            "type": "Interview"
+          },
+          {
+            "name": "chunkId",
+            "type": "String"
+          },
+          {
+            "name": "partialContent",
+            "type": "String"
+          },
+          {
+            "name": "role",
+            "type": "String"
+          },
+          {
+            "name": "startedAt",
+            "type": "DateTime"
+          },
+          {
+            "name": "interruptedAt",
+            "type": "DateTime?"
+          },
+          {
+            "name": "resumedAt",
+            "type": "DateTime?"
+          },
+          {
+            "name": "status",
+            "type": "String"
+          }
+        ],
+        "indexes": [
+          "unique([interviewId, chunkId])",
+          "index([interviewId, status])"
+        ]
+      },
+      {
+        "name": "WebhookDelivery",
+        "fields": [
+          {
+            "name": "id",
+            "type": "String"
+          },
+          {
+            "name": "endpointId",
+            "type": "String"
+          },
+          {
+            "name": "endpoint",
+            "type": "WebhookEndpoint"
+          },
+          {
+            "name": "event",
+            "type": "String"
+          },
+          {
+            "name": "payload",
+            "type": "Json"
+          },
+          {
+            "name": "statusCode",
+            "type": "Int?"
+          },
+          {
+            "name": "attempts",
+            "type": "Int"
+          },
+          {
+            "name": "lastError",
+            "type": "String?"
+          },
+          {
+            "name": "createdAt",
+            "type": "DateTime"
+          }
+        ],
+        "indexes": [
+          "index([endpointId])",
+          "index([event])"
+        ]
+      },
+      {
+        "name": "WebhookEndpoint",
+        "fields": [
+          {
+            "name": "id",
+            "type": "String"
+          },
+          {
+            "name": "companyId",
+            "type": "String"
+          },
+          {
+            "name": "company",
+            "type": "Client"
+          },
+          {
+            "name": "url",
+            "type": "String"
+          },
+          {
+            "name": "events",
+            "type": "Json"
+          },
+          {
+            "name": "secret",
+            "type": "String"
+          },
+          {
+            "name": "isActive",
+            "type": "Boolean"
+          },
+          {
+            "name": "createdAt",
+            "type": "DateTime"
+          },
+          {
+            "name": "updatedAt",
+            "type": "DateTime"
+          },
+          {
+            "name": "deliveries",
+            "type": "WebhookDelivery[]"
+          }
+        ],
+        "indexes": [
+          "index([companyId, isActive])"
+        ]
+      }
+    ],
+    "enums": [
+      {
+        "name": "ApplicationStatus",
+        "values": [
+          "APPLIED",
+          "SCREENING",
+          "INTERVIEWING",
+          "SHORTLISTED",
+          "OFFERED",
+          "HIRED",
+          "REJECTED",
+          "WITHDRAWN"
+        ]
+      },
+      {
+        "name": "CandidateAvailability",
+        "values": [
+          "IMMEDIATELY",
+          "TWO_WEEKS",
+          "ONE_MONTH",
+          "THREE_MONTHS",
+          "NOT_LOOKING"
+        ]
+      },
+      {
+        "name": "CandidateStatus",
+        "values": [
+          "SOURCED",
+          "CONTACTED",
+          "INTERVIEWED",
+          "OFFERED",
+          "HIRED",
+          "REJECTED"
+        ]
+      },
+      {
+        "name": "DocumentType",
+        "values": [
+          "RESUME",
+          "COVER_LETTER",
+          "CERTIFICATION",
+          "OTHER"
+        ]
+      },
+      {
+        "name": "EmploymentType",
+        "values": [
+          "FULL_TIME",
+          "PART_TIME",
+          "CONTRACT",
+          "TEMP_TO_HIRE"
+        ]
+      },
+      {
+        "name": "EvidenceConfidence",
+        "values": [
+          "HIGH",
+          "MEDIUM",
+          "LOW"
+        ]
+      },
+      {
+        "name": "InterviewMode",
+        "values": [
+          "GENERAL_PROFILE",
+          "JOB_FIT",
+          "HYBRID",
+          "CULTURAL_FIT",
+          "TECHNICAL_DEEP_DIVE",
+          "SCREENING",
+          "CUSTOM"
+        ]
+      },
+      {
+        "name": "InterviewStatus",
+        "values": [
+          "CREATED",
+          "PLAN_GENERATED",
+          "PENDING",
+          "IN_PROGRESS",
+          "PAUSED",
+          "DISCONNECTED",
+          "COMPLETED",
+          "CANCELLED",
+          "EXPIRED",
+          "REPORT_GENERATING",
+          "REPORT_READY",
+          "REPORT_FAILED"
+        ]
+      },
+      {
+        "name": "InterviewType",
+        "values": [
+          "TECHNICAL",
+          "BEHAVIORAL",
+          "DOMAIN_EXPERT",
+          "LANGUAGE",
+          "CASE_STUDY"
+        ]
+      },
+      {
+        "name": "InvitationStatus",
+        "values": [
+          "CREATED",
+          "PENDING",
+          "SENT",
+          "DELIVERED",
+          "OPENED",
+          "ACCEPTED",
+          "EXPIRED",
+          "REVOKED",
+          "DECLINED",
+          "INTERVIEW_STARTED",
+          "INTERVIEW_COMPLETED",
+          "ABANDONED"
+        ]
+      },
+      {
+        "name": "JobStatus",
+        "values": [
+          "DRAFT",
+          "ACTIVE",
+          "PAUSED",
+          "CLOSED",
+          "FILLED"
+        ]
+      },
+      {
+        "name": "MessageSenderRole",
+        "values": [
+          "RECRUITER",
+          "CANDIDATE",
+          "SYSTEM"
+        ]
+      },
+      {
+        "name": "NotificationType",
+        "values": [
+          "INTERVIEW_INVITE",
+          "APPLICATION_UPDATE",
+          "MATCH_ALERT",
+          "FEEDBACK_READY",
+          "SYSTEM"
+        ]
+      },
+      {
+        "name": "OnboardingStatus",
+        "values": [
+          "INVITED",
+          "PROFILE_STARTED",
+          "PROFILE_COMPLETED",
+          "PENDING_APPROVAL",
+          "APPROVED",
+          "REJECTED",
+          "ON_HOLD"
+        ]
+      },
+      {
+        "name": "PassiveProfileStatus",
+        "values": [
+          "CREATED",
+          "INVITED",
+          "LINKED",
+          "EXPIRED"
+        ]
+      },
+      {
+        "name": "ProctoringEventSeverity",
+        "values": [
+          "LOW",
+          "MEDIUM",
+          "HIGH",
+          "CRITICAL"
+        ]
+      },
+      {
+        "name": "RecordingState",
+        "values": [
+          "UPLOADING",
+          "FINALIZING",
+          "COMPLETE",
+          "VERIFIED",
+          "DELETED"
+        ]
+      },
+      {
+        "name": "RecruiterOnboardingStatus",
+        "values": [
+          "NOT_STARTED",
+          "IN_PROGRESS",
+          "COMPLETED",
+          "PENDING_APPROVAL",
+          "APPROVED",
+          "REJECTED"
+        ]
+      },
+      {
+        "name": "RemotePreference",
+        "values": [
+          "REMOTE",
+          "HYBRID",
+          "ONSITE",
+          "FLEXIBLE"
+        ]
+      },
+      {
+        "name": "RemoteType",
+        "values": [
+          "REMOTE",
+          "ONSITE",
+          "HYBRID"
+        ]
+      },
+      {
+        "name": "ReviewDecisionType",
+        "values": [
+          "APPROVE",
+          "REJECT",
+          "FLAG",
+          "OVERRIDE"
+        ]
+      },
+      {
+        "name": "ReviewStatus",
+        "values": [
+          "PENDING_REVIEW",
+          "REVIEWED",
+          "OVERRIDDEN"
+        ]
+      },
+      {
+        "name": "SkillImportance",
+        "values": [
+          "REQUIRED",
+          "PREFERRED",
+          "NICE_TO_HAVE"
+        ]
+      },
+      {
+        "name": "TemplateStatus",
+        "values": [
+          "DRAFT",
+          "PENDING_APPROVAL",
+          "ACTIVE",
+          "ARCHIVED"
+        ]
+      }
+    ],
+    "rlsPolicies": []
+  },
+  "inngest": [
+    {
+      "name": "dataDeletionExecute",
+      "registered": true
+    },
+    {
+      "name": "interviewAnomalyAlert",
+      "registered": true
+    },
+    {
+      "name": "recordingFinalizeRetry",
+      "registered": true
+    },
+    {
+      "name": "recordingProcess",
+      "registered": true
+    },
+    {
+      "name": "reportGenerate",
+      "registered": true
+    },
+    {
+      "name": "retentionCleanup",
+      "registered": true
+    },
+    {
+      "name": "sloCheck",
+      "registered": true
+    },
+    {
+      "name": "updateAriaMemoryGraph",
+      "registered": false
+    }
+  ],
+  "crons": [
+    {
+      "path": "/api/cron/fragment-cleanup",
+      "schedule": "0 */6 * * *"
+    },
+    {
+      "path": "/api/cron/report-retry",
+      "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/cron/retention",
+      "schedule": "0 3 * * *"
+    }
+  ],
+  "featureFlags": [
+    {
+      "name": "ATOMIC_RECONNECT_VERIFICATION",
+      "env": "FF_ATOMIC_RECONNECT_VERIFICATION",
+      "default": true
+    },
+    {
+      "name": "ATOMIC_TURN_COMMIT",
+      "env": "FF_ATOMIC_TURN_COMMIT",
+      "default": true
+    },
+    {
+      "name": "CONTEXT_CAPSULE_PROTOCOL",
+      "env": "FF_CONTEXT_CAPSULE_PROTOCOL",
+      "default": false
+    },
+    {
+      "name": "CONTINUITY_SLO_ENFORCEMENT",
+      "env": "FF_CONTINUITY_SLO_ENFORCEMENT",
+      "default": true
+    },
+    {
+      "name": "DETERMINISTIC_RESUME",
+      "env": "FF_DETERMINISTIC_RESUME",
+      "default": true
+    },
+    {
+      "name": "ENTERPRISE_MEMORY_HARD_PAUSE",
+      "env": "FF_ENTERPRISE_MEMORY_HARD_PAUSE",
+      "default": true
+    },
+    {
+      "name": "ENTERPRISE_SOURCE_GROUNDING_REQUIRED",
+      "env": "FF_ENTERPRISE_SOURCE_GROUNDING_REQUIRED",
+      "default": false
+    },
+    {
+      "name": "FAIL_CLOSED_PRODUCTION",
+      "env": "FF_FAIL_CLOSED_PRODUCTION",
+      "default": true
+    },
+    {
+      "name": "GROUNDING_GATE_ENABLED",
+      "env": "FF_GROUNDING_GATE",
+      "default": true
+    },
+    {
+      "name": "MEMORY_INTEGRITY_SCORECARD",
+      "env": "FF_MEMORY_INTEGRITY_SCORECARD",
+      "default": true
+    },
+    {
+      "name": "MEMORY_TIERS",
+      "env": "FF_MEMORY_TIERS",
+      "default": true
+    },
+    {
+      "name": "MEMORY_TRUTH_SERVICE",
+      "env": "FF_MEMORY_TRUTH_SERVICE",
+      "default": true
+    },
+    {
+      "name": "OUTPUT_GATE_BLOCKING",
+      "env": "FF_OUTPUT_GATE_BLOCKING",
+      "default": true
+    },
+    {
+      "name": "PERSONA_IDENTITY_TOKEN",
+      "env": "FF_PERSONA_IDENTITY_TOKEN",
+      "default": false
+    },
+    {
+      "name": "SEMANTIC_CONTRADICTION_DETECTOR",
+      "env": "FF_SEMANTIC_CONTRADICTION_DETECTOR",
+      "default": true
+    },
+    {
+      "name": "SERVER_AUTHORITATIVE_TURNS",
+      "env": "FF_SERVER_AUTHORITATIVE_TURNS",
+      "default": true
+    },
+    {
+      "name": "STATEFUL_INTERVIEWER",
+      "env": "FF_STATEFUL_INTERVIEWER",
+      "default": true
+    },
+    {
+      "name": "STRICT_SEQUENCE_NUMBERS",
+      "env": "FF_STRICT_SEQUENCE_NUMBERS",
+      "default": true
+    },
+    {
+      "name": "TIMELINE_OBSERVABILITY",
+      "env": "FF_TIMELINE_OBSERVABILITY",
+      "default": true
+    },
+    {
+      "name": "TURN_COMMIT_PROTOCOL",
+      "env": "FF_TURN_COMMIT_PROTOCOL",
+      "default": true
+    },
+    {
+      "name": "USE_CANONICAL_LEDGER",
+      "env": "FF_USE_CANONICAL_LEDGER",
+      "default": true
+    },
+    {
+      "name": "VOICE_MODE_ENABLED",
+      "env": "FF_VOICE_MODE_ENABLED",
+      "default": true
+    }
+  ],
+  "interviewTransitions": {
+    "CANCELLED": [],
+    "COMPLETED": [
+      "REPORT_GENERATING"
+    ],
+    "CREATED": [
+      "PLAN_GENERATED",
+      "PENDING",
+      "CANCELLED"
+    ],
+    "DISCONNECTED": [
+      "IN_PROGRESS",
+      "COMPLETED",
+      "CANCELLED"
+    ],
+    "EXPIRED": [],
+    "IN_PROGRESS": [
+      "COMPLETED",
+      "DISCONNECTED",
+      "PAUSED",
+      "CANCELLED"
+    ],
+    "PAUSED": [
+      "IN_PROGRESS",
+      "CANCELLED"
+    ],
+    "PENDING": [
+      "IN_PROGRESS",
+      "CANCELLED",
+      "EXPIRED"
+    ],
+    "PLAN_GENERATED": [
+      "PENDING",
+      "CANCELLED"
+    ],
+    "REPORT_FAILED": [
+      "REPORT_GENERATING"
+    ],
+    "REPORT_GENERATING": [
+      "REPORT_READY",
+      "REPORT_FAILED"
+    ],
+    "REPORT_READY": []
+  }
+}

@@ -6,9 +6,9 @@ on:
   push:
     branches: [main, "release/*"]
 
-# Required status check — configure in GitHub repo settings:
+# Required status checks — configure in GitHub repo settings:
 #   Settings → Branches → Branch protection rules → main
-#   ✅ Require status checks: "TypeScript Type Check", "Eval Harness (Mock Mode)"
+#   Require: "TypeScript Type Check", "Preservation Gates", "Eval Harness (Mock Mode)"
 
 jobs:
   typecheck:
@@ -22,6 +22,99 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx tsc --noEmit
+
+  preservation:
+    name: Preservation Gates
+    runs-on: ubuntu-latest
+    needs: typecheck
+    env:
+      EVAL_MOCK_MODE: "true"
+      PLAYWRIGHT_START_SERVER: "true"
+      NEXT_PUBLIC_APP_URL: "http://localhost:3000"
+      # Server-rendered dates in authenticated baselines must not depend on runner TZ.
+      TZ: "UTC"
+      # Password for the throwaway accounts inside the local Supabase stack
+      # booted below. It is not a secret: the stack lives and dies with the job.
+      E2E_SEED_PASSWORD: "think5-e2e-local-only-Pa55"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Generate preservation manifest
+        run: npm run manifest
+      - name: Upload generated manifest
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: preservation-manifest
+          path: docs/preservation/manifest.json
+          retention-days: 7
+      - name: Lint
+        run: npm run lint
+      - name: Unit tests
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: "https://example.supabase.co"
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: "ci-anon-key"
+        run: npx vitest run
+
+      # ── Real auth for authenticated golden baselines ───────────────────
+      # A local Supabase stack (GoTrue + PostgREST + Postgres) applies
+      # supabase/migrations (profiles, triggers, RLS). Prisma tables are
+      # pushed on top, deterministic identities are seeded through the Auth
+      # admin API, and Playwright signs in through /auth/signin. No auth
+      # bypass exists anywhere in this pipeline.
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.117.0
+      - name: Start local Supabase stack (auth, rest, db)
+        run: npm run e2e:stack
+      - name: Export local Supabase credentials
+        run: |
+          eval "$(supabase status -o env)"
+          {
+            echo "NEXT_PUBLIC_SUPABASE_URL=${API_URL}"
+            echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=${ANON_KEY}"
+            echo "SUPABASE_SERVICE_ROLE_KEY=${SERVICE_ROLE_KEY}"
+            echo "DATABASE_URL=${DB_URL}"
+            echo "DIRECT_URL=${DB_URL}"
+          } >> "$GITHUB_ENV"
+      - name: Build ephemeral schema (prisma db push, then supabase migrations)
+        run: npm run e2e:db
+      - name: Seed deterministic E2E identities and data
+        run: npm run e2e:seed
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Golden E2E (public + authenticated)
+        env:
+          # lib/email/resend.ts constructs the SDK at import time and the
+          # recruiter onboarding API (called by DashboardLayout, fail-closed)
+          # imports it. No email is sent during the golden run; the value only
+          # has to be non-empty.
+          RESEND_API_KEY: "re_ci_placeholder_never_sends"
+          RESEND_FROM_EMAIL: "ci@think5.test"
+          E2E_AUTH_FIXTURES: "true"
+          E2E_RECRUITER_STORAGE_STATE: e2e/.auth/recruiter.json
+          E2E_CANDIDATE_STORAGE_STATE: e2e/.auth/candidate.json
+          ROUTE_MATRIX_FIXTURES: '{"/jobs/[id]":"/jobs/e2e-job-backend","/candidates/[id]":"/candidates/e2e-candidate-jordan","/interview/[id]":"/interview/e2e-interview-welcome"}'
+        run: npm run test:e2e:golden
+      - name: Upload Playwright artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: golden-e2e-artifacts
+          path: |
+            playwright-report
+            test-results
+            e2e/golden/**/*-snapshots
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Verify committed manifest baseline
+        if: always()
+        run: git diff --exit-code -- docs/preservation/manifest.json
 
   hydration:
     name: Hard Navigation Hydration

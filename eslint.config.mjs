@@ -41,4 +41,35 @@ export default [
       "react-hooks/exhaustive-deps": "warn",
     },
   },
+  {
+    files: ["load-tests/**/*.js"],
+    languageOptions: {
+      globals: {
+        __ENV: "readonly",
+        __VU: "readonly",
+      },
+    },
+  },
+  {
+    files: ["public/audio-worklet-processor.js"],
+    languageOptions: {
+      globals: {
+        AudioWorkletProcessor: "readonly",
+        registerProcessor: "readonly",
+      },
+    },
+  },
+  {
+    // Phase 0 establishes a no-error lint baseline without rewriting the live
+    // interview path. These two pre-existing violations are tracked as warnings
+    // until T2/T3/T11 touch the files under golden-path coverage.
+    files: [
+      "components/interview/VoiceInterviewRoom.tsx",
+      "hooks/useVoiceInterview.ts",
+    ],
+    rules: {
+      "@typescript-eslint/no-unused-expressions": "warn",
+      "no-useless-catch": "warn",
+    },
+  },
 ];

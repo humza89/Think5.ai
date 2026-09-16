@@ -38,3 +38,12 @@ next-env.d.ts
 
 # uploads
 /uploads
+
+# e2e: generated Playwright storage state (real session cookies) and reports
+/e2e/.auth
+/playwright-report
+/test-results
+
+# local supabase stack scratch
+/supabase/.temp
+/supabase/.branches

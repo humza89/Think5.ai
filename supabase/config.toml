@@ -1,0 +1,70 @@
+# Local Supabase stack used by the Phase 0 golden E2E suite (T0).
+#
+# This file only drives `supabase start` for local/CI runs. It never changes
+# the hosted project. The stack applies `supabase/migrations/*.sql` (profiles,
+# triggers, RLS) so real GoTrue sessions and the `profiles` role gate behave
+# exactly as in production. Prisma tables are added afterwards with
+# `prisma db push`, and `npm run e2e:seed` creates the deterministic identities.
+project_id = "think5"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public", "graphql_public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+port = 54322
+shadow_port = 54320
+major_version = 17
+
+[db.pooler]
+enabled = false
+
+[db.migrations]
+# Disabled on purpose: supabase/migrations 05+ ALTER Prisma-managed tables, so
+# the Prisma schema must be pushed first. scripts/e2e-db.ts applies both in
+# the production order (npm run e2e:db).
+enabled = false
+
+[db.seed]
+# Seeding is done by scripts/e2e-seed.ts through the Auth admin API + Prisma.
+enabled = false
+
+[realtime]
+enabled = false
+
+[studio]
+enabled = false
+
+[local_smtp]
+enabled = false
+
+[storage]
+# Required: supabase/migrations/20240102000000_create_storage_buckets.sql inserts
+# into storage.buckets, which only exists when the storage service is enabled.
+enabled = true
+
+[auth]
+enabled = true
+site_url = "http://localhost:3000"
+additional_redirect_urls = ["http://localhost:3000", "http://127.0.0.1:3000"]
+jwt_expiry = 3600
+enable_refresh_token_rotation = true
+enable_signup = true
+enable_anonymous_sign_ins = false
+enable_manual_linking = false
+minimum_password_length = 8
+
+[auth.email]
+enable_signup = true
+double_confirm_changes = false
+# Seeded users are created with email_confirm=true through the admin API.
+enable_confirmations = false
+
+[edge_runtime]
+enabled = false
+
+[analytics]
+enabled = false
