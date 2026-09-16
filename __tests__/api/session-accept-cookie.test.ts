@@ -129,7 +129,7 @@ describe("end-to-end flow: accept -> validate without URL token", () => {
     const bodyToken = ""; // searchParams.get("token") || ""
 
     // Step 3: Validate endpoint extracts token from cookie
-    let extractedToken = bodyToken || undefined;
+    let extractedToken: string | undefined = bodyToken || undefined;
     if (!extractedToken) {
       const [cookieId, cookieToken] = cookieValue.split(":");
       if (cookieId === interviewId && cookieToken) {

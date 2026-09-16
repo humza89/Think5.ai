@@ -9,6 +9,25 @@ vi.mock("@sentry/nextjs", () => ({
   captureException: vi.fn(),
 }));
 
+function extractToken(
+  bodyToken: string | undefined,
+  cookieValue: string | undefined,
+  interviewId: string,
+): string | undefined {
+  let extractedToken = bodyToken;
+  if (!extractedToken && cookieValue) {
+    const [cookieId, cookieToken] = cookieValue.split(":");
+    if (cookieId === interviewId && cookieToken) {
+      extractedToken = cookieToken;
+    }
+  }
+  return extractedToken;
+}
+
+function isTerminalStatus(status: string): boolean {
+  return ["COMPLETED", "CANCELLED", "EXPIRED"].includes(status);
+}
+
 describe("interview validate dual-auth logic", () => {
   const INTERVIEW_ID = "int-123";
   const ACCESS_TOKEN = "tok-abc";
@@ -16,162 +35,57 @@ describe("interview validate dual-auth logic", () => {
   describe("token extraction", () => {
     it("uses body accessToken when provided", () => {
       const body = { accessToken: ACCESS_TOKEN };
-      const cookieValue: string | undefined = undefined;
-      const interviewId = INTERVIEW_ID;
-
-      // Replicate the dual-auth extraction logic from validate/route.ts lines 69-86
-      let extractedToken = body.accessToken as string | undefined;
-      if (!extractedToken) {
-        if (cookieValue) {
-          const [cookieId, cookieToken] = cookieValue.split(":");
-          if (cookieId === interviewId && cookieToken) {
-            extractedToken = cookieToken;
-          }
-        }
-      }
-
-      expect(extractedToken).toBe(ACCESS_TOKEN);
+      expect(extractToken(body.accessToken, undefined, INTERVIEW_ID)).toBe(ACCESS_TOKEN);
     });
 
     it("falls back to cookie when body token is empty", () => {
       const body = { accessToken: "" };
-      const cookieValue = `${INTERVIEW_ID}:${ACCESS_TOKEN}`;
-      const interviewId = INTERVIEW_ID;
-
-      let extractedToken = body.accessToken as string | undefined;
-      if (!extractedToken) {
-        if (cookieValue) {
-          const [cookieId, cookieToken] = cookieValue.split(":");
-          if (cookieId === interviewId && cookieToken) {
-            extractedToken = cookieToken;
-          }
-        }
-      }
-
-      expect(extractedToken).toBe(ACCESS_TOKEN);
+      expect(extractToken(body.accessToken, `${INTERVIEW_ID}:${ACCESS_TOKEN}`, INTERVIEW_ID)).toBe(ACCESS_TOKEN);
     });
 
     it("falls back to cookie when body token is undefined", () => {
-      const body = {};
-      const cookieValue = `${INTERVIEW_ID}:${ACCESS_TOKEN}`;
-      const interviewId = INTERVIEW_ID;
-
-      let extractedToken = (body as Record<string, unknown>).accessToken as string | undefined;
-      if (!extractedToken) {
-        if (cookieValue) {
-          const [cookieId, cookieToken] = cookieValue.split(":");
-          if (cookieId === interviewId && cookieToken) {
-            extractedToken = cookieToken;
-          }
-        }
-      }
-
-      expect(extractedToken).toBe(ACCESS_TOKEN);
+      const body = {} as Record<string, unknown>;
+      expect(
+        extractToken(body.accessToken as string | undefined, `${INTERVIEW_ID}:${ACCESS_TOKEN}`, INTERVIEW_ID),
+      ).toBe(ACCESS_TOKEN);
     });
 
     it("rejects cookie with mismatched interview ID", () => {
-      const body = {};
-      const cookieValue = `different-id:${ACCESS_TOKEN}`;
-      const interviewId = INTERVIEW_ID;
-
-      let extractedToken = (body as Record<string, unknown>).accessToken as string | undefined;
-      if (!extractedToken) {
-        if (cookieValue) {
-          const [cookieId, cookieToken] = cookieValue.split(":");
-          if (cookieId === interviewId && cookieToken) {
-            extractedToken = cookieToken;
-          }
-        }
-      }
-
-      expect(extractedToken).toBeUndefined();
+      expect(extractToken(undefined, `different-id:${ACCESS_TOKEN}`, INTERVIEW_ID)).toBeUndefined();
     });
 
     it("returns undefined when neither body nor cookie provide a token", () => {
-      const body = {};
-      const cookieValue: string | undefined = undefined;
-      const interviewId = INTERVIEW_ID;
-
-      let extractedToken = (body as Record<string, unknown>).accessToken as string | undefined;
-      if (!extractedToken) {
-        if (cookieValue) {
-          const [cookieId, cookieToken] = cookieValue.split(":");
-          if (cookieId === interviewId && cookieToken) {
-            extractedToken = cookieToken;
-          }
-        }
-      }
-
-      expect(extractedToken).toBeUndefined();
+      expect(extractToken(undefined, undefined, INTERVIEW_ID)).toBeUndefined();
     });
 
     it("rejects cookie with missing token part", () => {
-      const body = {};
-      const cookieValue = `${INTERVIEW_ID}:`;
-      const interviewId = INTERVIEW_ID;
-
-      let extractedToken = (body as Record<string, unknown>).accessToken as string | undefined;
-      if (!extractedToken) {
-        if (cookieValue) {
-          const [cookieId, cookieToken] = cookieValue.split(":");
-          if (cookieId === interviewId && cookieToken) {
-            extractedToken = cookieToken;
-          }
-        }
-      }
-
-      // Empty string after ":" is falsy, so cookieToken check fails
-      expect(extractedToken).toBeUndefined();
+      expect(extractToken(undefined, `${INTERVIEW_ID}:`, INTERVIEW_ID)).toBeUndefined();
     });
 
     it("prefers body token over cookie when both present", () => {
-      const body = { accessToken: "body-token" };
-      const cookieValue = `${INTERVIEW_ID}:cookie-token`;
-      const interviewId = INTERVIEW_ID;
-
-      let extractedToken = body.accessToken as string | undefined;
-      if (!extractedToken) {
-        if (cookieValue) {
-          const [cookieId, cookieToken] = cookieValue.split(":");
-          if (cookieId === interviewId && cookieToken) {
-            extractedToken = cookieToken;
-          }
-        }
-      }
-
-      expect(extractedToken).toBe("body-token");
+      expect(extractToken("body-token", `${INTERVIEW_ID}:cookie-token`, INTERVIEW_ID)).toBe("body-token");
     });
   });
 
   describe("interview status validation", () => {
     it("rejects COMPLETED interviews", () => {
-      const status = "COMPLETED";
-      const isTerminal = status === "COMPLETED" || status === "CANCELLED" || status === "EXPIRED";
-      expect(isTerminal).toBe(true);
+      expect(isTerminalStatus("COMPLETED")).toBe(true);
     });
 
     it("rejects CANCELLED interviews", () => {
-      const status = "CANCELLED";
-      const isTerminal = status === "COMPLETED" || status === "CANCELLED" || status === "EXPIRED";
-      expect(isTerminal).toBe(true);
+      expect(isTerminalStatus("CANCELLED")).toBe(true);
     });
 
     it("rejects EXPIRED interviews", () => {
-      const status = "EXPIRED";
-      const isTerminal = status === "COMPLETED" || status === "CANCELLED" || status === "EXPIRED";
-      expect(isTerminal).toBe(true);
+      expect(isTerminalStatus("EXPIRED")).toBe(true);
     });
 
     it("allows PENDING interviews", () => {
-      const status = "PENDING";
-      const isTerminal = status === "COMPLETED" || status === "CANCELLED" || status === "EXPIRED";
-      expect(isTerminal).toBe(false);
+      expect(isTerminalStatus("PENDING")).toBe(false);
     });
 
     it("allows IN_PROGRESS interviews", () => {
-      const status = "IN_PROGRESS";
-      const isTerminal = status === "COMPLETED" || status === "CANCELLED" || status === "EXPIRED";
-      expect(isTerminal).toBe(false);
+      expect(isTerminalStatus("IN_PROGRESS")).toBe(false);
     });
   });
 

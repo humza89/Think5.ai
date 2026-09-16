@@ -28,9 +28,14 @@ const nextConfig: NextConfig = {
       },
     ];
 
-    // App routes: strict CSP — no unsafe-eval, unsafe-inline only for styles (React needs it for SSR)
+    // App routes: strict CSP — no unsafe-eval. 'unsafe-inline' for script-src is
+    // required because Next.js streams the RSC payload and hydration bootstrap
+    // through inline <script> tags; without it every hard load of an app route
+    // (dashboard refresh, /interview/accept, deep links) renders but never
+    // hydrates. Same policy the public/auth pages already use. Nonce-based CSP
+    // with 'strict-dynamic' is the planned hardening (Issue #14).
     const strictCsp =
-      "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; connect-src 'self' https://*.supabase.co https://*.upstash.io wss://*.supabase.co wss://generativelanguage.googleapis.com https://generativelanguage.googleapis.com https://prod.spline.design https://unpkg.com wss://think5-voice-relay.fly.dev; media-src 'self' blob: data:; font-src 'self' data:; frame-src 'self' https://*.supabase.co blob:; frame-ancestors 'none'; report-uri /api/csp-report";
+      "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; connect-src 'self' https://*.supabase.co https://*.upstash.io wss://*.supabase.co wss://generativelanguage.googleapis.com https://generativelanguage.googleapis.com https://prod.spline.design https://unpkg.com wss://think5-voice-relay.fly.dev; media-src 'self' blob: data:; font-src 'self' data:; frame-src 'self' https://*.supabase.co blob:; frame-ancestors 'none'; report-uri /api/csp-report";
 
     // Spline 3D runtime requires 'unsafe-eval'. Instead of allowing it on
     // the landing page directly, we load Spline in a sandboxed iframe on

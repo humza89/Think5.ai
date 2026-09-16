@@ -1,5 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
 
+const shouldStartServer = !process.env.CI || process.env.PLAYWRIGHT_START_SERVER === "true";
+
 export default defineConfig({
   testDir: "./e2e",
   fullyParallel: true,
@@ -34,12 +36,12 @@ export default defineConfig({
       use: { ...devices["iPhone 13"] },
     },
   ],
-  webServer: process.env.CI
-    ? undefined
-    : {
+  webServer: shouldStartServer
+    ? {
         command: "npm run dev",
         url: "http://localhost:3000",
-        reuseExistingServer: true,
+        reuseExistingServer: !process.env.CI,
         timeout: 120_000,
-      },
+      }
+    : undefined,
 });
