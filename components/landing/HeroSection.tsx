@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { ChevronRight } from "lucide-react";
 import { useState } from "react";
-import Header from "@/components/layout/Header";
+import { SiteHeader } from "@/components/marketing/SiteHeader";
 
 const HeroSection = () => {
   const [mousePos, setMousePos] = useState({ x: 50, y: 50 });
@@ -102,16 +102,16 @@ const HeroSection = () => {
       </div>
 
       {/* Header Component */}
-      <Header />
+      <SiteHeader tone="dark" />
 
       {/* Hero Content - Left aligned like Hirview */}
       <div className="relative z-10 h-full flex items-start pt-[15%]">
-        <div className="max-w-2xl ml-[120px]">
+        <div className="max-w-2xl px-6 md:px-10 lg:ml-[calc((100vw-1200px)/2)] lg:px-10">
           {/* Main Headline */}
-          <h1 className="text-6xl md:text-7xl font-bold text-white leading-[1.1] tracking-tight mb-6 animate-fade-in-up">
+          <h1 className="font-display font-normal text-6xl md:text-[88px] text-white leading-[1.02] tracking-[-0.02em] mb-6 animate-fade-in-up">
             The AI Platform for
             <br />
-            Human Intelligence
+            <span className="italic">Human</span> Intelligence
           </h1>
 
           {/* Subheadline */}

@@ -1,23 +1,34 @@
 import HeroSection from "@/components/landing/HeroSection";
-import TrustedBy from "@/components/landing/TrustedBy";
-import WhatWeDo from "@/components/landing/WhatWeDo";
-import Infrastructure from "@/components/landing/Infrastructure";
-import IntelligencePlatform from "@/components/landing/IntelligencePlatform";
-import HowItWorks from "@/components/landing/HowItWorks";
-import CTA from "@/components/landing/CTA";
-import Footer from "@/components/landing/Footer";
+import { LogoWall } from "@/components/marketing/LogoWall";
+import { Manifesto } from "@/components/landing/Manifesto";
+import { Platform } from "@/components/landing/Platform";
+import { DataEngine } from "@/components/landing/DataEngine";
+import { HowItWorks } from "@/components/landing/HowItWorks";
+import { Quote } from "@/components/landing/Quote";
+import { CtaBand } from "@/components/marketing/CtaBand";
+import { SiteFooter } from "@/components/marketing/SiteFooter";
 
 export default function Home() {
   return (
-    <main className="min-h-screen">
+    <main className="min-h-screen bg-paper">
       <HeroSection />
-      <TrustedBy />
-      <WhatWeDo />
-      <Infrastructure />
-      <IntelligencePlatform />
+      <LogoWall tone="dark" />
+      <Manifesto />
+      <Platform />
+      <DataEngine />
       <HowItWorks />
-      <CTA />
-      <Footer />
+      <Quote />
+      <CtaBand
+        title={
+          <>
+            Ready to build the future of AI <span className="italic text-white/70">with us</span>?
+          </>
+        }
+        lede="Whether you need expert talent for AI training or want to join our network, we're here to help."
+        primary={{ label: "Find expert talent", href: "/contact" }}
+        secondary={{ label: "Join as an expert", href: "/auth/signup" }}
+      />
+      <SiteFooter />
     </main>
   );
 }

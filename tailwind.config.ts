@@ -43,6 +43,13 @@ const config: Config = {
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
         ring: "hsl(var(--ring))",
+        // Brand palette (literal hex so opacity modifiers like bg-ink/70 work;
+        // the same values are exposed as CSS vars in globals.css for SVG use)
+        ink: { DEFAULT: "#0a0a0b", 2: "#151517" },
+        paper: { DEFAULT: "#f6f4ef", 2: "#ffffff" },
+        stone: "#e4e0d7",
+        graphite: "#6b6a66",
+        brand: { DEFAULT: "#1f3dff", soft: "#e9ecff" },
         chart: {
           "1": "hsl(var(--chart-1))",
           "2": "hsl(var(--chart-2))",
@@ -50,6 +57,10 @@ const config: Config = {
           "4": "hsl(var(--chart-4))",
           "5": "hsl(var(--chart-5))",
         },
+      },
+      fontFamily: {
+        display: ["var(--font-display)", "Georgia", "serif"],
+        sans: ["var(--font-sans)", "Inter", "system-ui", "sans-serif"],
       },
       borderRadius: {
         lg: "var(--radius)",
