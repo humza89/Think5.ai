@@ -27,12 +27,14 @@ const MODEL = process.env.FAL_MODEL || "fal-ai/flux-pro/v1.1";
 
 /** Same studio, same lens, same wardrobe rule for everyone. Only the person changes. */
 const STYLE =
-  "Professional corporate headshot, tight waist-up framing with the head in the upper third and shoulders filling the frame width, centered, looking directly at camera with a relaxed confident expression, " +
-  "wearing a black blazer over a plain black crew-neck top (always black, never beige, never white). " +
-  "Backdrop: a plain seamless warm light-grey studio paper (#e4e0d7), evenly lit, exactly the same for every portrait; " +
-  "not blue, not dark, not white, no gradient, no vignette. Soft key light from the upper left, gentle rim light, natural skin texture, " +
-  "no retouching artifacts. Shot on 85mm lens at f/2.8, shallow depth of field, editorial magazine quality, photorealistic, " +
-  "no props, no text, no watermark.";
+  "Corporate LinkedIn-style headshot of an ordinary office professional, photographed in one company photo session. " +
+  "Identical pose for every portrait: head and shoulders only, body square to the camera, shoulders level, arms relaxed at the sides " +
+  "and out of frame (no crossed arms, no hands), chin level, eyes on the lens, small natural closed-mouth or slight smile. " +
+  "Everyday realistic appearance: average, believable, not a model, not glamorous, no heavy makeup, no styled hair, realistic skin " +
+  "with pores, natural asymmetry. Wardrobe: plain black blazer over a plain black crew-neck top (always black). " +
+  "Backdrop: plain seamless warm light-grey studio paper (#e4e0d7), evenly lit, exactly the same in every portrait; not blue, not dark, " +
+  "not white, no gradient. Flat, even, soft corporate lighting with a subtle key from the upper left; no dramatic shadows, no rim light. " +
+  "85mm lens, f/5.6, sharp, neutral colour, photorealistic, no props, no text, no watermark.";
 
 const PEOPLE = [
   { slug: "elena-varga", who: "a woman in her early 40s, Hungarian, dark shoulder-length hair, warm assured smile" },
