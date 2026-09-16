@@ -23,35 +23,33 @@ if (!KEY) {
   process.exit(1);
 }
 
-const MODEL = process.env.FAL_MODEL || "fal-ai/flux-pro/v1.1";
+const MODEL = process.env.FAL_MODEL || "fal-ai/flux-pro/v1.1-ultra"; // "raw" mode = candid, unprocessed realism
 
 /** Same studio, same lens, same wardrobe rule for everyone. Only the person changes. */
 const STYLE =
-  "Corporate LinkedIn-style headshot of an ordinary office professional, photographed in one company photo session. " +
-  "Identical pose for every portrait: head and shoulders only, body square to the camera, shoulders level, arms relaxed at the sides " +
-  "and out of frame (no crossed arms, no hands), chin level, eyes on the lens, small natural closed-mouth or slight smile. " +
-  "Everyday realistic appearance: average, believable, not a model, not glamorous, no heavy makeup, no styled hair, realistic skin " +
-  "with pores, natural asymmetry. Wardrobe: plain black blazer over a plain black crew-neck top (always black). " +
-  "Backdrop: plain seamless warm light-grey studio paper (#e4e0d7), evenly lit, exactly the same in every portrait; not blue, not dark, " +
-  "not white, no gradient. Flat, even, soft corporate lighting with a subtle key from the upper left; no dramatic shadows, no rim light. " +
-  "85mm lens, f/5.6, sharp, neutral colour, photorealistic, no props, no text, no watermark.";
+  "Unretouched company staff headshot of a real, ordinary office worker at a mid-size tech company, taken by a colleague with a mirrorless " +
+  "camera against the plain warm light-grey wall in the office (#e4e0d7), flat even indoor lighting, slight natural shadow. " +
+  "Head and shoulders, body square to the camera, chin level, eyes on the lens, relaxed neutral expression or a small polite smile. " +
+  "Genuinely average appearance: not a model, plain everyday haircut, real skin with pores, blemishes and uneven tone, slight under-eye " +
+  "shadows, natural asymmetry, no makeup, no styling, no retouching. Photorealistic candid documentary quality, neutral colour, sharp, " +
+  "no props, no text, no watermark.";
 
 const PEOPLE = [
-  { slug: "elena-varga", who: "a woman in her early 40s, Hungarian, dark shoulder-length hair, warm assured smile" },
-  { slug: "marcus-oyelaran", who: "a Nigerian-British man in his late 30s, short hair, closely trimmed beard, calm focused expression" },
-  { slug: "sofia-lindqvist", who: "a Swedish woman in her early 50s, silver-blonde hair tied back, composed friendly expression" },
-  { slug: "rahul-menon", who: "an Indian man in his mid 40s, short black hair, light stubble, thin-framed glasses, easy smile" },
-  { slug: "claire-dubois", who: "a French woman in her late 30s, chestnut bob, subtle smile" },
-  { slug: "tomas-ferreira", who: "a Brazilian man in his late 30s, dark wavy hair, full beard, open smile" },
-  { slug: "amaka-nwosu", who: "a Nigerian woman in her early 40s, natural short hair, warm confident smile" },
-  { slug: "jonas-weber", who: "a German man in his early 40s, short light-brown hair, clean-shaven, steady expression" },
-  { slug: "hannah-mcallister", who: "a Scottish woman in her mid 40s, auburn hair, freckles, direct friendly look" },
-  { slug: "diego-salazar", who: "a Colombian man in his early 30s, dark hair swept back, trimmed beard, energetic smile" },
-  { slug: "yuki-tanaka", who: "a Japanese woman in her mid 30s, straight black hair, small smile, minimal earrings" },
-  { slug: "samuel-adeyemi", who: "a Nigerian man in his late 40s, shaved head, grey-flecked beard, thoughtful expression, round glasses" },
-  { slug: "ingrid-holm", who: "a Norwegian woman in her late 30s, blonde hair in a low bun, calm expression" },
-  { slug: "leila-haddad", who: "a Lebanese woman in her mid 30s, long dark curly hair, bright smile" },
-  { slug: "owen-fitzgerald", who: "an Irish man in his early 50s, short grey hair, clean-shaven, measured expression" },
+  { slug: "elena-varga", who: "a Hungarian woman in her early 40s, dark shoulder-length hair with some grey, tired but friendly eyes", wear: "a navy cardigan over a white t-shirt" },
+  { slug: "marcus-oyelaran", who: "a Nigerian-British man in his late 30s, short hair, closely trimmed beard, rectangular glasses", wear: "a light blue oxford shirt, top button open" },
+  { slug: "sofia-lindqvist", who: "a Swedish woman in her early 50s, greying blonde hair tied back, lined face", wear: "a grey crew-neck sweater" },
+  { slug: "rahul-menon", who: "an Indian man in his mid 40s, receding hairline, stubble, thin-framed glasses", wear: "a maroon polo shirt" },
+  { slug: "claire-dubois", who: "a French woman in her late 30s, chestnut bob, slightly crooked smile", wear: "a black blazer over a striped top" },
+  { slug: "tomas-ferreira", who: "a Brazilian man in his late 30s, dark curly hair, full beard, a bit heavyset", wear: "a plaid flannel shirt" },
+  { slug: "amaka-nwosu", who: "a Nigerian woman in her early 40s, natural short hair, round face", wear: "a teal blouse" },
+  { slug: "jonas-weber", who: "a German man in his early 40s, short thinning light-brown hair, clean-shaven, pale", wear: "a charcoal quarter-zip pullover" },
+  { slug: "hannah-mcallister", who: "a Scottish woman in her mid 40s, auburn hair, freckles, reading glasses", wear: "a dark green sweater" },
+  { slug: "diego-salazar", who: "a Colombian man in his early 30s, dark hair, trimmed beard, slightly gap-toothed smile", wear: "a denim shirt" },
+  { slug: "yuki-tanaka", who: "a Japanese woman in her mid 30s, straight black hair, no makeup, slight smile", wear: "a beige knit top" },
+  { slug: "samuel-adeyemi", who: "a Nigerian man in his late 40s, shaved head, grey-flecked beard, round glasses", wear: "a white shirt with a navy sweater vest" },
+  { slug: "ingrid-holm", who: "a Norwegian woman in her late 30s, blonde hair in a loose low bun, tired eyes", wear: "a black turtleneck" },
+  { slug: "leila-haddad", who: "a Lebanese woman in her mid 30s, dark curly hair, thick eyebrows, small mole on cheek", wear: "a mustard-yellow blouse" },
+  { slug: "owen-fitzgerald", who: "an Irish man in his early 50s, short grey hair, ruddy complexion, clean-shaven", wear: "a light grey shirt under a navy blazer" },
 ];
 
 const only = process.argv.slice(2);
@@ -62,17 +60,19 @@ if (!targets.length) {
 }
 
 async function generate(person, index) {
-  const prompt = `${STYLE} Subject: ${person.who}.`;
+  const prompt = `${STYLE} Subject: ${person.who}, wearing ${person.wear}.`;
   const submit = await fetch(`https://queue.fal.run/${MODEL}`, {
     method: "POST",
     headers: { Authorization: `Key ${KEY}`, "Content-Type": "application/json" },
     body: JSON.stringify({
       prompt,
-      image_size: { width: 896, height: 1152 }, // 4:5, matches the card crop
       num_images: 1,
       seed: 5100 + index + Number(process.env.FAL_SEED_OFFSET || 0), // fixed per person; FAL_SEED_OFFSET re-rolls
       safety_tolerance: "2",
       output_format: "jpeg",
+      ...(MODEL.includes("ultra")
+        ? { aspect_ratio: "4:5", raw: true } // raw mode: less processed, candid realism
+        : { image_size: { width: 896, height: 1152 } }),
     }),
   });
   if (!submit.ok) throw new Error(`${person.slug}: submit ${submit.status} ${await submit.text()}`);

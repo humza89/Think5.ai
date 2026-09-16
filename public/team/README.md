@@ -2,10 +2,10 @@
 
 Two-step pipeline, both scripts in `scripts/`:
 
-1. `generate-team-headshots.mjs` — fal.ai (FLUX Pro 1.1), one studio
-   description for the whole series (black blazer, warm light-grey seamless
-   backdrop, flat corporate lighting), fixed seed per person. Needs `FAL_KEY`
-   in `.env`. Writes raw 896×1152 images to `public/team/`.
+1. `generate-team-headshots.mjs` — fal.ai (FLUX Pro 1.1 Ultra, raw mode), one
+   description for the whole series (plain warm light-grey office wall, flat
+   lighting, per-person business-casual wardrobe), fixed seed per person. Needs `FAL_KEY`
+   in `.env`. Writes raw 4:5 images to `public/team/`.
 2. `frame-headshots.swift` — detects each face (macOS Vision) and crops every
    image to the same head-and-shoulders geometry relative to the face, so the
    framing and pose read as one session. Writes 720×900 JPEGs.
