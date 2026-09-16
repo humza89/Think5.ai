@@ -116,7 +116,7 @@ const publicRoutes = [
   '/product',
   '/ai-training',
   '/recruitment',
-  '/team',
+  '/about',
   '/research',
   '/contact',
   '/unauthorized',

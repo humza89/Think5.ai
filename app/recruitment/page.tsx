@@ -219,7 +219,7 @@ export default function RecruitmentPage() {
         }
         lede="Tell us the role and the industry. A practice lead will come back within one business day."
         primary={{ label: "Book a call", href: "/contact" }}
-        secondary={{ label: "Meet the team", href: "/team" }}
+        secondary={{ label: "Meet the team", href: "/about" }}
       />
       <SiteFooter />
     </main>

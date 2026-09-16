@@ -14,7 +14,7 @@ const NAV_LINKS = [
   { href: "/recruitment", label: "Recruitment" },
   { href: "/ai-training", label: "AI training" },
   { href: "/research", label: "Research" },
-  { href: "/team", label: "Team" },
+  { href: "/about", label: "Team" },
   { href: "/contact", label: "Contact" },
 ];
 

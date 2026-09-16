@@ -12,7 +12,7 @@ const FOOTER_LINKS: Record<string, { name: string; href: string }[]> = {
     { name: "AI training data", href: "/ai-training" },
   ],
   Company: [
-    { name: "Team", href: "/team" },
+    { name: "Team", href: "/about" },
     { name: "Careers", href: "/careers" },
     { name: "Blog", href: "/blog" },
     { name: "Research", href: "/research" },
