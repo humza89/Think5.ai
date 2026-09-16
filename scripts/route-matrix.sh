@@ -3,7 +3,6 @@ set -euo pipefail
 
 BASE_URL="${1:-http://localhost:3000}"
 MANIFEST="docs/preservation/manifest.json"
-FIXTURES="${ROUTE_MATRIX_FIXTURES:-{}}"
 
 if [[ ! -f "$MANIFEST" ]]; then
   echo "Missing $MANIFEST. Run: npm run manifest" >&2
@@ -22,8 +21,7 @@ for (const page of manifest.pages || []) {
     if (!fixtures[route]) continue;
     route = fixtures[route];
   }
-  if (page.public) console.log(['public', page.route, route].join('\t'));
-  else if (Array.isArray(page.roles) && page.roles.length) console.log(['protected', page.route, route].join('\t'));
+  console.log([page.public ? 'public' : 'protected', page.route, route].join('\t'));
 }
 NODE
 
