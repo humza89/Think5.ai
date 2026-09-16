@@ -1,42 +1,34 @@
 "use client";
 
 import { useState } from "react";
-import Header from "@/components/layout/Header";
-import Footer from "@/components/landing/Footer";
-import { Button } from "@/components/ui/button";
+import { ArrowUpRight, Check } from "lucide-react";
+import { SiteHeader } from "@/components/marketing/SiteHeader";
+import { SiteFooter } from "@/components/marketing/SiteFooter";
+import { Container, Eyebrow, pill } from "@/components/marketing/primitives";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  Mail,
-  MapPin,
-  ArrowRight,
-  Check,
-  Shield,
-  Building2,
-} from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { cn } from "@/lib/utils";
 
 const helpOptions = [
-  "Hire expert talent",
-  "Data operations",
+  "Hire for my startup",
+  "Enterprise recruiting",
+  "AI training data",
   "Enterprise partnership",
   "Research collaboration",
   "Other",
 ];
 
 const helpWith = [
-  "Expert talent sourcing for AI training",
-  "Custom data operations (RLHF, SFT, evaluations)",
-  "Enterprise partnerships",
-  "Research collaborations",
+  "Embedded recruiting for startups, first hire onwards",
+  "Roles across IT, healthcare, finance and construction",
+  "AI training data operations (RLHF, SFT, evaluations)",
+  "Enterprise partnerships and research collaborations",
 ];
+
+const field =
+  "h-12 rounded-xl border-stone bg-paper-2 px-4 text-[15px] text-ink placeholder:text-graphite/70 focus-visible:border-ink focus-visible:ring-0 focus-visible:ring-offset-0";
 
 export default function ContactPage() {
   const [name, setName] = useState("");
@@ -52,178 +44,129 @@ export default function ContactPage() {
   };
 
   return (
-    <main className="min-h-screen bg-black">
-      <Header />
+    <main className="min-h-screen bg-paper">
+      <SiteHeader tone="light" />
 
-      <section className="pt-32 pb-24 bg-black relative overflow-hidden">
-        <div className="container mx-auto px-6">
-          <div className="grid lg:grid-cols-2 gap-16 items-start">
-            {/* Left — Info */}
-            <div className="space-y-10">
-              <div>
-                <p className="text-xs text-blue-400 uppercase tracking-widest mb-4">
-                  Contact
-                </p>
-                <h1 className="text-5xl md:text-6xl font-bold text-white mb-6">
-                  Get in Touch
-                </h1>
-                <p className="text-lg text-white/60 max-w-lg">
-                  Whether you need expert talent for AI training or want to
-                  explore how Think5 can power your data operations, we&apos;d
-                  love to hear from you.
-                </p>
-              </div>
+      <section className="pt-36 pb-24 md:pt-44 md:pb-32">
+        <Container>
+          <div className="grid gap-16 lg:grid-cols-12 lg:gap-12">
+            {/* Left */}
+            <div className="lg:col-span-5">
+              <Eyebrow className="mb-6">Contact</Eyebrow>
+              <h1 className="font-display text-[52px] leading-[1.02] tracking-[-0.02em] text-ink md:text-[80px]">
+                Let&apos;s <span className="italic text-graphite">talk</span>.
+              </h1>
+              <p className="mt-6 max-w-md text-[17px] leading-relaxed text-graphite">
+                Whether you&apos;re making a first hire, scaling a team across industries, or need expert data for a
+                frontier model, we&apos;d love to hear from you.
+              </p>
 
-              {/* Contact details */}
-              <div className="space-y-4">
-                <div className="flex items-center gap-4">
-                  <div className="w-10 h-10 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center">
-                    <Mail className="w-5 h-5 text-blue-400" />
-                  </div>
-                  <div>
-                    <p className="text-sm text-white/40">Email</p>
-                    <p className="text-white">contact@think5.ai</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-4">
-                  <div className="w-10 h-10 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center">
-                    <MapPin className="w-5 h-5 text-blue-400" />
-                  </div>
-                  <div>
-                    <p className="text-sm text-white/40">Location</p>
-                    <p className="text-white">San Francisco, CA</p>
-                  </div>
-                </div>
-              </div>
-
-              {/* What we help with */}
-              <div>
-                <h3 className="text-sm font-medium text-white/40 uppercase tracking-wider mb-4">
-                  What we can help with
-                </h3>
-                <ul className="space-y-3">
-                  {helpWith.map((item, i) => (
-                    <li key={i} className="flex items-center gap-3">
-                      <Check className="w-4 h-4 text-blue-400 flex-shrink-0" />
-                      <span className="text-white/70 text-sm">{item}</span>
+              <div className="mt-12">
+                <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-graphite">What we can help with</p>
+                <ul className="mt-4 divide-y divide-stone border-y border-stone">
+                  {helpWith.map((item) => (
+                    <li key={item} className="flex items-start gap-3 py-3.5 text-[15px] text-ink">
+                      <span className="mt-[9px] h-1.5 w-1.5 shrink-0 rounded-full bg-brand" />
+                      {item}
                     </li>
                   ))}
                 </ul>
               </div>
 
-              {/* Trust badges */}
-              <div className="flex items-center gap-6 pt-4">
-                <div className="flex items-center gap-2 text-white/40">
-                  <Shield className="w-4 h-4" />
-                  <span className="text-xs">SOC 2 Type II Certified</span>
+              <dl className="mt-12 grid grid-cols-2 gap-8">
+                <div>
+                  <dt className="text-[11px] font-medium uppercase tracking-[0.18em] text-graphite">Email</dt>
+                  <dd className="mt-2">
+                    <a href="mailto:contact@think5.ai" className="font-display text-[22px] text-ink underline-offset-4 hover:underline">
+                      contact@think5.ai
+                    </a>
+                  </dd>
                 </div>
-                <div className="flex items-center gap-2 text-white/40">
-                  <Building2 className="w-4 h-4" />
-                  <span className="text-xs">Enterprise-Grade Security</span>
+                <div>
+                  <dt className="text-[11px] font-medium uppercase tracking-[0.18em] text-graphite">Office</dt>
+                  <dd className="mt-2 font-display text-[22px] text-ink">San Francisco, CA</dd>
                 </div>
+              </dl>
+
+              <p className="mt-12 text-[12px] text-graphite">SOC 2 Type II certified · Enterprise-grade security</p>
+            </div>
+
+            {/* Right: form */}
+            <div className="lg:col-span-7">
+              <div className="rounded-[28px] border border-stone bg-paper-2 p-6 shadow-[0_30px_80px_-40px_rgba(10,10,11,0.25)] md:p-10">
+                {submitted ? (
+                  <div className="flex flex-col items-center justify-center py-20 text-center">
+                    <div className="flex h-14 w-14 items-center justify-center rounded-full bg-brand text-white">
+                      <Check className="h-6 w-6" />
+                    </div>
+                    <h2 className="mt-6 font-display text-[36px] leading-tight text-ink">Thanks, we&apos;ll be in touch.</h2>
+                    <p className="mt-3 max-w-sm text-[15px] text-graphite">
+                      Thank you for reaching out. Our team will get back to you within 24 hours.
+                    </p>
+                  </div>
+                ) : (
+                  <form onSubmit={handleSubmit} className="space-y-6">
+                    <div className="grid gap-6 md:grid-cols-2">
+                      <div className="space-y-2">
+                        <Label htmlFor="name" className="text-[13px] text-ink">Name</Label>
+                        <Input id="name" required value={name} onChange={(e) => setName(e.target.value)} placeholder="Your full name" className={field} />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="email" className="text-[13px] text-ink">Email</Label>
+                        <Input id="email" required type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@company.com" className={field} />
+                      </div>
+                    </div>
+
+                    <div className="grid gap-6 md:grid-cols-2">
+                      <div className="space-y-2">
+                        <Label htmlFor="company" className="text-[13px] text-ink">Company</Label>
+                        <Input id="company" value={company} onChange={(e) => setCompany(e.target.value)} placeholder="Your company name" className={field} />
+                      </div>
+                      <div className="space-y-2">
+                        <Label className="text-[13px] text-ink">How can we help?</Label>
+                        <Select value={topic} onValueChange={setTopic}>
+                          <SelectTrigger className={cn(field, "[&>span]:text-left data-[placeholder]:text-graphite/70")}>
+                            <SelectValue placeholder="Select a topic" />
+                          </SelectTrigger>
+                          <SelectContent className="rounded-xl border-stone bg-paper-2">
+                            {helpOptions.map((option) => (
+                              <SelectItem key={option} value={option} className="text-ink focus:bg-paper">
+                                {option}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="message" className="text-[13px] text-ink">Message</Label>
+                      <Textarea
+                        id="message"
+                        required
+                        value={message}
+                        onChange={(e) => setMessage(e.target.value)}
+                        placeholder="Tell us about your project or needs…"
+                        rows={6}
+                        className="resize-none rounded-xl border-stone bg-paper-2 px-4 py-3 text-[15px] text-ink placeholder:text-graphite/70 focus-visible:border-ink focus-visible:ring-0 focus-visible:ring-offset-0"
+                      />
+                    </div>
+
+                    <div className="flex flex-col gap-4 pt-2 sm:flex-row sm:items-center sm:justify-between">
+                      <p className="text-[12px] text-graphite">We reply within one business day.</p>
+                      <button type="submit" className={cn(pill.ink, "w-full sm:w-auto")}>
+                        Send message <ArrowUpRight className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </form>
+                )}
               </div>
             </div>
-
-            {/* Right — Form */}
-            <div className="rounded-2xl border border-white/10 bg-white/5 p-8 md:p-10">
-              {submitted ? (
-                <div className="flex flex-col items-center justify-center py-16 text-center">
-                  <div className="w-16 h-16 rounded-full bg-green-500/10 border border-green-500/20 flex items-center justify-center mb-6">
-                    <Check className="w-8 h-8 text-green-400" />
-                  </div>
-                  <h3 className="text-2xl font-bold text-white mb-3">
-                    Message Sent
-                  </h3>
-                  <p className="text-white/50 max-w-sm">
-                    Thank you for reaching out. Our team will get back to you
-                    within 24 hours.
-                  </p>
-                </div>
-              ) : (
-                <form onSubmit={handleSubmit} className="space-y-6">
-                  <div>
-                    <Label className="text-white/80 mb-2 block">Name</Label>
-                    <Input
-                      required
-                      value={name}
-                      onChange={(e) => setName(e.target.value)}
-                      placeholder="Your full name"
-                      className="h-12 bg-white/5 border-white/10 text-white placeholder:text-white/40 focus:border-blue-500/50 focus:ring-blue-500/20 rounded-xl"
-                    />
-                  </div>
-
-                  <div>
-                    <Label className="text-white/80 mb-2 block">Email</Label>
-                    <Input
-                      required
-                      type="email"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      placeholder="you@company.com"
-                      className="h-12 bg-white/5 border-white/10 text-white placeholder:text-white/40 focus:border-blue-500/50 focus:ring-blue-500/20 rounded-xl"
-                    />
-                  </div>
-
-                  <div>
-                    <Label className="text-white/80 mb-2 block">Company</Label>
-                    <Input
-                      value={company}
-                      onChange={(e) => setCompany(e.target.value)}
-                      placeholder="Your company name"
-                      className="h-12 bg-white/5 border-white/10 text-white placeholder:text-white/40 focus:border-blue-500/50 focus:ring-blue-500/20 rounded-xl"
-                    />
-                  </div>
-
-                  <div>
-                    <Label className="text-white/80 mb-2 block">
-                      How can we help?
-                    </Label>
-                    <Select value={topic} onValueChange={setTopic}>
-                      <SelectTrigger className="h-12 bg-white/5 border-white/10 text-white rounded-xl [&>span]:text-white/40 data-[state=open]:border-blue-500/50">
-                        <SelectValue placeholder="Select a topic" />
-                      </SelectTrigger>
-                      <SelectContent className="bg-zinc-900 border-white/10">
-                        {helpOptions.map((option) => (
-                          <SelectItem
-                            key={option}
-                            value={option}
-                            className="text-white focus:bg-white/10 focus:text-white"
-                          >
-                            {option}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div>
-                    <Label className="text-white/80 mb-2 block">Message</Label>
-                    <Textarea
-                      required
-                      value={message}
-                      onChange={(e) => setMessage(e.target.value)}
-                      placeholder="Tell us about your project or needs..."
-                      rows={5}
-                      className="bg-white/5 border-white/10 text-white placeholder:text-white/40 focus:border-blue-500/50 focus:ring-blue-500/20 rounded-xl resize-none"
-                    />
-                  </div>
-
-                  <Button
-                    type="submit"
-                    size="lg"
-                    className="w-full bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white font-semibold rounded-xl h-12"
-                  >
-                    Send Message
-                    <ArrowRight className="ml-2 w-4 h-4" />
-                  </Button>
-                </form>
-              )}
-            </div>
           </div>
-        </div>
+        </Container>
       </section>
 
-      <Footer />
+      <SiteFooter />
     </main>
   );
 }

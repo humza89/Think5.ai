@@ -26,10 +26,10 @@ export function DataEngine() {
           <div className="grid gap-12 lg:grid-cols-12">
             <div className="lg:col-span-5">
               <SectionTitle
-                eyebrow="Data engine"
+                eyebrow="Capabilities"
                 title={
                   <>
-                    The data engine behind <span className="italic text-graphite">frontier</span> models.
+                    Every modality a <span className="italic text-graphite">frontier</span> lab needs.
                   </>
                 }
                 lede="End-to-end human data operations converting expert intelligence into the datasets that shape how AI reasons, adapts and evolves."

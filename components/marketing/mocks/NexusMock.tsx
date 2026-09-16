@@ -15,14 +15,14 @@ export function NexusMock({ className }: { className?: string }) {
       <div aria-hidden="true" className="absolute inset-x-3 -top-2 h-full rounded-2xl border border-stone bg-paper-2/90" />
 
       {/* Front card */}
-      <div className="relative rounded-2xl border border-stone bg-paper-2 p-6 shadow-[0_30px_80px_-30px_rgba(10,10,11,0.35)]">
+      <div className="relative overflow-hidden rounded-2xl border border-stone bg-paper-2 p-6 shadow-[0_30px_80px_-30px_rgba(10,10,11,0.35)] [contain:inline-size]">
         <div className="flex items-start gap-4">
           <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-ink font-display text-[22px] text-paper">
             SC
           </div>
           <div className="min-w-0 flex-1">
             <p className="truncate text-[16px] font-semibold text-ink">Sarah Chen, PhD</p>
-            <p className="truncate text-[13px] text-graphite">Computational Biology · Stanford · 9 yrs</p>
+            <p className="text-[13px] leading-snug text-graphite">Computational Biology · Stanford · 9 yrs</p>
             <div className="mt-3 flex flex-wrap gap-1.5">
               {TAGS.map((t) => (
                 <span key={t} className="rounded-full border border-stone bg-paper px-2.5 py-1 text-[11px] text-ink">

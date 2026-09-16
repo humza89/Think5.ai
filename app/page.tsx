@@ -1,8 +1,9 @@
 import HeroSection from "@/components/landing/HeroSection";
 import { LogoWall } from "@/components/marketing/LogoWall";
 import { Manifesto } from "@/components/landing/Manifesto";
+import { Industries } from "@/components/landing/Industries";
 import { Platform } from "@/components/landing/Platform";
-import { DataEngine } from "@/components/landing/DataEngine";
+import { AiTrainingTeaser } from "@/components/landing/AiTrainingTeaser";
 import { HowItWorks } from "@/components/landing/HowItWorks";
 import { Quote } from "@/components/landing/Quote";
 import { CtaBand } from "@/components/marketing/CtaBand";
@@ -14,19 +15,20 @@ export default function Home() {
       <HeroSection />
       <LogoWall tone="dark" />
       <Manifesto />
+      <Industries />
       <Platform />
-      <DataEngine />
+      <AiTrainingTeaser />
       <HowItWorks />
       <Quote />
       <CtaBand
         title={
           <>
-            Ready to build the future of AI <span className="italic text-white/70">with us</span>?
+            Ready to make your next hire the <span className="italic text-white/70">right</span> one?
           </>
         }
-        lede="Whether you need expert talent for AI training or want to join our network, we're here to help."
-        primary={{ label: "Find expert talent", href: "/contact" }}
-        secondary={{ label: "Join as an expert", href: "/auth/signup" }}
+        lede="Whether you're a founder making a first hire, an enterprise scaling a team, or a lab that needs expert data, we're here to help."
+        primary={{ label: "Book a call", href: "/contact" }}
+        secondary={{ label: "Join as a candidate", href: "/auth/signup" }}
       />
       <SiteFooter />
     </main>

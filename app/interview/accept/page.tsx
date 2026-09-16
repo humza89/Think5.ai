@@ -3,7 +3,8 @@
 import { Suspense, useEffect, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { Loader2, AlertCircle, CheckCircle } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { LogoMark } from "@/components/brand/LogoMark";
+import { cn } from "@/lib/utils";
 
 interface InvitationData {
   id: string;
@@ -22,12 +23,12 @@ export default function AcceptInvitationPage() {
   return (
     <Suspense
       fallback={
-        <div className="min-h-screen bg-black flex items-center justify-center">
-          <div className="text-center">
-            <Loader2 className="h-8 w-8 animate-spin text-blue-500 mx-auto mb-4" />
-            <p className="text-white/70 text-sm">Loading...</p>
+        <Shell>
+          <div className="py-10 text-center">
+            <Loader2 className="mx-auto mb-4 h-6 w-6 animate-spin text-white/60" />
+            <p className="text-sm text-white/60">Loading…</p>
           </div>
-        </div>
+        </Shell>
       }
     >
       <AcceptInvitationContent />
@@ -112,94 +113,93 @@ function AcceptInvitationContent() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-black flex items-center justify-center">
-        <div className="text-center">
-          <Loader2 className="h-8 w-8 animate-spin text-blue-500 mx-auto mb-4" />
-          <p className="text-white/70 text-sm">Validating your invitation...</p>
+      <Shell>
+        <div className="py-10 text-center">
+          <Loader2 className="mx-auto mb-4 h-6 w-6 animate-spin text-white/60" />
+          <p className="text-sm text-white/60">Validating your invitation…</p>
         </div>
-      </div>
+      </Shell>
     );
   }
 
   if (error && !invitation) {
     return (
-      <div className="min-h-screen bg-black flex items-center justify-center">
-        <div className="max-w-md w-full mx-auto p-8">
-          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-8 text-center">
-            <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
-            <h1 className="text-xl font-bold text-white mb-2">Invitation Error</h1>
-            <p className="text-white/60 text-sm">{error}</p>
+      <Shell>
+        <div className="text-center">
+          <div className="mx-auto mb-5 flex h-12 w-12 items-center justify-center rounded-full bg-red-500/15 text-red-400">
+            <AlertCircle className="h-5 w-5" />
           </div>
+          <h1 className="font-display text-[32px] leading-tight text-white">Invitation error</h1>
+          <p className="mt-3 text-[14px] text-white/60">{error}</p>
         </div>
-      </div>
+      </Shell>
     );
   }
 
   return (
-    <div className="min-h-screen bg-black flex items-center justify-center">
-      <div className="max-w-md w-full mx-auto p-8">
-        <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-8">
-          <div className="text-center mb-6">
-            <div className="mb-4">
-              <span className="text-2xl font-bold text-white">Think5</span>
-              <span className="text-2xl font-bold text-blue-500">.</span>
-            </div>
-            <CheckCircle className="h-12 w-12 text-blue-500 mx-auto mb-4" />
-            <h1 className="text-xl font-bold text-white mb-2">Interview Invitation</h1>
-          </div>
+    <Shell>
+      <div className="mb-8 text-center">
+        <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-white/50">Interview invitation</p>
+        <h1 className="mt-3 font-display text-[36px] leading-[1.05] tracking-[-0.02em] text-white">
+          You&apos;ve been invited to <span className="italic text-white/60">interview</span>.
+        </h1>
+      </div>
 
-          {invitation && (
-            <div className="space-y-4 mb-6">
-              {invitation.jobTitle && (
-                <div className="bg-zinc-800/50 rounded-lg p-3">
-                  <p className="text-xs text-white/50 mb-1">Position</p>
-                  <p className="text-sm font-medium text-white">{invitation.jobTitle}</p>
-                </div>
-              )}
-              {invitation.companyName && (
-                <div className="bg-zinc-800/50 rounded-lg p-3">
-                  <p className="text-xs text-white/50 mb-1">Company</p>
-                  <p className="text-sm font-medium text-white">{invitation.companyName}</p>
-                </div>
-              )}
-              {invitation.duration && (
-                <div className="bg-zinc-800/50 rounded-lg p-3">
-                  <p className="text-xs text-white/50 mb-1">Duration</p>
-                  <p className="text-sm font-medium text-white">{invitation.duration} minutes</p>
-                </div>
-              )}
-              {invitation.recruiterName && (
-                <div className="bg-zinc-800/50 rounded-lg p-3">
-                  <p className="text-xs text-white/50 mb-1">Invited by</p>
-                  <p className="text-sm font-medium text-white">{invitation.recruiterName}</p>
-                </div>
-              )}
-            </div>
-          )}
+      {invitation && (
+        <dl className="mb-8 divide-y divide-white/10 border-y border-white/10">
+          {invitation.jobTitle && <Row label="Position" value={invitation.jobTitle} />}
+          {invitation.companyName && <Row label="Company" value={invitation.companyName} />}
+          {invitation.duration && <Row label="Duration" value={`${invitation.duration} minutes`} />}
+          {invitation.recruiterName && <Row label="Invited by" value={invitation.recruiterName} />}
+        </dl>
+      )}
 
-          {error && (
-            <p className="text-sm text-red-400 text-center mb-4">{error}</p>
-          )}
+      {error && <p className="mb-4 text-center text-sm text-red-400">{error}</p>}
 
-          <Button
-            onClick={handleAccept}
-            disabled={accepting}
-            className="w-full bg-white text-black hover:bg-white/90 font-semibold py-3 rounded-full"
-          >
-            {accepting ? (
-              <>
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                Starting...
-              </>
-            ) : (
-              "Accept & Start Interview"
-            )}
-          </Button>
+      <button
+        onClick={handleAccept}
+        disabled={accepting}
+        className={cn(
+          "inline-flex h-12 w-full items-center justify-center gap-2 rounded-full bg-white text-[15px] font-medium text-ink transition-colors hover:bg-paper disabled:pointer-events-none disabled:opacity-50"
+        )}
+      >
+        {accepting ? (
+          <>
+            <Loader2 className="h-4 w-4 animate-spin" /> Starting…
+          </>
+        ) : (
+          <>
+            <CheckCircle className="h-4 w-4" /> Accept &amp; start interview
+          </>
+        )}
+      </button>
 
-          <p className="text-xs text-white/40 text-center mt-4">
-            By accepting, you agree to participate in an AI-powered interview. Your responses will be recorded and evaluated.
-          </p>
+      <p className="mt-5 text-center text-[12px] leading-relaxed text-white/40">
+        By accepting, you agree to participate in an AI-powered interview. Your responses will be recorded and evaluated.
+      </p>
+    </Shell>
+  );
+}
+
+function Row({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-baseline justify-between gap-6 py-3">
+      <dt className="text-[12px] uppercase tracking-[0.12em] text-white/45">{label}</dt>
+      <dd className="text-right text-[14px] font-medium text-white">{value}</dd>
+    </div>
+  );
+}
+
+/** Ink shell: this page leads straight into the (dark) interview UI. */
+function Shell({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-ink px-6 py-16">
+      <div className="dot-grid absolute inset-0 opacity-40 [mask-image:radial-gradient(ellipse_at_center,black_10%,transparent_65%)]" aria-hidden="true" />
+      <div className="relative w-full max-w-md">
+        <div className="mb-8 flex justify-center">
+          <LogoMark size={40} tone="light" />
         </div>
+        <div className="rounded-[24px] border border-white/10 bg-ink-2 p-8">{children}</div>
       </div>
     </div>
   );

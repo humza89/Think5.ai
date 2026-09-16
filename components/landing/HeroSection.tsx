@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { ChevronRight } from "lucide-react";
 import { useState } from "react";
 import { SiteHeader } from "@/components/marketing/SiteHeader";
@@ -116,7 +115,7 @@ const HeroSection = () => {
 
           {/* Subheadline */}
           <p className="text-xl text-gray-300 mb-10 max-w-xl animate-fade-in-up delay-300">
-            Sourcing, vetting, and deploying elite experts to train the world&apos;s most advanced AI systems.
+            AI-powered recruiting for startups and enterprises across IT, healthcare, finance and construction — and the expert network training frontier AI.
           </p>
 
           {/* CTA Button with Sun Glow Effect */}

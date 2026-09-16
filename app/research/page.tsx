@@ -1,11 +1,10 @@
 "use client";
 
-import Header from "@/components/layout/Header";
-import Footer from "@/components/landing/Footer";
-import { GlowingEffect } from "@/components/ui/glowing-effect";
-import { Button } from "@/components/ui/button";
-import Link from "next/link";
-import { ArrowRight, FileText, BookOpen, FlaskConical } from "lucide-react";
+import { ArrowUpRight } from "lucide-react";
+import { SiteHeader } from "@/components/marketing/SiteHeader";
+import { SiteFooter } from "@/components/marketing/SiteFooter";
+import { CtaBand } from "@/components/marketing/CtaBand";
+import { Container, Eyebrow, SectionTitle, Reveal } from "@/components/marketing/primitives";
 
 const papers = [
   {
@@ -54,186 +53,129 @@ const papers = [
 
 const researchAreas = [
   {
-    icon: BookOpen,
+    n: "01",
     title: "AI Recruitment & Vetting",
     description:
       "How AI can identify and assess domain experts at scale while maintaining rigorous quality standards. Our work on Aria explores conversational AI interviewing, multi-language assessment, and anti-fraud detection.",
   },
   {
-    icon: FlaskConical,
+    n: "02",
     title: "Human Data Quality",
     description:
       "Frameworks for measuring, validating, and ensuring the quality of human-generated training data. We study expert calibration, inter-annotator agreement, and performance-driven talent optimization.",
   },
   {
-    icon: FileText,
+    n: "03",
     title: "Evaluation Frameworks",
     description:
       "Developing rigorous benchmarks and evaluation methods for AI systems trained on human feedback. Our research covers RLHF evaluation, safety testing methodologies, and domain-specific model assessment.",
   },
 ];
 
-const categoryColors: Record<string, string> = {
-  RLHF: "text-purple-400 bg-purple-400/10",
-  "Data Quality": "text-green-400 bg-green-400/10",
-  Infrastructure: "text-blue-400 bg-blue-400/10",
-  "AI Safety": "text-red-400 bg-red-400/10",
-  Evaluation: "text-amber-400 bg-amber-400/10",
-  Research: "text-cyan-400 bg-cyan-400/10",
-};
-
 export default function ResearchPage() {
+  const [featured, ...rest] = papers;
+
   return (
-    <main className="min-h-screen bg-black">
-      <Header />
+    <main className="min-h-screen bg-paper">
+      <SiteHeader tone="light" />
 
       {/* Hero */}
-      <section className="pt-32 pb-24 bg-black relative overflow-hidden">
-        <div className="container mx-auto px-6">
-          <div className="max-w-3xl">
-            <p className="text-xs text-blue-400 uppercase tracking-widest mb-4">
-              Research
-            </p>
-            <h1 className="text-5xl md:text-6xl font-bold text-white mb-6">
-              Advancing the science of human-AI collaboration
-            </h1>
-            <p className="text-lg text-white/60 max-w-2xl">
-              Our research team explores how human intelligence shapes AI
-              systems, publishing findings that push the boundaries of data
-              quality, evaluation frameworks, and expert-in-the-loop training.
-            </p>
-          </div>
-        </div>
+      <section className="pt-40 pb-16 md:pt-48 md:pb-24">
+        <Container>
+          <Eyebrow className="mb-6">Research</Eyebrow>
+          <h1 className="max-w-5xl font-display text-[52px] leading-[1.02] tracking-[-0.02em] text-ink md:text-[88px]">
+            Advancing the science of <span className="italic text-graphite">human–AI</span> collaboration.
+          </h1>
+          <p className="mt-8 max-w-2xl text-[17px] leading-relaxed text-graphite md:text-lg">
+            Our research team explores how human intelligence shapes AI systems, publishing findings that push the
+            boundaries of data quality, evaluation frameworks and expert-in-the-loop training.
+          </p>
+        </Container>
       </section>
 
-      {/* Research Papers */}
-      <section className="py-24 bg-black relative overflow-hidden">
-        <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-white/10 to-transparent" />
-        <div className="container mx-auto px-6">
-          <div className="mb-16">
-            <h2 className="text-3xl md:text-4xl font-bold text-white mb-4">
-              Featured Research
-            </h2>
-            <p className="text-white/50">
-              Selected publications from the Think5 research team.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {papers.map((paper, i) => (
-              <article
-                key={i}
-                className="group rounded-2xl border border-white/10 bg-white/5 p-8 hover:bg-white/[0.07] transition-colors flex flex-col"
-              >
-                <div className="flex items-center justify-between mb-4">
-                  <span
-                    className={`inline-block px-2.5 py-1 text-xs font-medium rounded-full ${
-                      categoryColors[paper.category] ||
-                      "text-blue-400 bg-blue-400/10"
-                    }`}
-                  >
-                    {paper.category}
-                  </span>
-                  <span className="text-xs text-white/30">{paper.date}</span>
+      {/* Featured paper */}
+      <section className="pb-20 md:pb-28">
+        <Container>
+          <Reveal>
+            <article className="grain relative overflow-hidden rounded-[28px] border border-stone bg-paper-2 p-8 md:p-14">
+              <div className="grid gap-10 lg:grid-cols-12">
+                <div className="lg:col-span-4">
+                  <Eyebrow>Featured · {featured.category}</Eyebrow>
+                  <p className="mt-4 text-[13px] text-graphite">{featured.date}</p>
+                  <a href="#" className="mt-10 hidden items-center gap-1.5 text-[15px] font-medium text-ink underline-offset-4 hover:underline lg:inline-flex">
+                    Read paper <ArrowUpRight className="h-4 w-4" />
+                  </a>
                 </div>
-                <h3 className="text-lg font-semibold text-white mb-3 group-hover:text-blue-300 transition-colors">
-                  {paper.title}
-                </h3>
-                <p className="text-sm text-white/50 leading-relaxed flex-1">
-                  {paper.abstract}
-                </p>
-                <div className="mt-6 pt-4 border-t border-white/10">
-                  <span className="text-sm text-blue-400 group-hover:text-blue-300 transition-colors flex items-center gap-1">
-                    Read paper <ArrowRight className="w-3 h-3" />
-                  </span>
+                <div className="lg:col-span-8">
+                  <h2 className="font-display text-[36px] leading-[1.08] tracking-[-0.02em] text-ink md:text-[52px]">{featured.title}</h2>
+                  <p className="mt-6 max-w-2xl text-[16px] leading-relaxed text-graphite">{featured.abstract}</p>
+                  <a href="#" className="mt-8 inline-flex items-center gap-1.5 text-[15px] font-medium text-ink underline-offset-4 hover:underline lg:hidden">
+                    Read paper <ArrowUpRight className="h-4 w-4" />
+                  </a>
                 </div>
-              </article>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Research Areas */}
-      <section className="py-24 bg-black relative overflow-hidden">
-        <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-white/10 to-transparent" />
-        <div className="container mx-auto px-6">
-          <div className="mb-16">
-            <h2 className="text-3xl md:text-4xl font-bold text-white mb-4">
-              Research Areas
-            </h2>
-            <p className="text-white/50">
-              Core focus areas driving our scientific contributions.
-            </p>
-          </div>
-
-          <ul className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {researchAreas.map((area, i) => (
-              <li key={i} className="min-h-[14rem] list-none">
-                <div className="relative h-full rounded-2xl border border-white/10 p-2">
-                  <GlowingEffect
-                    spread={40}
-                    glow={true}
-                    disabled={false}
-                    proximity={64}
-                    inactiveZone={0.01}
-                    borderWidth={2}
-                  />
-                  <div className="relative flex h-full flex-col overflow-hidden rounded-xl bg-zinc-950/80 p-8 backdrop-blur-sm">
-                    <div className="w-10 h-10 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center mb-5">
-                      <area.icon className="w-5 h-5 text-blue-400" />
-                    </div>
-                    <h3 className="text-xl font-semibold text-white tracking-tight mb-3">
-                      {area.title}
-                    </h3>
-                    <div className="w-12 h-0.5 bg-blue-500/60 mb-3" />
-                    <p className="text-sm leading-relaxed text-white/60">
-                      {area.description}
-                    </p>
-                  </div>
-                </div>
-              </li>
-            ))}
-          </ul>
-        </div>
-      </section>
-
-      {/* CTA */}
-      <section className="py-24 bg-black">
-        <div className="container mx-auto px-6">
-          <div className="max-w-4xl mx-auto">
-            <div className="bg-white/5 border border-white/10 rounded-3xl p-12 text-center relative overflow-hidden">
-              <div className="absolute top-0 left-1/4 w-64 h-64 bg-white/5 rounded-full filter blur-3xl" />
-              <div className="absolute bottom-0 right-1/4 w-64 h-64 bg-white/5 rounded-full filter blur-3xl" />
-
-              <div className="relative z-10">
-                <p className="text-xs text-white/40 uppercase tracking-widest mb-6">
-                  Collaborate
-                </p>
-                <h2 className="text-4xl md:text-5xl font-light text-white mb-6">
-                  Interested in collaborating
-                  <br />
-                  on research?
-                </h2>
-                <p className="text-lg text-white/50 mb-10 max-w-2xl mx-auto">
-                  We partner with leading AI labs and academic institutions to
-                  advance the science of human-AI collaboration.
-                </p>
-                <Link href="/contact">
-                  <Button
-                    size="lg"
-                    className="bg-white text-black hover:bg-white/90 rounded-full px-8 h-12"
-                  >
-                    Get in Touch
-                    <ArrowRight className="ml-2 w-4 h-4" />
-                  </Button>
-                </Link>
               </div>
-            </div>
-          </div>
-        </div>
+            </article>
+          </Reveal>
+        </Container>
       </section>
 
-      <Footer />
+      {/* Index */}
+      <section className="border-t border-stone py-20 md:py-28">
+        <Container>
+          <Reveal>
+            <SectionTitle eyebrow="Publications" title="Selected publications" lede="Recent work from the Think5 research team." />
+          </Reveal>
+          <ol className="mt-14 border-t border-ink/15">
+            {rest.map((paper, i) => (
+              <Reveal key={paper.title} as="li" delay={i * 60} className="group border-b border-stone">
+                <a href="#" className="grid gap-3 py-7 md:grid-cols-[140px_1fr_140px] md:items-baseline md:gap-8">
+                  <span className="text-[11px] font-medium uppercase tracking-[0.16em] text-graphite">{paper.category}</span>
+                  <div>
+                    <h3 className="font-display text-[26px] leading-[1.15] tracking-[-0.01em] text-ink transition-colors group-hover:text-brand md:text-[32px]">
+                      {paper.title}
+                    </h3>
+                    <p className="mt-3 max-w-2xl text-[14px] leading-relaxed text-graphite">{paper.abstract}</p>
+                  </div>
+                  <span className="text-[13px] text-graphite md:text-right">{paper.date}</span>
+                </a>
+              </Reveal>
+            ))}
+          </ol>
+        </Container>
+      </section>
+
+      {/* Areas */}
+      <section className="border-t border-stone py-20 md:py-28">
+        <Container>
+          <Reveal>
+            <SectionTitle eyebrow="Research areas" title={<>Core focus areas driving our <span className="italic text-graphite">scientific</span> contributions.</>} />
+          </Reveal>
+          <div className="mt-16 grid gap-10 md:grid-cols-3 md:gap-8">
+            {researchAreas.map((area, i) => (
+              <Reveal key={area.title} delay={i * 100} className="border-t border-ink/15 pt-6">
+                <div className="flex items-baseline justify-between">
+                  <h3 className="font-display text-[28px] leading-tight tracking-[-0.01em] text-ink">{area.title}</h3>
+                  <span className="text-[12px] tabular-nums tracking-[0.18em] text-graphite">{area.n}</span>
+                </div>
+                <p className="mt-4 text-[14px] leading-relaxed text-graphite">{area.description}</p>
+              </Reveal>
+            ))}
+          </div>
+        </Container>
+      </section>
+
+      <CtaBand
+        eyebrow="Collaborate"
+        title={
+          <>
+            Work with our <span className="italic text-white/70">research</span> team.
+          </>
+        }
+        lede="We partner with labs and universities on data quality, evaluation and expert-in-the-loop training."
+        primary={{ label: "Start a conversation", href: "/contact" }}
+        secondary={{ label: "Explore the platform", href: "/product" }}
+      />
+      <SiteFooter />
     </main>
   );
 }

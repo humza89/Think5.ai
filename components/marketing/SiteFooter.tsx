@@ -8,6 +8,7 @@ const FOOTER_LINKS: Record<string, { name: string; href: string }[]> = {
     { name: "Aria", href: "/product#aria" },
     { name: "Nexus", href: "/product#nexus" },
     { name: "Forge", href: "/product#forge" },
+    { name: "AI training data", href: "/ai-training" },
   ],
   Company: [
     { name: "About", href: "/about" },
@@ -43,7 +44,7 @@ export function SiteFooter() {
           </div>
           <div className="md:col-span-5 md:pt-2">
             <p className="max-w-sm text-[15px] leading-relaxed text-white/55">
-              Think5 sources, vets and deploys elite domain experts to train the world&apos;s most advanced AI systems.
+              AI-powered recruiting for startups and enterprises across IT, healthcare, finance and construction, plus the expert network that trains frontier AI.
             </p>
             <div className="mt-6 flex flex-wrap gap-x-6 gap-y-2 text-[14px]">
               <a href="https://twitter.com/think5ai" className="text-white/60 underline-offset-4 transition-colors hover:text-white hover:underline">X / Twitter</a>

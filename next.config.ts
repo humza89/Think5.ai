@@ -73,6 +73,16 @@ const nextConfig: NextConfig = {
           { key: "Content-Security-Policy", value: landingCsp },
         ],
       },
+      // Public marketing + auth pages: same policy as the landing page.
+      // Next.js hydrates through inline scripts, so 'unsafe-inline' for
+      // script-src is required for these client-rendered pages to work.
+      {
+        source: "/(product|ai-training|research|contact|unauthorized|auth)(.*)",
+        headers: [
+          ...securityHeaders,
+          { key: "Content-Security-Policy", value: landingCsp },
+        ],
+      },
       // Sandboxed Spline 3D embed — unsafe-eval isolated to this route
       {
         source: "/spline-embed",
@@ -83,7 +93,7 @@ const nextConfig: NextConfig = {
       },
       // All other routes: strict CSP (no unsafe-eval)
       {
-        source: "/((?!interview|api|candidate|admin|dashboard|spline-embed).+)",
+        source: "/((?!interview|api|candidate|admin|dashboard|spline-embed|product|ai-training|research|contact|unauthorized|auth).+)",
         headers: [
           ...securityHeaders,
           { key: "Content-Security-Policy", value: strictCsp },

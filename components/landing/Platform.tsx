@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { ArrowUpRight } from "lucide-react";
 import { Container, SectionTitle, Reveal } from "@/components/marketing/primitives";
+import { AriaAvatar } from "@/components/brand/AriaAvatar";
 import { AriaMock } from "@/components/marketing/mocks/AriaMock";
 import { NexusMock } from "@/components/marketing/mocks/NexusMock";
 import { ForgeMock } from "@/components/marketing/mocks/ForgeMock";
@@ -11,29 +12,32 @@ import { cn } from "@/lib/utils";
 const PRODUCTS = [
   {
     id: "aria",
+    href: "/product#aria",
     badge: "AI interviewer",
     name: "Aria",
     description:
-      "Conducts rigorous technical assessments in 50+ languages, vetting candidates across 150+ countries in real time.",
-    points: ["Conversational probing across technical domains", "Frontier-grade proctoring and anti-cheat", "Real-time scoring and assessment reports"],
+      "Interviews every candidate live: structured technical and behavioural screens in 50+ languages, proctored, scored in real time.",
+    points: ["Adaptive follow-ups that probe depth, not keywords", "Frontier-grade proctoring and anti-cheat", "Scored reports you can compare side by side"],
     Mock: AriaMock,
   },
   {
     id: "nexus",
+    href: "/product#nexus",
     badge: "Matching engine",
     name: "Nexus",
     description:
-      "Pairs elite domain experts with AI training projects on skills, verified experience and measured quality.",
-    points: ["Skill-to-project matching in 24–48 hours", "Domain verification for PhDs, MDs, JDs and engineers", "Continuous, performance-based quality scoring"],
+      "Matches candidates to roles on verified skills, Aria scores and availability across every industry we serve.",
+    points: ["Shortlist in 24–48 hours", "Credential and licence verification per industry", "Continuous quality scoring from real outcomes"],
     Mock: NexusMock,
   },
   {
     id: "forge",
-    badge: "Data operations",
+    href: "/ai-training",
+    badge: "AI training data",
     name: "Forge",
     description:
-      "Turns expert human intelligence into high-quality datasets for RLHF, SFT, evaluations and red teaming.",
-    points: ["RLHF and SFT pipelines for frontier models", "Vision-language and multi-modal datasets", "Managed QA and delivery, 24/7"],
+      "Turns our vetted expert network into high-quality training data for frontier labs: RLHF, SFT, evaluations and red teaming.",
+    points: ["RLHF and SFT pipelines", "Domain experts: MDs, JDs, PhDs, engineers", "Managed QA and delivery, 24/7"],
     Mock: ForgeMock,
   },
 ];
@@ -50,7 +54,7 @@ export function Platform() {
                 One platform. <span className="italic text-graphite">Three</span> engines.
               </>
             }
-            lede="Aria, Nexus and Forge work together to source, vet and deploy elite experts for AI training at scale."
+            lede="Aria interviews, Nexus matches, Forge turns expertise into training data. Together they run recruiting end to end."
           />
         </Reveal>
 
@@ -63,7 +67,10 @@ export function Platform() {
                   <p className="inline-flex items-center gap-2 rounded-full border border-stone bg-paper-2 px-3 py-1 text-[11px] font-medium uppercase tracking-[0.16em] text-graphite">
                     <span className="h-1.5 w-1.5 rounded-full bg-brand" /> {p.badge}
                   </p>
-                  <h3 className="mt-6 font-display text-[56px] leading-none tracking-[-0.02em] text-ink md:text-[72px]">{p.name}</h3>
+                  <div className="mt-6 flex items-end gap-5">
+                    {p.id === "aria" && <AriaAvatar size={72} className="mb-1" />}
+                    <h3 className="font-display text-[56px] leading-none tracking-[-0.02em] text-ink md:text-[72px]">{p.name}</h3>
+                  </div>
                   <p className="mt-5 max-w-md text-[17px] leading-relaxed text-graphite">{p.description}</p>
                   <ul className="mt-8 divide-y divide-stone border-y border-stone">
                     {p.points.map((pt) => (
@@ -73,7 +80,7 @@ export function Platform() {
                       </li>
                     ))}
                   </ul>
-                  <Link href={`/product#${p.id}`} className="mt-8 inline-flex items-center gap-1.5 text-[15px] font-medium text-ink underline-offset-4 hover:underline">
+                  <Link href={p.href} className="mt-8 inline-flex items-center gap-1.5 text-[15px] font-medium text-ink underline-offset-4 hover:underline">
                     Explore {p.name} <ArrowUpRight className="h-4 w-4" />
                   </Link>
                 </div>

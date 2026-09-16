@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ArrowUpRight } from "lucide-react";
-import { Container, Eyebrow, pill } from "./primitives";
+import { Container, Eyebrow } from "./primitives";
+import { pill } from "./styles";
 import { cn } from "@/lib/utils";
 
 interface CtaLink {

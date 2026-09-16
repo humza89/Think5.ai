@@ -148,3 +148,27 @@ interview UI; centred card, logo mark, serif heading. Logic untouched.
 - Each page screenshotted at 1280px and 375px in the in-app browser, no
   console errors, no CSP violations.
 - Logged-out `curl` of every public route returns 200.
+
+## Addendum (2026-09-16, after Humza's mid-build feedback)
+
+**Positioning.** Think5 is a recruiting company first: AI-powered recruitment
+for IT, Construction, Healthcare and Finance, with a specific offer for
+startups. AI training data (the Mercor / micro1 style business) is one line
+of business, not the whole story.
+
+Changes:
+
+1. **Home** re-messaged around recruiting. Hero structure unchanged; only the
+   sub-headline broadens from AI training to recruiting. New sections:
+   `Industries` (IT, Healthcare, Finance, Construction, plus a highlighted
+   Startups card) and an `AiTrainingTeaser` band linking to the new page.
+   `DataEngine` moves off the home page.
+2. **New page `/ai-training`** — the Mercor / micro1 style page: hero, expert
+   network stats, Forge data engine capabilities, how it works for labs,
+   research link, CTA. Added to nav, footer, public routes and CSP rule.
+3. **Aria avatar** — `components/brand/AriaAvatar.tsx`, an animated SVG orb
+   (layered rings, brand-blue core, listening pulse) used wherever Aria is
+   shown. `AriaMock` is rebuilt as a dark, high-tech interview console:
+   avatar, live transcript, telemetry rail (signals, proctoring, latency),
+   waveform and scan line.
+4. **Product page** copy reflects recruiting; Forge links to `/ai-training`.

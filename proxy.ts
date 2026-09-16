@@ -114,6 +114,7 @@ function attachCsrfCookies(request: NextRequest, response: NextResponse): NextRe
 const publicRoutes = [
   '/',
   '/product',
+  '/ai-training',
   '/research',
   '/contact',
   '/unauthorized',

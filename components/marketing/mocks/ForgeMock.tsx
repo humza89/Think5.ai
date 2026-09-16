@@ -11,7 +11,7 @@ const STAGES = [
 /** Forge: data pipeline stage strip for a live batch. */
 export function ForgeMock({ className }: { className?: string }) {
   return (
-    <div className={cn("rounded-2xl border border-stone bg-paper-2 p-6 shadow-[0_30px_80px_-30px_rgba(10,10,11,0.35)]", className)}>
+    <div className={cn("overflow-hidden rounded-2xl border border-stone bg-paper-2 p-6 shadow-[0_30px_80px_-30px_rgba(10,10,11,0.35)] [contain:inline-size]", className)}>
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <div>
           <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-graphite">Batch 4471</p>
@@ -22,8 +22,9 @@ export function ForgeMock({ className }: { className?: string }) {
         </p>
       </div>
 
-      {/* Stage strip */}
-      <div className="relative mt-8">
+      {/* Stage strip (scrolls horizontally on narrow screens) */}
+      <div className="-mx-2 mt-8 overflow-x-auto px-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <div className="relative min-w-[460px] sm:min-w-0">
         <div className="absolute left-3 right-3 top-3 h-px bg-stone" aria-hidden="true" />
         <div className="absolute left-3 top-3 h-px w-[68%] bg-brand" aria-hidden="true" />
         <ol className="relative grid grid-cols-5 gap-2">
@@ -44,6 +45,7 @@ export function ForgeMock({ className }: { className?: string }) {
             </li>
           ))}
         </ol>
+        </div>
       </div>
 
       {/* Sample row */}
