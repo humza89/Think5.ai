@@ -1,4 +1,5 @@
 import { createServerClient } from '@supabase/ssr';
+import { matchesRoutePrefix } from '@/lib/route-prefix';
 import { NextResponse, type NextRequest } from 'next/server';
 import { createHash, randomUUID } from 'crypto';
 import { applyRateLimit } from '@/lib/api-rate-limit';
@@ -186,8 +187,9 @@ async function authorize(request: NextRequest): Promise<NextResponse> {
   if (publicRoutes.includes(pathname)) {
     return NextResponse.next();
   }
+  // Segment-aware: '/interview' must not make '/interviews/*' public.
   for (const prefix of publicPrefixes) {
-    if (pathname.startsWith(prefix)) {
+    if (matchesRoutePrefix(pathname, prefix)) {
       return NextResponse.next();
     }
   }
@@ -261,8 +263,9 @@ async function authorize(request: NextRequest): Promise<NextResponse> {
   }
 
   // Role-based route check
+  // Segment-aware: '/candidate' must not claim '/candidates/*' for candidates.
   for (const [routePrefix, allowedRoles] of Object.entries(ROUTE_ROLE_MAP)) {
-    if (pathname.startsWith(routePrefix)) {
+    if (matchesRoutePrefix(pathname, routePrefix)) {
       if (!allowedRoles.includes(profile.role)) {
         return NextResponse.redirect(new URL(getRoleHomePage(profile.role), request.url));
       }
