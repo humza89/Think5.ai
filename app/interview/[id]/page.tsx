@@ -16,6 +16,7 @@ import { InterviewPreCheck } from "@/components/interview/InterviewPreCheck";
 import { useScreenCapture } from "@/hooks/useScreenCapture";
 import { useMediaRecording } from "@/hooks/useMediaRecording";
 import { classifyError } from "@/lib/error-classification";
+import { csrfHeaders } from "@/lib/csrf-client";
 
 type InterviewStage =
   | "LOADING"
@@ -86,7 +87,8 @@ export default function InterviewRoom() {
       try {
         const res = await fetch(`/api/interviews/${interviewId}/validate`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          // POST /api routes are CSRF-checked by the proxy; echo the mirror cookie.
+          headers: { "Content-Type": "application/json", ...csrfHeaders() },
           body: JSON.stringify({ accessToken }),
         });
 
@@ -142,7 +144,8 @@ export default function InterviewRoom() {
     try {
       const res = await fetch(`/api/interviews/${interviewId}/validate`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        // POST /api routes are CSRF-checked by the proxy; echo the mirror cookie.
+        headers: { "Content-Type": "application/json", ...csrfHeaders() },
         body: JSON.stringify({
           accessToken,
           consentRecording: consent.consentRecording,
