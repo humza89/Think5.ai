@@ -15,6 +15,9 @@
     "route:matrix": "npm run manifest && bash scripts/route-matrix.sh",
     "test:e2e:golden": "npm run manifest && playwright test e2e/golden --project=chromium",
     "test:e2e:golden:update": "npm run manifest && playwright test e2e/golden/visual.spec.ts --project=chromium --update-snapshots",
+    "e2e:stack": "supabase start -x studio,imgproxy,edge-runtime,logflare,vector,realtime,mailpit,postgres-meta,supavisor",
+    "e2e:db": "tsx scripts/e2e-db.ts",
+    "e2e:seed": "tsx scripts/e2e-seed.ts",
     "predeploy": "npx tsx scripts/pre-deploy-check.ts",
     "postinstall": "prisma generate"
   },

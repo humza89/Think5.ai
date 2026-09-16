@@ -47,4 +47,6 @@ ROUTE_MATRIX_FIXTURES='{ "/jobs/[id]": "/jobs/seed-job-1" }' npm run route:matri
 
 ## Visual baselines
 
-The golden Playwright suite contains logged-out route-access tests immediately. Authenticated recruiter/candidate visual baselines require deterministic seeded accounts/storage-state and must never be faked with a production-capable auth bypass. The suite accepts `E2E_RECRUITER_STORAGE_STATE` and `E2E_CANDIDATE_STORAGE_STATE` paths when those fixtures are available; until then authenticated screenshot cases are explicitly skipped rather than silently passing.
+The golden Playwright suite captures the public pages logged out and the recruiter/candidate surfaces with real sessions. Authenticated coverage never uses an auth bypass: CI boots a local Supabase stack from `supabase/config.toml`, applies the repository's Supabase and Prisma schemas, seeds deterministic accounts through the Auth admin API (`npm run e2e:seed`) and signs them in through `/auth/signin` in a Playwright `setup` project. The full contract, including every environment variable, is in `e2e/fixtures/README.md`.
+
+Covered authenticated routes: `/dashboard`, `/jobs`, `/jobs/[seeded]`, `/candidates`, `/interviews`, `/candidate/dashboard` and `/interview/[seeded]` at the welcome stage, each at 1280×900 and 375×812. With `E2E_AUTH_FIXTURES=true` (as in CI) a missing storage state fails the run; without it the authenticated cases skip explicitly so local public-only runs stay possible.

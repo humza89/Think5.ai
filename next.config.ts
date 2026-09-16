@@ -28,6 +28,20 @@ const nextConfig: NextConfig = {
       },
     ];
 
+    // A local or self-hosted Supabase stack (for example the golden E2E suite
+    // in CI) lives on an origin outside *.supabase.co. Derive it from the
+    // configured URL so the browser can reach GoTrue/PostgREST there. Hosted
+    // projects match the wildcard already, so their CSP stays byte-identical.
+    const supabaseOriginSources = (() => {
+      try {
+        const url = new URL(process.env.NEXT_PUBLIC_SUPABASE_URL ?? "");
+        if (/\.supabase\.(co|in)$/.test(url.hostname)) return "";
+        return ` ${url.origin} ${url.origin.replace(/^http/, "ws")}`;
+      } catch {
+        return "";
+      }
+    })();
+
     // App routes: strict CSP — no unsafe-eval. 'unsafe-inline' for script-src is
     // required because Next.js streams the RSC payload and hydration bootstrap
     // through inline <script> tags; without it every hard load of an app route
@@ -35,14 +49,14 @@ const nextConfig: NextConfig = {
     // hydrates. Same policy the public/auth pages already use. Nonce-based CSP
     // with 'strict-dynamic' is the planned hardening (Issue #14).
     const strictCsp =
-      "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; connect-src 'self' https://*.supabase.co https://*.upstash.io wss://*.supabase.co wss://generativelanguage.googleapis.com https://generativelanguage.googleapis.com https://prod.spline.design https://unpkg.com wss://think5-voice-relay.fly.dev; media-src 'self' blob: data:; font-src 'self' data:; frame-src 'self' https://*.supabase.co blob:; frame-ancestors 'none'; report-uri /api/csp-report";
+      `default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; connect-src 'self' https://*.supabase.co https://*.upstash.io wss://*.supabase.co${supabaseOriginSources} wss://generativelanguage.googleapis.com https://generativelanguage.googleapis.com https://prod.spline.design https://unpkg.com wss://think5-voice-relay.fly.dev; media-src 'self' blob: data:; font-src 'self' data:; frame-src 'self' https://*.supabase.co blob:; frame-ancestors 'none'; report-uri /api/csp-report`;
 
     // Spline 3D runtime requires 'unsafe-eval'. Instead of allowing it on
     // the landing page directly, we load Spline in a sandboxed iframe on
     // /spline-embed which has its own relaxed CSP, keeping the main landing
     // page fully hardened.
     const landingCsp =
-      "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; connect-src 'self' https://*.supabase.co https://*.upstash.io wss://*.supabase.co https://prod.spline.design https://unpkg.com wss://think5-voice-relay.fly.dev; media-src 'self' blob: data:; font-src 'self' data:; frame-src 'self' https://*.supabase.co blob:; frame-ancestors 'none'";
+      `default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; connect-src 'self' https://*.supabase.co https://*.upstash.io wss://*.supabase.co${supabaseOriginSources} https://prod.spline.design https://unpkg.com wss://think5-voice-relay.fly.dev; media-src 'self' blob: data:; font-src 'self' data:; frame-src 'self' https://*.supabase.co blob:; frame-ancestors 'none'`;
     // Sandboxed Spline embed page — unsafe-eval isolated to this route only
     const splineEmbedCsp =
       "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://unpkg.com https://prod.spline.design; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; connect-src 'self' https://prod.spline.design https://unpkg.com; frame-ancestors 'self'";
