@@ -13,10 +13,10 @@ import { cn } from "@/lib/utils";
  */
 const VIDEO_W = 3840;
 const VIDEO_H = 2876;
-const SCREEN = { x: 0.158, y: 0.499, w: 0.575, h: 0.378 }; // slightly past the bezel so the glow overlaps
+const SCREEN = { x: 0.158, y: 0.499, w: 0.566, h: 0.378 }; // right edge stops where the bright bezel glow begins
 /** Fixed design canvas; the whole console scales to the screen rectangle. */
 const DESIGN_W = 1040;
-const DESIGN_H = 500;
+const DESIGN_H = 520; // 1040 / 520 matches the screen rectangle's aspect
 
 /* ── Content ───────────────────────────────────────────────────────────── */
 const STAGES = [
@@ -115,14 +115,14 @@ function Console() {
       {/* Body */}
       <div className="grid min-h-0 flex-1 grid-cols-[1.55fr_1fr]">
         {/* Shortlist */}
-        <div className="min-h-0 border-r border-stone p-5">
+        <div className="flex min-h-0 flex-col overflow-hidden border-r border-stone p-5">
           <div className="flex items-baseline justify-between">
             <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-graphite">Ranked shortlist</p>
             <p className="text-[11px] text-graphite">Sorted by Nexus fit</p>
           </div>
           <ul className="mt-3 divide-y divide-stone">
             {SHORTLIST.map((c, i) => (
-              <li key={c.name} className="hero-row flex items-center gap-3 py-2.5" style={{ animationDelay: `${400 + i * 160}ms` }}>
+              <li key={c.name} className="hero-row flex items-center gap-3 py-2" style={{ animationDelay: `${400 + i * 160}ms` }}>
                 <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-ink font-display text-[13px] text-paper">{c.initials}</span>
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-[13px] font-medium leading-tight">{c.name}</p>
@@ -149,7 +149,7 @@ function Console() {
               </li>
             ))}
           </ul>
-          <div className="mt-3 flex items-center justify-between border-t border-stone pt-3">
+          <div className="mt-auto flex items-center justify-between border-t border-stone pt-3">
             <p className="text-[11px] text-graphite">5 of 9 shown · all Aria-screened, references in progress</p>
             <div className="flex items-center gap-2">
               <span className="rounded-full border border-stone px-3 py-1 text-[11px] font-medium">Compare reports</span>
@@ -215,7 +215,7 @@ function Feed() {
       <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-graphite">Activity</p>
       <ul className="mt-2">
         {items.map((f, i) => (
-          <li key={`${f.text}-${i}`} className={cn("flex items-start gap-2 py-1.5", i === 0 && "hero-row")}>
+          <li key={`${f.text}-${i}`} className={cn("flex items-start gap-2 py-1", i === 0 && "hero-row")}>
             <span className="mt-[6px] h-1.5 w-1.5 shrink-0 rounded-full bg-brand" />
             <p className="min-w-0 flex-1 truncate text-[11.5px] leading-snug">{f.text}</p>
             <span className="shrink-0 text-[10px] text-graphite">{f.when}</span>
