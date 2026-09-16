@@ -46,9 +46,30 @@ async function settleVisuals(page: Page) {
   });
 }
 
+async function suppressRunnerChrome(page: Page) {
+  // Viewport changes can cause Next devtools to mount after settleVisuals().
+  // Install a persistent host-level rule immediately before each capture so
+  // late/re-mounted portals remain excluded for the entire screenshot wait.
+  await page.evaluate(() => {
+    const id = "__think5-golden-runner-chrome";
+    if (!document.getElementById(id)) {
+      const style = document.createElement("style");
+      style.id = id;
+      style.textContent = "nextjs-portal { display: none !important; visibility: hidden !important; }";
+      (document.head ?? document.documentElement).appendChild(style);
+    }
+    for (const portal of Array.from(document.querySelectorAll("nextjs-portal"))) {
+      const element = portal as HTMLElement;
+      element.style.setProperty("display", "none", "important");
+      element.style.setProperty("visibility", "hidden", "important");
+    }
+  });
+}
+
 async function captureBoth(page: Page, name: string) {
   await settleVisuals(page);
   await page.setViewportSize({ width: 1280, height: 900 });
+  await suppressRunnerChrome(page);
   // Soft screenshot assertions still fail the test, but let CI capture the
   // second viewport (and later surfaces) so a single run produces complete
   // regression evidence instead of stopping at the first mismatch.
@@ -59,6 +80,7 @@ async function captureBoth(page: Page, name: string) {
   });
 
   await page.setViewportSize({ width: 375, height: 812 });
+  await suppressRunnerChrome(page);
   await expect.soft(page).toHaveScreenshot(`${name}-375.png`, {
     fullPage: true,
     animations: "disabled",
