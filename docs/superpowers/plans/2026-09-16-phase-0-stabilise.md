@@ -6,7 +6,9 @@
 
 **Architecture:** Strangler pattern on the existing Next 16 app. New shared modules (`lib/api-client.ts`, `lib/interview-credential.ts`, Prisma soft-delete extension, messaging contract, correlation ids) are introduced beside existing code, call sites are migrated behind tests, and legacy paths keep working until the manifest diff and E2E prove parity. Every task is its own PR to `main` behind a flag where behaviour changes.
 
-**Tech stack:** Next.js 16 app router, Prisma 6, Supabase Auth (incl. native MFA), Upstash Redis, Inngest, Playwright, vitest, zod 4, `@vercel/otel`, `@node-saml/node-saml`.
+**Tech stack:** Next.js 16 app router, Prisma 6, Supabase Auth (incl. native MFA), Upstash Redis, Inngest, Playwright, vitest, zod 4, `@vercel/otel` + OTLP → Grafana Cloud, `@node-saml/node-saml`, Greenhouse Harvest API (sandbox).
+
+**Decisions applied (Humza, 2026-09-16):** minimal Greenhouse two-way proof is in Phase 0 (T15); usage metering foundation is in Phase 0, billing UI stays Phase 5 (T16); relay is made safe-to-fail in Phase 0, active multi-region routing stays Phase 4 (T11); Grafana Cloud is the OTLP backend, app stays vendor-neutral via OpenTelemetry (T12); MFA mandatory for Think5 admins and tenant owners/admins, tenant-configurable for recruiters/HMs, optional for candidates (T9); a T0.5 architecture contract precedes all code. Completion is measured by the T14 exit gate and the 7-day observation window, not by a week count.
 
 **Source of truth for defects:** the four audit reports summarised in the v2 PRD §2–§3 and the v2.1 PRD §3.1. Every task starts by re-confirming the defect against current `main` (the PRD requires this because the repo moves quickly).
 
@@ -20,23 +22,23 @@
 - Each task ends with: `npx tsc --noEmit` clean, `npm run lint` clean, `npx vitest run` green, the task's Playwright spec green, manifest regenerated and diff reviewed.
 - Commit message format: `fix(scope): …` / `feat(scope): …` / `chore(scope): …` per `~/.claude/rules/git-workflow.md`.
 
-## Sequencing
+## Sequencing (approved structure)
 
 ```
-T0 manifest + CI gates ──▶ T1 CSRF client ──▶ T2 interview credential ──▶ T3 proctoring persistence ──▶ T4 candidate results
-                                     │                                                                 │
-                                     ├──▶ T5 security guards + storage ──▶ T6 soft delete ──▶ T7 Inngest wiring
-                                     ├──▶ T8 messaging contract
-                                     ├──▶ T9 SSO completion + MFA + security settings
-                                     ├──▶ T10 stub elimination / labelling
-                                     ├──▶ T11 Redis degraded behaviour
-                                     └──▶ T12 correlation ids + OTel foundation
-T13 repo hygiene runs last. T14 is the exit gate.
+T0 preservation ──▶ T0.5 architecture contracts ──▶ T1 CSRF client ──▶ T2 interview credential ──▶ T3 proctoring ──▶ T4 candidate results
+                                                          │
+                                                          ├──▶ T5 security guards + storage ──▶ T6 soft delete ──▶ T7 Inngest wiring
+                                                          ├──▶ T8 messaging contract
+                                                          ├──▶ T9 SSO completion + MFA + security settings
+                                                          ├──▶ T10 stub elimination / labelling
+                                                          ├──▶ T11 relay + Redis safe-to-fail
+                                                          ├──▶ T12 correlation ids + OpenTelemetry → Grafana Cloud
+                                                          ├──▶ T15 minimal Greenhouse two-way proof
+                                                          └──▶ T16 usage metering foundation
+T13 hygiene ──▶ T14 staging / rollback / load verification ──▶ 7-day production observation ──▶ Phase 0 sign-off
 ```
 
-T1 and T2 unblock everything that writes from the browser; do them first after T0. T5–T7 and T8–T12 can run in parallel by different people.
-
-Estimated effort: 3 engineers × 3 weeks. Optional T15 (ATS two-way proof) is a scoping decision, see the end.
+T0 and T0.5 are sequential and come first; T1 and T2 unblock every browser write; T3–T12, T15 and T16 run in parallel by different people. Effort is not a completion promise: Phase 0 ends when T14's gates pass and the observation window is clean.
 
 ---
 
@@ -79,6 +81,30 @@ console.log(`pages ${pages.length} · apis ${apis.length} · models ${models.len
 - [ ] **Step 7: Commit** `chore(preservation): manifest generator, route matrix, CI gates and visual baseline`.
 
 Acceptance: `npm run manifest:check` passes on a clean tree; CI runs tsc + lint + vitest + golden E2E + manifest check on every PR.
+
+---
+
+### Task T0.5: Architecture contracts (interfaces before implementations)
+
+**Goal:** define the canonical interfaces now so Phase 0 fixes cannot create coupling the enterprise architecture (v2.1 PRD §10) later has to undo. Implementations stay simple; the contracts are what is reviewed.
+
+**Files:**
+- Create: `lib/contracts/{entitlements,usage,interview-session-store,ats,avatar,messaging,telemetry,planes}.ts`, `lib/contracts/index.ts`, `lib/contracts/README.md`
+- Create: `__tests__/contracts/*.test.ts` (each interface has a `Mock*` implementation and a conformance test any implementation must pass)
+- Modify: nothing else in this task; later tasks import from `lib/contracts`
+
+- [ ] **Step 1: `EntitlementService`** — `check(tenantId, feature, quantity?) → { allowed, reason?, remaining? }`, `features` enumerated as a string union (`interview.create`, `interview.avatar_minutes`, `ats.sync`, `api.key`, `seat.recruiter`, …). Phase 0 implementation: `AllowAllEntitlements` with structured logging; T16 wires quotas.
+- [ ] **Step 2: `UsageMeter`** — `record(event: UsageEvent)` where `UsageEvent = { id (idempotency key), tenantId, kind, quantity, unit, occurredAt, subjectId, metadata, source }`; append-only, never updated. Kinds: `interview.started|completed`, `ai.tokens`, `avatar.seconds`, `storage.bytes`, `message.sent`, `ats.sync`. Phase 0 implementation writes to a new additive `UsageEvent` table via the outbox (T16).
+- [ ] **Step 3: `InterviewSessionStore`** — the authoritative-state boundary from §10.1B: `saveCheckpoint`, `loadLatest`, `lease(interviewId, ownerId, ttl)`, `renewLease`, `release`, with an explicit `Durability = "postgres" | "postgres+redis"` result on every write. Phase 0 implementation wraps the existing `lib/session-store.ts` (Redis) and `InterviewerStateSnapshot` (Postgres) so Redis loss is a durability downgrade, not a failure (T11).
+- [ ] **Step 4: `ATSAdapter`** — `connect(config)`, `listJobs(since?)`, `getCandidate(id)`, `upsertCandidate(candidate)`, `attachInterviewReport(candidateId, report)`, `verifyWebhook(req)`, `parseWebhook(body) → ATSEvent[]`, plus `capabilities()` so the UI can grey out unsupported actions. Idempotency key on every write. Phase 0 implementation: Greenhouse (T15) behind this interface; existing `lib/ats/*` clients are adapted, not rewritten.
+- [ ] **Step 5: `AvatarProvider`** — `createSession({ interviewId, likenessId, language, audioSource }) → { sessionId, transport: "webrtc" | "none", degraded: boolean }`, `feedAudio`, `interrupt`, `end`, `health()`. Phase 0 implementation: `NoAvatar` (returns `transport: "none"`) so the room can be coded against the interface before a vendor is chosen in Phase 2.
+- [ ] **Step 6: `MessageProvider`** — channel abstraction over in-app, email and SMS: `send(message) → { providerId, state }`, `status(providerId)`, `inboundWebhook(req)`. Phase 0 implementation: in-app (T8) and Resend email; SMS `NotImplemented` with a typed error.
+- [ ] **Step 7: `Telemetry`** — `startSpan(name, attrs)`, `counter`, `histogram`, `withContext({ requestId, interviewId, tenantId })`; backed by OpenTelemetry (T12). Every other contract receives a `Telemetry` instance rather than importing a logger directly.
+- [ ] **Step 8: `planes.ts`** — documents the control-plane / media-plane boundary as types: what the control plane owns (state machine, plan version, ledger, evidence refs, leases, tenant policy) and what the media plane may hold (transient audio/video, avatar session ids). A lint rule (`no-restricted-imports`) prevents `relay/**` and avatar code from importing Prisma.
+- [ ] **Step 9: Conformance tests** for each interface (mock impl passes; a deliberately broken impl fails), committed with the contracts.
+- [ ] **Step 10: Commit** `feat(contracts): canonical interfaces for entitlements, usage, session store, ATS, avatar, messaging, telemetry and plane boundaries`.
+
+Acceptance: every later Phase 0 task that touches these areas imports from `lib/contracts`; the manifest lists the contracts and their implementations.
 
 ---
 
@@ -243,7 +269,7 @@ Acceptance: E2E asserts a `tab_switch` triggered in the room appears in the repo
 **Files:** `app/api/auth/sso/callback/route.ts`, `lib/sso/saml-provider.ts` (replace with `@node-saml/node-saml`), `app/auth/verify/page.tsx` (consume `token_hash`), `app/auth/signin/page.tsx` (SSO entry + `redirectTo` + `reason`), `app/auth/error/page.tsx` (new), `app/api/auth/mfa/{enroll,verify,challenge}/route.ts` (new, thin wrappers over Supabase `auth.mfa.*`), `components/auth/MfaGate.tsx` (new), `app/(dashboard)/settings/security/page.tsx`, `app/api/account/{password,delete,sessions}/route.ts` (new), `app/api/candidate/settings/route.ts` (add DELETE delegating to the same deletion request flow)
 
 - [ ] **Step 1:** SSO callback uses `createSupabaseAdminClient()` for admin APIs; finish by redirecting to `/auth/verify?token_hash=…&type=magiclink` **and** make the verify page call `supabase.auth.verifyOtp({ token_hash, type: "magiclink" })`, then route by role. Add `/auth/error`. Tests with mocked OIDC discovery; SAML via `@node-saml/node-saml` `validatePostResponseAsync` (signature, digest, conditions, audience, `InResponseTo` from the stored request id).
-- [ ] **Step 2:** MFA using Supabase native TOTP: enrol (QR + recovery codes stored hashed in a new additive `MfaRecoveryCode` table), challenge on sign-in when `aal1`, enforce for `admin` and optionally per company (`GovernancePolicy.requireMfa` additive boolean). `ProtectedRoute` checks `aal2` where required.
+- [ ] **Step 2:** MFA using Supabase native TOTP: enrol (QR + recovery codes stored hashed in a new additive `MfaRecoveryCode` table), challenge on sign-in when `aal1`. **Policy:** mandatory for Think5 `admin` and for tenant owners/admins (additive `Recruiter.isTenantAdmin` boolean; the first recruiter who creates a company becomes owner); tenant-configurable for other recruiters and hiring managers (`GovernancePolicy.requireMfa` additive boolean, default off); optional for candidates. Enforcement is server-side in `requireRole` / `requireApprovedAccess` (reject `aal1` where required) and mirrored in `ProtectedRoute`. Leaves room for org-wide "MFA or SSO required" in Phase 3.
 - [ ] **Step 3:** Security settings page: password change via `supabase.auth.updateUser`, sessions list via `auth.admin.listUserSessions` proxied through `/api/account/sessions`, revoke, delete account → creates a `DataDeletionRequest` (reuse the candidate flow for recruiters).
 - [ ] **Step 4:** Sign-in page honours `redirectTo` and shows the `reason=account_suspended|deactivated` message; adds "Continue with SSO" (email → `/api/auth/sso?action=check`).
 - [ ] **Step 5: Commit** `feat(identity): complete SSO sessions, native MFA, real security settings`.
@@ -278,15 +304,21 @@ Classify each item as **Implement**, **Read-only with explanation**, or **Remove
 
 ---
 
-### Task T11: Redis degraded behaviour
+### Task T11: Relay and Redis safe-to-fail (present topology)
 
-**Files:** `lib/rate-limit.ts`, `lib/concurrent-session-limiter.ts`, `lib/session-store.ts`, `app/api/interviews/[id]/voice-init/route.ts`, `lib/metrics.ts`, `.env.example`
+Scope per decision 3: make the current single-region relay safe enough to fail without interview-state loss. Active multi-region routing, affinity and evacuation remain Phase 4.
+
+**Files:** `lib/rate-limit.ts`, `lib/concurrent-session-limiter.ts`, `lib/session-store.ts` (wrapped by the `InterviewSessionStore` contract from T0.5), `app/api/interviews/[id]/voice-init/route.ts`, `hooks/useVoiceInterview.ts`, `relay/server.ts`, `relay/fly.toml`, `lib/metrics.ts`, `.env.example`, `docs/ops/regional-failure.md` (new)
 
 - [ ] **Step 1:** Rate limiter and concurrency limiter: on Redis error, fail **open** with the in-memory fallback and increment `redis_degraded_total`; log once per minute. (Interview integrity gates are unaffected; they are Postgres-backed.)
 - [ ] **Step 2:** Session store: authoritative checkpoint state is already mirrored in Postgres (`InterviewerStateSnapshot`, canonical ledger). Make `assertDurableStore()` return a status instead of throwing; when Redis is down, `voice-init` proceeds with `durability: "postgres-only"`, the room shows a non-blocking "reduced resilience" banner, and reconnect uses `tryRestoreSession` from Postgres (already implemented).
 - [ ] **Step 3:** Ensure `UPSTASH_REDIS_REST_URL/TOKEN` are set in Vercel production and preview (they are absent from `.env` today); add a startup check that reports, not crashes.
-- [ ] **Step 4:** Chaos test in `__tests__/chaos/`: Redis client rejects → interview can still start and complete on the mocked provider.
-- [ ] **Commit** `fix(resilience): Redis loss degrades limits and resilience, never blocks interviews`.
+- [ ] **Step 4:** Drain and reconnect: the hook handles `relay.draining` by pre-emptively reconnecting through the existing recovery state machine before the socket closes; the relay's `kill_timeout` is raised above its drain window (15s → 25s) so no session is cut mid-drain.
+- [ ] **Step 5:** Provider timeouts and health: explicit connect/response timeouts on the Gemini Live setup and on `voice-init`; relay `/health` includes Gemini reachability and buffer pressure; Vercel `/api/health` includes relay reachability per region (already partly there) and surfaces a `voice: degraded|down` status consumed by the room to show queueing/text fallback instead of a hard error.
+- [ ] **Step 6:** Session recovery test: kill the relay machine during an interview in staging (Fly `machine stop`) → client reconnects to the surviving machine → `recover` rebuilds from the ledger → transcript intact. Automate as a chaos test with the mocked provider in `__tests__/chaos/`.
+- [ ] **Step 7:** Chaos test: Redis client rejects → interview still starts and completes on the mocked provider with `durability: "postgres"`.
+- [ ] **Step 8:** Write `docs/ops/regional-failure.md`: exactly what happens today when `iad` is lost (voice unavailable, text mode available, no state loss), the manual failover runbook, and the Phase 4 target. This closes the §3.1 "multi-region" row for Phase 0 as *documented and safe-to-fail*, not *multi-region*.
+- [ ] **Commit** `fix(resilience): relay drain/reconnect, provider timeouts, health, and Redis loss as a durability downgrade`.
 
 ---
 
@@ -294,11 +326,55 @@ Classify each item as **Implement**, **Read-only with explanation**, or **Remove
 
 **Files:** `instrumentation.ts`, `lib/otel.ts` (new), `proxy.ts`, `lib/logger.ts`, `relay/server.ts`, `hooks/useVoiceInterview.ts`, `package.json` (`@vercel/otel`, `@opentelemetry/api`)
 
-- [ ] **Step 1:** `registerOTel({ serviceName: "think5-web" })` in `instrumentation.ts`; export traces to the vendor chosen in the PRD's observability decision (OTLP endpoint via env; Sentry's OTLP receiver is acceptable to start).
+- [ ] **Step 1:** `registerOTel({ serviceName: "think5-web" })` in `instrumentation.ts` exporting traces and metrics over OTLP to **Grafana Cloud** (`OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_EXPORTER_OTLP_HEADERS` with the Grafana Cloud token); the relay uses the Node OTel SDK with the same exporter and `serviceName: "think5-relay"`. Sentry stays for error capture only and links to traces via the `trace_id` attribute. No proprietary APM SDK anywhere; the `Telemetry` contract from T0.5 is the only import surface.
+- [ ] **Step 1b:** Grafana dashboards committed as JSON in `docs/ops/grafana/`: web (route latency/error), relay (connections, reconnects, buffer overflow, drain), queues (Inngest lag, retries, DLQ), AI providers (latency, error rate, tokens, cost), interview (start p95, turn-commit p99, completion rate, degraded-mode rate). Logs via OTLP are a follow-up once the collector is in place.
 - [ ] **Step 2:** `proxy.ts` sets `x-request-id` (uuid) if absent and echoes it on responses; `lib/logger.ts` includes `requestId`, `interviewId`, `tenantId` in every structured log line.
 - [ ] **Step 3:** The relay reads `traceparent`/`x-request-id` from the WS handshake query, includes it in logs and Sentry scope, and forwards it in control frames so the browser can show a support id.
 - [ ] **Step 4:** The room displays a "Support ID" (interviewId + short request id) on the error card.
 - [ ] **Commit** `feat(observability): request ids and OpenTelemetry across web, relay and room`.
+
+
+---
+
+### Task T15: Minimal Greenhouse two-way proof (framework validation)
+
+Narrow by design: one ATS, sandbox only, enough to prove the `ATSAdapter` contract, idempotency, reconciliation and error handling end to end. Other ATSs are Phase 3.
+
+**Files:**
+- Create: `lib/ats/adapters/greenhouse.ts` (implements `ATSAdapter` using the existing `lib/ats/greenhouse.ts` client), `app/api/integrations/greenhouse/webhook/route.ts` (uses the existing `verifyGreenhouseWebhook`), `app/api/integrations/[provider]/{connect,sync,status}/route.ts`, `inngest/functions/ats-sync.ts` (per-integration concurrency key, idempotent), `app/(dashboard)/settings/integrations/page.tsx` (connect with API key, sync status, reconciliation table), `__tests__/ats/greenhouse.test.ts` (recorded fixtures)
+- Schema (additive): `ATSSyncRun` (integrationId, direction, startedAt, finishedAt, counts, errors Json), `ATSEntityLink` (integrationId, localType, localId, remoteId, remoteUpdatedAt, lastSyncedAt, checksum; @@unique(integrationId, localType, localId) and (integrationId, remoteId))
+
+- [ ] **Step 1:** Connect: recruiter enters a Greenhouse Harvest API key (sandbox) on the integrations page; stored with the existing AES-GCM helper in `ATSIntegration.apiKey`; `status` shows last sync and errors.
+- [ ] **Step 2:** Import jobs: `ats-sync` pulls open jobs, creates/updates `Job` rows linked via `ATSEntityLink`, never duplicates (checksum + remoteUpdatedAt).
+- [ ] **Step 3:** Push candidate: when a candidate is added to a linked job's pipeline, upsert the Greenhouse candidate + application with an idempotency key; store the remote id.
+- [ ] **Step 4:** Push interview report: on `REPORT_READY`, attach a summary note and a link to the share-gated report to the Greenhouse application (Harvest `notes`/`attachments`).
+- [ ] **Step 5:** Inbound webhook: Greenhouse `candidate_stage_change` and `job_updated` events verified with the existing signature helper, deduped by delivery id, applied through the adapter, recorded in `ATSSyncRun`.
+- [ ] **Step 6:** Reconciliation UI: table of links with local vs remote state, mismatches flagged, "retry" and "unlink" actions; rate-limit handling with backoff on 429.
+- [ ] **Step 7:** Metering hook: each sync emits `ats.sync` usage events (T16).
+- [ ] **Step 8:** E2E against the sandbox in a nightly job (not per-PR): connect → import → push → webhook → reconcile.
+- [ ] **Commit** `feat(ats): Greenhouse two-way integration proving the ATSAdapter contract`.
+
+Acceptance: the loop above passes in the sandbox nightly for five consecutive runs; the reconciliation table shows zero unexplained mismatches.
+
+---
+
+### Task T16: Usage metering foundation (no billing UI)
+
+Establishes the architecture so customer usage is never retrofitted: immutable usage events, tenant aggregation, an entitlement interface and quota primitives. Checkout, invoices, subscriptions and pricing UI remain Phase 5.
+
+**Files:**
+- Schema (additive): `UsageEvent` (id = idempotency key, tenantId, kind, quantity Decimal, unit, occurredAt, subjectType, subjectId, source, metadata Json; indexes on (tenantId, kind, occurredAt)); `UsageAggregate` (tenantId, kind, period `day|month`, periodStart, quantity; @@unique(tenantId, kind, period, periodStart)); `TenantQuota` (tenantId, feature, limit, window, action `warn|block`)
+- Create: `lib/usage/meter.ts` (implements `UsageMeter`; writes through the Inngest outbox so an event is never lost when the DB write and the emit disagree), `lib/usage/aggregate.ts` (Inngest function rolling events into aggregates hourly, idempotent), `lib/entitlements/service.ts` (implements `EntitlementService`: reads `TenantQuota` + `UsageAggregate`; `warn` logs and continues, `block` returns a structured 402/429), `app/api/admin/usage/route.ts` (read model for admin), `__tests__/usage/*.test.ts`
+- Modify (emit points): `app/api/interviews/route.ts` and `accept/route.ts` (`interview.started`), `voice/route.ts` `end_interview` (`interview.completed`, duration), `lib/ai-usage.ts` (`ai.tokens` with model and cost, replacing the ad-hoc `AIUsageLog` write with a dual write this phase), `AvatarProvider` call sites (`avatar.seconds`, zero until Phase 2), recording finalize (`storage.bytes`), T8 send (`message.sent`), T15 sync (`ats.sync`)
+
+- [ ] **Step 1:** Contract conformance tests from T0.5 pass for `PrismaUsageMeter` and `QuotaEntitlementService`.
+- [ ] **Step 2:** Emit points wired behind `FF_P0_USAGE_METERING` (default on); idempotency keys derived from the subject (`interview:{id}:completed`), so retries never double-count.
+- [ ] **Step 3:** Replace the per-company `monthlyAiBudgetUsd` check in interview creation with `EntitlementService.check(tenantId, "interview.create")` reading the same value through a `TenantQuota` row (backfilled from `Client.monthlyAiBudgetUsd`), keeping behaviour identical.
+- [ ] **Step 4:** Admin read model: per-tenant usage by kind for the current month with cost-per-interview derived from `ai.tokens` and `avatar.seconds`.
+- [ ] **Step 5:** Backfill script for historical interviews and `AIUsageLog` into `UsageEvent` (bounded batches, resumable).
+- [ ] **Commit** `feat(usage): immutable usage events, tenant aggregates, entitlement service and quota primitives`.
+
+Acceptance: every interview in staging produces exactly one `started` and one `completed` event under retries and reconnects; the admin usage view matches `AIUsageLog` totals within 1%.
 
 ---
 
@@ -320,16 +396,22 @@ Run and record in `docs/preservation/phase-0-exit.md`:
 - [ ] Route matrix green against staging.
 - [ ] `npx vitest run` green including new tests; `eval` harness `overallPassed`.
 - [ ] k6 `load-tests/concurrent-interviews.js` standard scenario within thresholds on staging (baseline number recorded).
-- [ ] Rollback exercised: revert the T8 messaging cutover flag in staging and confirm the legacy route still serves.
+- [ ] Rollback exercised: revert the T8 messaging cutover flag in staging and confirm the legacy route still serves; revert `FF_P0_USAGE_METERING` and confirm interview creation still works.
+- [ ] Relay chaos passed in staging (T11 step 6) and `docs/ops/regional-failure.md` reviewed.
+- [ ] Greenhouse sandbox nightly (T15) green for five consecutive runs.
+- [ ] Contract conformance tests (T0.5) green for every production implementation.
+- [ ] Grafana dashboards show web, relay, queue, provider and interview panels populated from staging traffic.
 - [ ] 7-day observation window in production with all `FF_P0_*` flags on: no rise in 4xx/5xx, no drop in interview completion, no CSRF 403s.
 - [ ] Owner sign-off (Humza) recorded.
 
 ---
 
-## Scoping decisions to confirm before starting
+## Resolved scoping decisions (2026-09-16)
 
-1. **ATS two-way proof (v2.1 §3.1 lists it as a Phase 0 blocker; §18 does not).** Recommendation: run it as an optional parallel track **T15** (Greenhouse sandbox: OAuth setup page, job pull, candidate + report push, inbound webhook with the existing verifier, reconciliation table) only if a fourth engineer is available; otherwise it is the first Phase 3 item. It needs a Greenhouse sandbox account either way.
-2. **Billing/entitlements** (§3.1 row) is out of Phase 0; it starts in Phase 5 per §18 unless you want usage metering (interview count, avatar minutes) instrumented now, which T12's metrics can carry cheaply.
-3. **Multi-region relay** is Phase 4 infrastructure; Phase 0 only makes Redis loss non-fatal (T11) and adds drain handling in the client (D12, folded into T2's hook changes).
-4. **Observability vendor** for OTLP export (Sentry, Grafana Cloud, Datadog): needed before T12 can finish.
-5. **MFA enforcement policy**: admins always; recruiters per-company setting; candidates optional.
+1. **ATS**: minimal Greenhouse two-way proof is in Phase 0 as T15 (sandbox only; other ATSs in Phase 3). Needs a Greenhouse sandbox account before T15 starts.
+2. **Billing**: usage metering foundation is in Phase 0 as T16; checkout, invoices, subscriptions and pricing UI are Phase 5.
+3. **Multi-region**: Phase 0 makes the present relay safe-to-fail (T11: Redis degradation, drain/reconnect, no state loss, health, recovery, provider timeouts, documented regional-failure behaviour). Active multi-region routing, affinity and evacuation are Phase 4. The v2.1 PRD §3.1 and §18 wording has been aligned to this.
+4. **Observability**: Grafana Cloud over OTLP; application stays vendor-neutral through OpenTelemetry; Sentry remains for error capture only.
+5. **MFA**: mandatory for Think5 admins and tenant owners/admins; tenant-configurable for recruiters and hiring managers; optional for candidates; org-wide "MFA or SSO" enforcement in Phase 3.
+
+Phase 0 completion is defined by T14 plus the 7-day observation window, not by calendar time.

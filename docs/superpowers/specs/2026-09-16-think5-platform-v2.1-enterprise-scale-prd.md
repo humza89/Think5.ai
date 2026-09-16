@@ -105,12 +105,12 @@ These are **Phase 0 blockers**, not backlog polish. The implementation team must
 | Proctoring/event persistence | Some voice-path integrity/proctoring signals are not durably persisted | All required events use the same authoritative event/evidence pipeline |
 | Candidate results | At least one candidate-results surface is mocked/hard-coded | Results come from versioned real assessment data or are hidden until available |
 | Messaging | Client/API contracts are inconsistent | Typed canonical contract plus migration adapter, retries and delivery status |
-| ATS | Integration layer exists but is not fully wired into live workflows | At least one full two-way integration proves the framework, including reconciliation |
+| ATS | Integration layer exists but is not fully wired into live workflows | **Phase 0:** one minimal two-way integration (Greenhouse sandbox: connect → import job → sync candidate → push interview/report → receive webhook → reconciliation/error handling) proves the `ATSAdapter` framework. Remaining ATSs: Phase 3 |
 | SSO | Existing SSO surface does not yet provide a complete production session flow | OIDC/SAML flow establishes/refreshes/revokes Think5 sessions correctly |
 | Account security | 2FA is missing | TOTP/passkey-ready MFA, recovery controls and admin enforcement |
-| Billing/entitlements | No complete billing/usage entitlement layer | Plans, usage, quotas, invoices/provider integration and entitlement checks |
+| Billing/entitlements | No complete billing/usage entitlement layer | **Phase 0:** usage metering foundation (immutable usage events, tenant aggregation, server-side entitlement interface, quota primitives). Plans, checkout, invoices, subscriptions and pricing UI: Phase 5 |
 | Dashboard | Several surfaces/actions/settings are partial, mocked, read-only or dangling | Every exposed action classified as working, deliberately read-only or removed from navigation pending implementation |
-| Real-time relay | Current relay topology has single-region / concentrated-failure risk | Multi-region pool, session affinity, evacuation and tested reconnect |
+| Real-time relay | Current relay topology has single-region / concentrated-failure risk | **Phase 0:** present relay made safe-to-fail (Redis degradation, drain/reconnect, no interview-state loss, health checks, session recovery, provider timeouts, documented regional-failure behaviour). Active multi-region pool, session affinity and evacuation: Phase 4 |
 | Redis dependency | Redis failure can block or destabilize new interview creation | Explicit degraded behavior; critical session truth remains durable outside volatile cache |
 
 ### 3.2 Preservation contract
@@ -1080,9 +1080,13 @@ Re-skin through shared tokens/primitives first, then page composition. Do not re
 - SSO session completion + MFA;
 - preservation manifest and baseline E2E/visual tests;
 - eliminate/label visible stubs;
-- foundational OpenTelemetry/correlation IDs.
+- foundational OpenTelemetry/correlation IDs (OTLP → Grafana Cloud; vendor-neutral);
+- architecture contracts for `EntitlementService`, `UsageMeter`, `InterviewSessionStore`, `ATSAdapter`, `AvatarProvider`, `MessageProvider`, `Telemetry` and the control-plane/media-plane boundary, defined before implementation;
+- minimal Greenhouse two-way integration proving the ATS framework (sandbox);
+- usage metering foundation (immutable usage events, tenant aggregates, entitlement interface, quotas) without billing UI;
+- present relay made safe-to-fail with documented regional-failure behaviour (full multi-region: Phase 4).
 
-**Exit:** current product works reliably and is measurable.
+**Exit:** current product works reliably and is measurable; exit is defined by the Phase 0 plan's gates plus a 7-day production observation window, not by calendar time. Plan: `docs/superpowers/plans/2026-09-16-phase-0-stabilise.md`.
 
 ### Phase 1 — Brand/design convergence + recruiter core
 
