@@ -27,6 +27,7 @@ const GROUPS: Group[] = [
     title: "Leadership",
     lede: "The founding team that set out to make hiring fast, rigorous and fair.",
     people: [
+      { slug: "humza-rafiq", name: "Humza Rafiq", role: "Founder & Head of Recruiting", bio: "Started Think5 to give every candidate a real interview and every company a shortlist worth reading. Leads the recruiting practices.", seed: 3 },
       { slug: "elena-varga", name: "Elena Varga", role: "Co-founder & Chief Executive", bio: "Built two recruiting firms before Think5. Believes every candidate deserves a real interview.", seed: 11 },
       { slug: "marcus-oyelaran", name: "Marcus Oyelaran", role: "Co-founder & Chief Technology Officer", bio: "Previously led ML infrastructure at a frontier lab. Designed Aria's first interview engine.", seed: 47 },
       { slug: "sofia-lindqvist", name: "Sofia Lindqvist", role: "Chief People Officer", bio: "Twenty years placing executives across Europe and North America. Owns quality and candidate experience.", seed: 83 },
@@ -77,14 +78,14 @@ export default function TeamPage() {
             <div className="lg:col-span-4 lg:pb-3">
               <p className="text-[17px] leading-relaxed text-graphite">
                 Recruiters who have hired inside the industries they serve, and engineers who have shipped AI at frontier
-                labs. Fifteen people who own the outcome, not the process.
+                labs. Sixteen people who own the outcome, not the process.
               </p>
             </div>
           </div>
           <Reveal className="mt-16 md:mt-20">
             <StatRow
               stats={[
-                { value: "15", label: "Leadership team" },
+                { value: "16", label: "Leadership team" },
                 { value: "4", label: "Industry practices" },
                 { value: "150+", label: "Countries hired in" },
                 { value: "12", label: "Languages spoken" },
@@ -101,7 +102,7 @@ export default function TeamPage() {
             <Reveal>
               <SectionTitle eyebrow={`0${gi + 1}`} title={g.title} lede={g.lede} />
             </Reveal>
-            <ul className="mt-14 grid gap-x-6 gap-y-12 sm:grid-cols-2 lg:grid-cols-5">
+            <ul className={gi === 0 ? "mt-14 grid gap-x-8 gap-y-14 sm:grid-cols-2 lg:grid-cols-3" : "mt-14 grid gap-x-6 gap-y-12 sm:grid-cols-2 lg:grid-cols-5"}>
               {g.people.map((p, i) => (
                 <Reveal key={p.slug} as="li" delay={i * 80}>
                   <TeamPortrait slug={p.slug} name={p.name} seed={p.seed} />
