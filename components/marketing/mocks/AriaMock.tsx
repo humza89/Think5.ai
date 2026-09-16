@@ -11,16 +11,17 @@ import { cn } from "@/lib/utils";
 export function AriaMock({ className }: { className?: string }) {
   return (
     <div className={cn("relative", className)}>
-      <div className="relative aspect-[16/10] overflow-hidden rounded-2xl border border-[#c9cdf5] bg-[#e4e6ff] shadow-[0_40px_100px_-30px_rgba(31,61,255,0.35)] [contain:inline-size]">
-        {/* Room light */}
+      <div className="relative aspect-[16/10] overflow-hidden rounded-2xl border border-stone bg-[#ece9e1] shadow-[0_40px_100px_-30px_rgba(10,10,11,0.45)] [contain:inline-size]">
+        {/* Studio: warm paper room with a soft blue key light behind Aria */}
         <div
           className="absolute inset-0"
           aria-hidden="true"
           style={{
             background:
-              "radial-gradient(120% 90% at 50% 100%, #d5d9ff 0%, #e4e6ff 55%, #eceeff 100%)",
+              "radial-gradient(60% 70% at 40% 42%, rgba(31,61,255,0.16) 0%, rgba(31,61,255,0) 70%), linear-gradient(180deg, #f3f1ea 0%, #e6e2d8 100%)",
           }}
         />
+        <div className="dot-grid-light absolute inset-0 opacity-30 [mask-image:linear-gradient(to_bottom,black,transparent_60%)]" aria-hidden="true" />
 
         {/* Aria: left of centre so the caption sits clear on the right */}
         <div className="absolute bottom-0 left-0 right-[22%] top-[8%] [mask-image:radial-gradient(ellipse_62%_100%_at_50%_100%,black_60%,transparent_100%)]">
@@ -37,7 +38,7 @@ export function AriaMock({ className }: { className?: string }) {
         {/* Top bar */}
         <div className="absolute inset-x-0 top-0 flex items-center justify-between px-4 py-3 md:px-5">
           <Logo tone="dark" href={null} className="scale-90 origin-left" />
-          <span className="inline-flex items-center gap-1.5 rounded-lg border border-white/70 bg-white/70 px-2.5 py-1 text-[11px] font-medium tabular-nums text-ink backdrop-blur">
+          <span className="inline-flex items-center gap-1.5 rounded-lg border border-stone bg-paper-2/85 px-2.5 py-1 text-[11px] font-medium tabular-nums text-ink backdrop-blur">
             <Clock className="h-3 w-3" /> 29:59
           </span>
         </div>
@@ -48,7 +49,7 @@ export function AriaMock({ className }: { className?: string }) {
             Hello! I&apos;m Aria, Think5&apos;s AI interviewer. Welcome, I&apos;m excited to get to know you. Could
             you briefly introduce yourself?
           </p>
-          <div className="mt-3 flex h-8 items-center justify-center gap-2 rounded-lg border border-white/80 bg-white/80 text-[11px] font-medium text-ink backdrop-blur">
+          <div className="mt-3 flex h-8 items-center justify-center gap-2 rounded-lg border border-stone bg-paper-2/90 text-[11px] font-medium text-ink backdrop-blur">
             <span className="relative flex h-2 w-2">
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-500 opacity-60" />
               <span className="relative inline-flex h-2 w-2 rounded-full bg-red-500" />
@@ -58,10 +59,10 @@ export function AriaMock({ className }: { className?: string }) {
         </div>
 
         {/* Candidate picture-in-picture */}
-        <div className="absolute bottom-3 left-3 w-[34%] max-w-[200px] overflow-hidden rounded-xl border-2 border-white bg-ink shadow-[0_16px_40px_-16px_rgba(10,10,11,0.6)] md:bottom-4 md:left-4">
+        <div className="absolute bottom-3 left-3 w-[34%] max-w-[200px] overflow-hidden rounded-xl border-2 border-paper-2 bg-ink shadow-[0_16px_40px_-16px_rgba(10,10,11,0.6)] md:bottom-4 md:left-4">
           <div className="relative aspect-[4/3]">
             <img
-              src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=480&h=360&fit=crop"
+              src="https://images.unsplash.com/photo-1702669010463-3f2088abc0e9?w=480&h=360&fit=crop&crop=faces"
               alt="Candidate camera view"
               className="absolute inset-0 h-full w-full object-cover"
             />

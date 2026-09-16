@@ -11,7 +11,7 @@ interface AriaPortraitProps {
 export function AriaPortrait({ size = 64, className }: AriaPortraitProps) {
   return (
     <span
-      className={cn("relative inline-block shrink-0 overflow-hidden rounded-full bg-[#e6e8ff] ring-1 ring-ink/10", className)}
+      className={cn("relative inline-block shrink-0 overflow-hidden rounded-full bg-[#ece9e1] ring-1 ring-ink/10", className)}
       style={{ width: size, height: size }}
       role="img"
       aria-label="Aria, AI interviewer"
