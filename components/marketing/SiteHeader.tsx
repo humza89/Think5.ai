@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { LogOut, Menu, ArrowUpRight } from "lucide-react";
@@ -17,23 +17,15 @@ const NAV_LINKS = [
 ];
 
 interface SiteHeaderProps {
-  /** "dark" = transparent over a dark hero, white text. "light" = paper bar with hairline. */
+  /** Kept for call-site compatibility; the pill header looks the same on dark and light pages. */
   tone?: "dark" | "light";
 }
 
-export function SiteHeader({ tone = "light" }: SiteHeaderProps) {
+export function SiteHeader(_props: SiteHeaderProps) {
   const router = useRouter();
   const pathname = usePathname();
   const { user, profile, isLoading, signOut } = useAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [scrolled, setScrolled] = useState(false);
-
-  useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 24);
-    onScroll();
-    window.addEventListener("scroll", onScroll, { passive: true });
-    return () => window.removeEventListener("scroll", onScroll);
-  }, []);
 
   const handleSignOut = async () => {
     setMobileOpen(false);
@@ -42,52 +34,36 @@ export function SiteHeader({ tone = "light" }: SiteHeaderProps) {
   };
 
   const dashboardHref = profile?.role === "candidate" ? "/candidate/dashboard" : "/dashboard";
-  const dark = tone === "dark";
 
-  const linkBase = "rounded-full px-3.5 py-2 text-[14px] font-medium transition-colors";
-  const linkTone = dark
-    ? "text-white/70 hover:text-white hover:bg-white/10"
-    : "text-graphite hover:text-ink hover:bg-ink/[0.05]";
-  const activeTone = dark ? "text-white" : "text-ink";
+  const link = "rounded-full px-4 py-2 text-[14px] font-medium text-graphite transition-colors hover:bg-ink/[0.05] hover:text-ink";
+  const primaryBtn =
+    "inline-flex h-9 items-center gap-1.5 rounded-full bg-ink pl-5 pr-4 text-[14px] font-medium text-white transition-colors hover:bg-ink-2";
 
-  const primaryBtn = cn(
-    "inline-flex h-10 items-center gap-1.5 rounded-full px-4.5 pl-5 pr-4 text-[14px] font-medium transition-colors",
-    dark ? "bg-white text-ink hover:bg-paper" : "bg-ink text-white hover:bg-ink-2"
-  );
-
+  // Floating pill, the same on every page (dark hero or light body).
   return (
-    <header
-      className={cn(
-        "fixed inset-x-0 top-0 z-50 transition-[background-color,border-color,backdrop-filter] duration-300",
-        dark
-          ? scrolled
-            ? "bg-ink/70 backdrop-blur-md border-b border-white/10"
-            : "bg-transparent border-b border-transparent"
-          : scrolled
-            ? "bg-paper/85 backdrop-blur-md border-b border-stone"
-            : "bg-paper/0 border-b border-transparent"
-      )}
-    >
-      <div className="mx-auto flex h-16 w-full max-w-[1200px] items-center px-6 md:px-10">
-        <Logo tone={dark ? "light" : "dark"} withMark />
+    <header className="fixed left-1/2 top-4 z-50 w-[calc(100%-2rem)] max-w-4xl -translate-x-1/2">
+      <div className="flex items-center rounded-full border border-white/60 bg-white/95 px-3 py-2 shadow-lg shadow-black/10 backdrop-blur-md">
+        <div className="pl-2 pr-4 md:pr-6">
+          <Logo tone="dark" withMark />
+        </div>
 
         {/* Center nav */}
-        <nav className="ml-10 hidden items-center gap-1 md:flex" aria-label="Primary">
-          {NAV_LINKS.map((link) => {
-            const active = pathname?.startsWith(link.href);
+        <nav className="hidden items-center gap-0.5 md:flex" aria-label="Primary">
+          {NAV_LINKS.map((l) => {
+            const active = pathname?.startsWith(l.href);
             return (
-              <Link key={link.href} href={link.href} className={cn(linkBase, linkTone, active && activeTone)}>
-                {link.label}
+              <Link key={l.href} href={l.href} className={cn(link, active && "text-ink")}>
+                {l.label}
               </Link>
             );
           })}
         </nav>
 
         {/* Right side */}
-        <div className="ml-auto hidden items-center gap-2 md:flex">
+        <div className="ml-auto hidden items-center gap-1 md:flex">
           {user ? (
             <>
-              <button onClick={handleSignOut} className={cn(linkBase, linkTone)}>
+              <button onClick={handleSignOut} className={link}>
                 Sign out
               </button>
               <Link href={dashboardHref} className={primaryBtn}>
@@ -95,10 +71,10 @@ export function SiteHeader({ tone = "light" }: SiteHeaderProps) {
               </Link>
             </>
           ) : isLoading ? (
-            <div className={cn("h-10 w-28 animate-pulse rounded-full", dark ? "bg-white/10" : "bg-ink/10")} />
+            <div className="h-9 w-28 animate-pulse rounded-full bg-ink/10" />
           ) : (
             <>
-              <Link href="/auth/signin" className={cn(linkBase, linkTone)}>
+              <Link href="/auth/signin" className={link}>
                 Sign in
               </Link>
               <Link href="/auth/signup" className={primaryBtn}>
@@ -113,10 +89,7 @@ export function SiteHeader({ tone = "light" }: SiteHeaderProps) {
           <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
             <SheetTrigger asChild>
               <button
-                className={cn(
-                  "inline-flex h-10 w-10 items-center justify-center rounded-full transition-colors",
-                  dark ? "text-white hover:bg-white/10" : "text-ink hover:bg-ink/[0.05]"
-                )}
+                className="inline-flex h-9 w-9 items-center justify-center rounded-full text-ink transition-colors hover:bg-ink/[0.05]"
                 aria-label="Open menu"
               >
                 <Menu className="h-5 w-5" />
@@ -130,14 +103,14 @@ export function SiteHeader({ tone = "light" }: SiteHeaderProps) {
               </SheetHeader>
 
               <div className="mt-8 flex flex-col">
-                {NAV_LINKS.map((link) => (
+                {NAV_LINKS.map((l) => (
                   <Link
-                    key={link.href}
-                    href={link.href}
+                    key={l.href}
+                    href={l.href}
                     onClick={() => setMobileOpen(false)}
                     className="border-b border-stone py-4 font-display text-[28px] leading-none text-ink transition-colors hover:text-brand"
                   >
-                    {link.label}
+                    {l.label}
                   </Link>
                 ))}
 
