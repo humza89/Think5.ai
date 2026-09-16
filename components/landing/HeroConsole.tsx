@@ -13,7 +13,7 @@ import { cn } from "@/lib/utils";
  */
 const VIDEO_W = 3840;
 const VIDEO_H = 2876;
-const SCREEN = { x: 0.17, y: 0.512, w: 0.557, h: 0.358 };
+const SCREEN = { x: 0.158, y: 0.499, w: 0.575, h: 0.378 }; // slightly past the bezel so the glow overlaps
 /** Fixed design canvas; the whole console scales to the screen rectangle. */
 const DESIGN_W = 1040;
 const DESIGN_H = 500;
@@ -73,12 +73,12 @@ export function HeroConsole() {
   return (
     <div
       ref={ref}
-      className="pointer-events-none absolute z-[2] hidden md:block"
+      className="pointer-events-none absolute z-0 hidden md:block"
       style={box ? { left: box.left, top: box.top, width: box.width, height: box.height } : { display: "none" }}
       aria-hidden="true"
     >
       <div
-        className="hero-console overflow-hidden rounded-[14px] bg-paper text-ink shadow-[0_0_0_1px_rgba(255,255,255,0.08),0_30px_80px_-20px_rgba(31,61,255,0.35)]"
+        className="hero-console overflow-hidden rounded-[6px] bg-paper text-ink"
         style={{ width: DESIGN_W, height: DESIGN_H, transform: `scale(${scale})`, transformOrigin: "top left" }}
       >
         <Console />

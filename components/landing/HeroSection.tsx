@@ -41,18 +41,19 @@ const HeroSection = () => {
     <section className="relative h-[150vh] w-full overflow-hidden bg-black">
       {/* Video Background with mix-blend-screen - positioned lower */}
       <div className="absolute inset-x-0 top-[5%] bottom-0 w-full">
+        {/* Platform console sits behind the footage: the video is screen-blended,
+            so its black screen is transparent and its glowing bezel overlays the console */}
+        <HeroConsole />
         <video
           autoPlay
           muted
           loop
           playsInline
-          className="absolute inset-0 w-full h-full object-cover opacity-100 mix-blend-screen"
+          className="absolute inset-0 z-[1] w-full h-full object-cover opacity-100 mix-blend-screen"
           style={{ objectFit: 'cover', objectPosition: 'center top' }}
         >
           <source src="/uploads/hero.mp4" type="video/mp4" />
         </video>
-        {/* Platform console, pinned to the screen inside the footage */}
-        <HeroConsole />
       </div>
 
       {/* Top black area + gradient overlay */}
