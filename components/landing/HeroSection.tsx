@@ -59,8 +59,8 @@ const HeroSection = () => {
       {/* Top black area + gradient overlay */}
       <div className="absolute inset-x-0 top-0 h-[15%] bg-gradient-to-b from-black via-black/80 to-transparent z-[1]" />
 
-      {/* Falling Candidate Balls - All move towards robot on right */}
-      <div className="absolute inset-0 pointer-events-none">
+      {/* Falling Candidate Balls - always in front of the video, console and copy (header stays above) */}
+      <div className="absolute inset-0 z-[30] pointer-events-none">
         {Array.from({ length: 15 }, (_, i) => {
           const candidate = candidateData[i];
 
