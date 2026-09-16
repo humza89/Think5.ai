@@ -3,6 +3,7 @@
 import { ChevronRight } from "lucide-react";
 import { useState } from "react";
 import { SiteHeader } from "@/components/marketing/SiteHeader";
+import { HeroConsole } from "@/components/landing/HeroConsole";
 
 const HeroSection = () => {
   const [mousePos, setMousePos] = useState({ x: 50, y: 50 });
@@ -50,6 +51,8 @@ const HeroSection = () => {
         >
           <source src="/uploads/hero.mp4" type="video/mp4" />
         </video>
+        {/* Platform console, pinned to the screen inside the footage */}
+        <HeroConsole />
       </div>
 
       {/* Top black area + gradient overlay */}
