@@ -37,20 +37,20 @@ export function SiteHeader(_props: SiteHeaderProps) {
 
   const dashboardHref = profile?.role === "candidate" ? "/candidate/dashboard" : "/dashboard";
 
-  const link = "rounded-full px-3.5 py-2 text-[14px] font-medium text-graphite transition-colors hover:bg-ink/[0.05] hover:text-ink";
+  const link = "rounded-full px-3 py-2 text-[13.5px] font-medium text-graphite transition-colors hover:bg-ink/[0.05] hover:text-ink whitespace-nowrap";
   const primaryBtn =
-    "inline-flex h-9 items-center gap-1.5 rounded-full bg-ink pl-5 pr-4 text-[14px] font-medium text-white transition-colors hover:bg-ink-2";
+    "inline-flex h-9 items-center gap-1.5 whitespace-nowrap rounded-full bg-ink pl-4 pr-3.5 text-[13.5px] font-medium text-white transition-colors hover:bg-ink-2";
 
   // Floating pill, the same on every page (dark hero or light body).
   return (
-    <header className="fixed left-1/2 top-4 z-50 w-[calc(100%-2rem)] max-w-4xl -translate-x-1/2">
+    <header className="fixed left-1/2 top-4 z-50 w-[calc(100%-2rem)] max-w-5xl -translate-x-1/2">
       <div className="flex items-center rounded-full border border-white/60 bg-white/95 px-3 py-2 shadow-lg shadow-black/10 backdrop-blur-md">
-        <div className="pl-2 pr-4 md:pr-6">
+        <div className="pl-2 pr-3 lg:pr-5">
           <Logo tone="dark" withMark />
         </div>
 
         {/* Center nav */}
-        <nav className="hidden items-center gap-0.5 md:flex" aria-label="Primary">
+        <nav className="hidden items-center gap-0 lg:flex" aria-label="Primary">
           {NAV_LINKS.map((l) => {
             const active = pathname?.startsWith(l.href);
             return (
@@ -62,7 +62,7 @@ export function SiteHeader(_props: SiteHeaderProps) {
         </nav>
 
         {/* Right side */}
-        <div className="ml-auto hidden items-center gap-1 md:flex">
+        <div className="ml-auto hidden items-center gap-1 lg:flex">
           {user ? (
             <>
               <button onClick={handleSignOut} className={link}>
@@ -87,7 +87,7 @@ export function SiteHeader(_props: SiteHeaderProps) {
         </div>
 
         {/* Mobile */}
-        <div className="ml-auto flex items-center md:hidden">
+        <div className="ml-auto flex items-center lg:hidden">
           <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
             <SheetTrigger asChild>
               <button
