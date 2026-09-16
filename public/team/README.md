@@ -18,6 +18,6 @@ Regenerate one person, then re-frame:
 Filenames match the `slug` of each person in `app/about/page.tsx`; the page
 shows a generated placeholder for any slug without a file.
 
-Humza's real headshot goes at `public/team/humza-rafiq.jpg` (not generated);
+Real headshots (not generated): `humza-rafiq.jpg`, `wiki-nas.jpg`;
 run `swift scripts/frame-headshots.swift public/team public/team` after adding
 it so the crop matches the rest.
