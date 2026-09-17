@@ -1,5 +1,151 @@
 {
   "manifestVersion": 1,
+  "contracts": [
+    {
+      "file": "lib/contracts/ats.ts",
+      "interfaces": [
+        "ATSAdapter",
+        "ATSCandidate",
+        "ATSCapabilities",
+        "ATSConnection",
+        "ATSConnectionConfig",
+        "ATSEvent",
+        "ATSJob",
+        "ATSWebhookRequest",
+        "ATSWriteOptions",
+        "ATSWriteResult",
+        "InMemoryATSOptions",
+        "InterviewReportAttachment"
+      ],
+      "implementations": [
+        "InMemoryATSAdapter"
+      ],
+      "types": [
+        "ATSCandidateInput",
+        "ATSEventType",
+        "ATSProviderId"
+      ]
+    },
+    {
+      "file": "lib/contracts/avatar.ts",
+      "interfaces": [
+        "AvatarHealth",
+        "AvatarProvider",
+        "AvatarSession",
+        "AvatarSessionRequest"
+      ],
+      "implementations": [
+        "InMemoryAvatarProvider",
+        "NoAvatar"
+      ],
+      "types": [
+        "AvatarTransport"
+      ]
+    },
+    {
+      "file": "lib/contracts/entitlements.ts",
+      "interfaces": [
+        "EntitlementDecision",
+        "EntitlementService"
+      ],
+      "implementations": [
+        "AllowAllEntitlements",
+        "InMemoryEntitlements"
+      ],
+      "types": [
+        "EntitlementFeature"
+      ]
+    },
+    {
+      "file": "lib/contracts/interview-session-store.ts",
+      "interfaces": [
+        "InMemorySessionStoreOptions",
+        "InterviewSessionStore",
+        "Lease",
+        "LeaseResult",
+        "ReleaseResult",
+        "RenewResult",
+        "SessionCheckpoint",
+        "WriteResult"
+      ],
+      "implementations": [
+        "InMemoryInterviewSessionStore"
+      ],
+      "types": [
+        "Durability",
+        "NewCheckpoint"
+      ]
+    },
+    {
+      "file": "lib/contracts/messaging.ts",
+      "interfaces": [
+        "DeliveryStatus",
+        "InboundMessageEvent",
+        "InboundWebhookRequest",
+        "MessageProvider",
+        "MessageRecipient",
+        "OutboundMessage",
+        "SendResult"
+      ],
+      "implementations": [
+        "InMemoryMessageProvider",
+        "NotImplementedChannelError"
+      ],
+      "types": [
+        "DeliveryState",
+        "InboundEventType",
+        "MessageChannel"
+      ]
+    },
+    {
+      "file": "lib/contracts/planes.ts",
+      "interfaces": [
+        "MediaPlaneGrant"
+      ],
+      "implementations": [],
+      "types": [
+        "ControlPlaneAsset",
+        "MediaPlaneAsset",
+        "Plane"
+      ]
+    },
+    {
+      "file": "lib/contracts/telemetry.ts",
+      "interfaces": [
+        "RecordedMetric",
+        "RecordedSpan",
+        "Span",
+        "Telemetry",
+        "TelemetryContext"
+      ],
+      "implementations": [
+        "InMemoryTelemetry",
+        "NoopTelemetry"
+      ],
+      "types": [
+        "AttributeValue",
+        "Attributes",
+        "SpanStatus"
+      ]
+    },
+    {
+      "file": "lib/contracts/usage.ts",
+      "interfaces": [
+        "UsageEvent",
+        "UsageMeter",
+        "UsageRecordResult"
+      ],
+      "implementations": [
+        "InMemoryUsageMeter"
+      ],
+      "types": [
+        "JsonPrimitive",
+        "JsonValue",
+        "UsageKind",
+        "UsageUnit"
+      ]
+    }
+  ],
   "pages": [
     {
       "route": "/",
