@@ -174,8 +174,29 @@ const interviewTransitions = fs.existsSync(stateMachinePath)
   ? parseTransitions(fs.readFileSync(stateMachinePath, "utf8"))
   : {};
 
+/** T0.5: canonical contracts and their in-repo implementations (lib/contracts). */
+function parseContracts(): Array<{ file: string; interfaces: string[]; implementations: string[]; types: string[] }> {
+  const dir = path.join(root, "lib", "contracts");
+  if (!fs.existsSync(dir)) return [];
+  return fs
+    .readdirSync(dir)
+    .filter((name) => name.endsWith(".ts") && name !== "index.ts")
+    .sort()
+    .map((name) => {
+      const source = fs.readFileSync(path.join(dir, name), "utf8");
+      const collect = (re: RegExp) => [...source.matchAll(re)].map((m) => m[1]).sort();
+      return {
+        file: `lib/contracts/${name}`,
+        interfaces: collect(/^export interface (\w+)/gm),
+        implementations: collect(/^export class (\w+)/gm),
+        types: collect(/^export type (\w+)/gm),
+      };
+    });
+}
+
 const manifest = {
   manifestVersion: 1,
+  contracts: parseContracts(),
   pages,
   apis,
   prisma: { models, enums, rlsPolicies: parseRlsPolicies() },
