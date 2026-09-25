@@ -7,6 +7,7 @@ import { getAuthenticatedUser } from "@/lib/auth";
 import { createSupabaseAdminClient } from "@/lib/supabase-server";
 import { publishNotification } from "@/lib/notification-pubsub";
 import type { Actor, MessagingDeps, ProfileLookup, ProfileRecord } from "./service";
+import { recordUsage } from "@/lib/usage/meter";
 
 const lookupProfiles: ProfileLookup = async ({ ids, emails }) => {
   const admin = await createSupabaseAdminClient();
@@ -23,6 +24,7 @@ export function messagingDeps(): MessagingDeps {
     db: prisma,
     profiles: lookupProfiles,
     publish: (recipientId, messageId) => publishNotification(recipientId, `msg:${messageId}`),
+    recordUsage,
   };
 }
 

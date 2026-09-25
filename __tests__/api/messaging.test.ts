@@ -92,6 +92,18 @@ describe("messaging service (T8)", () => {
     expect(deps.published).toEqual([`cand-1:${m1.id}`]);
   });
 
+  it("emits one message.sent usage event per stored message and none for a deduplicated retry (T16)", async () => {
+    const recorded: Array<{ id: string; kind: string; tenantId: string | null | undefined; subjectId: string }> = [];
+    const metered = { ...deps, recordUsage: async (input: { id: string; kind: string; tenantId: string | null | undefined; subjectId: string }) => { recorded.push(input); } };
+    const conv = await getOrCreateConversation(recruiter, { participantId: "cand-1" }, metered);
+    const m1 = await sendMessage(recruiter, conv.id, { content: "Hello", clientMessageId: "c1" }, metered);
+    await sendMessage(recruiter, conv.id, { content: "Hello (retry)", clientMessageId: "c1" }, metered);
+    expect(recorded).toEqual([expect.objectContaining({ id: `message:${m1.id}:sent`, kind: "message.sent", tenantId: "tenant-1", subjectId: m1.id })]);
+    // A failing ledger write never breaks the send.
+    const failing = { ...deps, recordUsage: async () => { throw new Error("ledger down"); } };
+    await expect(sendMessage(recruiter, conv.id, { content: "still delivered" }, failing)).resolves.toMatchObject({ state: "sent" });
+  });
+
   it("lists conversations with unread counts, pages messages, and records delivery and read receipts", async () => {
     const conv = await getOrCreateConversation(recruiter, { participantId: "cand-1" }, deps);
     for (let i = 1; i <= 3; i++) await sendMessage(recruiter, conv.id, { content: `m${i}` }, deps);

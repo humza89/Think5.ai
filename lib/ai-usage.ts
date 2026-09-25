@@ -1,3 +1,4 @@
+import { recordUsage } from "@/lib/usage/meter";
 import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 
@@ -44,7 +45,7 @@ export async function logAIUsage(input: UsageLogInput): Promise<void> {
       input.outputTokens || 0
     );
 
-    await prisma.aIUsageLog.create({
+    const log = await prisma.aIUsageLog.create({
       data: {
         interviewId: input.interviewId || null,
         operation: input.operation,
@@ -57,6 +58,17 @@ export async function logAIUsage(input: UsageLogInput): Promise<void> {
         recruiterId: input.recruiterId || null,
         metadata: input.metadata || null,
       },
+    });
+
+    // T16: dual write to the immutable usage ledger (id derived from the log row).
+    await recordUsage({
+      id: `ai:${log.id}`,
+      tenantId: input.companyId,
+      kind: "ai.tokens",
+      quantity: (input.inputTokens || 0) + (input.outputTokens || 0),
+      subjectId: input.interviewId || log.id,
+      source: `ai:${input.operation}`,
+      metadata: { model: input.model, operation: input.operation, inputTokens: input.inputTokens || 0, outputTokens: input.outputTokens || 0, estimatedCostUsd: Number(estimatedCost.toFixed(6)) },
     });
 
     // Run anomaly detection periodically
@@ -157,7 +169,12 @@ export async function enforceBudgetGate(
 
     const result = await checkBudgetThreshold(companyId, { budgetUsd: budget });
 
-    if (result.overBudget) {
+    // T16: the decision comes from the EntitlementService, which reads the same
+    // budget through a TenantQuota row (backfilled from monthlyAiBudgetUsd, with
+    // the Client column as implicit fallback) and the same spend source.
+    const { getEntitlementService } = await import("@/lib/entitlements/service");
+    const decision = await (await getEntitlementService()).check(companyId, "interview.create");
+    if (!decision.allowed || result.overBudget) {
       return {
         allowed: false,
         reason: `Monthly AI budget exceeded: $${result.currentSpend.toFixed(2)} / $${budget.toFixed(2)} (${result.utilizationPercent}%). Contact admin for override.`,

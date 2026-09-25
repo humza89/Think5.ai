@@ -13,3 +13,4 @@ export { recordingFinalizeRetry } from "./recording-finalize-retry";
 export { updateAriaMemoryGraph } from "./update-aria-memory";
 export { interviewAnomalyAlert } from "./interview-anomaly-alert";
 export { webhookRetry } from "./webhook-retry";
+export { usageAggregate } from "../../lib/usage/aggregate";

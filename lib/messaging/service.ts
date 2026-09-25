@@ -67,8 +67,21 @@ export interface MessagingDeps {
   provider?: MessageProvider;
   /** Called after a send so live listeners (SSE) can wake up. */
   publish?: (recipientId: string, messageId: string) => Promise<void>;
+  /** T16: usage ledger emit for `message.sent` (idempotent on the message id; never throws). */
+  recordUsage?: (input: MessageUsageInput) => Promise<unknown>;
   now?: () => Date;
   newId?: () => string;
+}
+
+export interface MessageUsageInput {
+  id: string;
+  tenantId: string | null | undefined;
+  kind: "message.sent";
+  quantity: number;
+  subjectId: string;
+  source: string;
+  occurredAt: Date;
+  metadata: Record<string, string>;
 }
 
 export class MessagingError extends Error {
@@ -221,6 +234,20 @@ export async function sendMessage(actor: Actor, conversationId: string, input: S
   if (!result.deduplicated) {
     await deps.db.conversation.update({ where: { id: conversationId }, data: { lastMessageAt: stored.createdAt, lastMessage: stored.content } });
     if (deps.publish) await deps.publish(other.id, stored.id).catch(() => {});
+    if (deps.recordUsage) {
+      await deps
+        .recordUsage({
+          id: `message:${stored.id}:sent`,
+          tenantId: conv.tenantId ?? actor.tenantId,
+          kind: "message.sent",
+          quantity: 1,
+          subjectId: stored.id,
+          source: "messaging.send",
+          occurredAt: stored.createdAt,
+          metadata: { conversationId, senderRole: roleForProfile(actor.role) },
+        })
+        .catch(() => {});
+    }
   }
   return toDTO(stored, actor.id);
 }

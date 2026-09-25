@@ -18,6 +18,7 @@ import {
   interviewAnomalyAlert,
   updateAriaMemoryGraph,
   webhookRetry,
+  usageAggregate,
 } from "@/inngest/functions";
 
 export const { GET, POST, PUT } = serve({
@@ -33,5 +34,6 @@ export const { GET, POST, PUT } = serve({
     interviewAnomalyAlert,
     updateAriaMemoryGraph,
     webhookRetry,
+    usageAggregate,
   ],
 });

@@ -1,3 +1,4 @@
+import { recordUsage } from "@/lib/usage/meter";
 import { NextRequest } from "next/server";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { prisma } from "@/lib/prisma";
@@ -114,6 +115,7 @@ export async function POST(
           ...(integrityEvents ? { integrityEvents } : {}),
         },
       });
+      await recordUsage({ id: `interview:${id}:completed`, tenantId: interview.companyId, kind: "interview.completed", subjectId: id, source: "api:stream", metadata: { durationSeconds: interview.startedAt ? Math.round((Date.now() - new Date(interview.startedAt).getTime()) / 1000) : null } });
 
       // Audit log: stream ended
       logInterviewActivity({
@@ -204,6 +206,8 @@ export async function POST(
         where: { id },
         data: { status: "IN_PROGRESS", startedAt: new Date() },
       });
+
+      await recordUsage({ id: `interview:${id}:started`, tenantId: interview.companyId, kind: "interview.started", subjectId: id, source: "api:stream" });
 
       // Audit log: stream started
       logInterviewActivity({
