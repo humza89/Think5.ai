@@ -6,11 +6,24 @@
  */
 
 import * as Sentry from "@sentry/nextjs";
+import { currentRequestContext } from "@/lib/request-context-provider";
 
 const isProduction = process.env.NODE_ENV === "production";
 
+/** T12: requestId / interviewId / tenantId from the ambient request context, merged under explicit extras. */
+function withCorrelation(extra?: Record<string, unknown>): Record<string, unknown> | undefined {
+  const ctx = currentRequestContext();
+  const ids: Record<string, unknown> = {};
+  if (ctx.requestId) ids.requestId = ctx.requestId;
+  if (ctx.interviewId) ids.interviewId = ctx.interviewId;
+  if (ctx.tenantId) ids.tenantId = ctx.tenantId;
+  if (Object.keys(ids).length === 0) return extra;
+  return { ...ids, ...(extra ?? {}) };
+}
+
 export const logger = {
-  info(message: string, extra?: Record<string, unknown>): void {
+  info(message: string, rawExtra?: Record<string, unknown>): void {
+    const extra = withCorrelation(rawExtra);
     if (isProduction) {
       Sentry.addBreadcrumb({
         category: "app",
@@ -23,7 +36,8 @@ export const logger = {
     }
   },
 
-  warn(message: string, extra?: Record<string, unknown>): void {
+  warn(message: string, rawExtra?: Record<string, unknown>): void {
+    const extra = withCorrelation(rawExtra);
     if (isProduction) {
       Sentry.addBreadcrumb({
         category: "app",
@@ -36,7 +50,8 @@ export const logger = {
     }
   },
 
-  error(message: string, error?: unknown, extra?: Record<string, unknown>): void {
+  error(message: string, error?: unknown, rawExtra?: Record<string, unknown>): void {
+    const extra = withCorrelation(rawExtra);
     if (isProduction) {
       if (error instanceof Error) {
         Sentry.captureException(error, { extra: { message, ...extra } });
@@ -51,7 +66,8 @@ export const logger = {
     }
   },
 
-  debug(message: string, extra?: Record<string, unknown>): void {
+  debug(message: string, rawExtra?: Record<string, unknown>): void {
+    const extra = withCorrelation(rawExtra);
     if (!isProduction) {
       console.log(`[DEBUG] ${message}`, extra || "");
     }

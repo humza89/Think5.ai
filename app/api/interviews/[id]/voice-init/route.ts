@@ -28,12 +28,15 @@ import { isEnabled } from "@/lib/feature-flags";
 import { createInitialState, serializeState, deserializeState } from "@/lib/interviewer-state";
 import * as Sentry from "@sentry/nextjs";
 import { assertInterviewCredential, resolveInterviewCredential } from "@/lib/interview-credential";
+import { requestIdFrom, runWithRequestContext } from "@/lib/request-context";
 
-export async function POST(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  // T12: correlation ids for every log line and span produced by this request.
+  return runWithRequestContext({ requestId: requestIdFrom(request.headers), interviewId: id }, () => handlePost(request, id));
+}
+
+async function handlePost(request: NextRequest, id: string) {
 
   // Fail-fast: maintenance mode check before any work
   if (await isMaintenanceMode()) {

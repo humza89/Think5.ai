@@ -37,6 +37,7 @@ import {
 import { DeviceSelector } from "@/components/interview/DeviceSelector";
 import { NetworkQualityIndicator } from "@/components/interview/NetworkQualityIndicator";
 import { useMediaRecording } from "@/hooks/useMediaRecording";
+import { supportId } from "@/lib/support-id";
 
 // ── Props ──────────────────────────────────────────────────────────────
 
@@ -92,6 +93,7 @@ export function VoiceInterviewRoom({
   const draftKeyRef = useRef(`draft-response:${interviewId}`);
 
   // Voice interview hook
+  const lastRequestIdRef = useRef<string>("");
   const {
     interviewState,
     aiState,
@@ -116,10 +118,15 @@ export function VoiceInterviewRoom({
     fallbackToText,
     micIsSilent,
     retryVoice,
+    lastRequestId,
   } = useVoiceInterview({
     interviewId,
     accessToken,
-    onError: (error) => toast.error(error),
+    onError: (error) => {
+      // T12: quote a Support ID (interview + request id prefix) with every voice error.
+      const id = supportId(interviewId, lastRequestIdRef.current || undefined);
+      toast.error(error, id ? { description: `Support ID: ${id}` } : undefined);
+    },
     onInterviewEnd: () => {
       toast.success("Interview completed! Generating your report...");
       // Finalize recording via hook (called from ref to avoid circular dep)
@@ -129,6 +136,10 @@ export function VoiceInterviewRoom({
       }, 3000);
     },
   });
+
+  useEffect(() => {
+    lastRequestIdRef.current = lastRequestId;
+  }, [lastRequestId]);
 
   // Recording hook — handles chunked upload, checksums, jitter, offline queue
   const {

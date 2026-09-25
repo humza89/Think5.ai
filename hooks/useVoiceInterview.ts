@@ -90,6 +90,8 @@ export interface SessionSnapshot {
 }
 
 export interface UseVoiceInterviewReturn {
+  /** T12: last x-request-id echoed by voice-init (for the Support ID). */
+  lastRequestId: string;
   interviewState: InterviewState;
   aiState: AISpeakingState;
   transcript: TranscriptEntry[];
@@ -139,6 +141,9 @@ export function useVoiceInterview(
   config: VoiceInterviewConfig
 ): UseVoiceInterviewReturn {
   const { interviewId, accessToken, onStateChange, onTranscriptUpdate, onError, onInterviewEnd } = config;
+  // T12: last x-request-id echoed by the proxy on voice-init (Support ID; forwarded to the relay).
+  const lastRequestIdRef = useRef<string>("");
+  const [lastRequestId, setLastRequestId] = useState<string>("");
 
   // T2: in cookie mode (no token in the URL) the HttpOnly interview-session
   // cookie expires after 2h; re-issue it every 30 minutes while mounted so a
@@ -421,6 +426,15 @@ export function useVoiceInterview(
       if (isRelayDrainingFrame(data)) {
         relayDrainingUntilRef.current = drainingUntil(data);
         console.log(`[Voice] Relay draining (${data.reason ?? "deploy"}) — will reconnect as soon as the socket closes`);
+        return;
+      }
+
+      // T12: relay control frame carrying the correlation id for this session.
+      if (data.type === "relay.hello") {
+        if (typeof data.requestId === "string" && data.requestId) {
+          lastRequestIdRef.current = data.requestId;
+          setLastRequestId(data.requestId);
+        }
         return;
       }
 
@@ -1172,6 +1186,11 @@ export function useVoiceInterview(
         throw new Error(err.error || `Init error: ${initRes.status}`);
       }
 
+      const requestId = initRes.headers.get("x-request-id") || "";
+      if (requestId) {
+        lastRequestIdRef.current = requestId;
+        setLastRequestId(requestId);
+      }
       const initData = await initRes.json();
       const { relayUrl, sessionToken, systemPrompt, tools, voiceName, candidateName, model, reconnectToken: initReconnectToken, lockOwnerToken: initLockOwnerToken, enterpriseMemory } = initData;
       candidateNameRef.current = candidateName;
@@ -1290,7 +1309,7 @@ export function useVoiceInterview(
       }
 
       // 4. Connect to voice relay WebSocket (API key stays server-side)
-      const wsUrl = `${relayUrl}/ws?session=${encodeURIComponent(sessionToken)}`;
+      const wsUrl = `${relayUrl}/ws?session=${encodeURIComponent(sessionToken)}${lastRequestIdRef.current ? `&rid=${encodeURIComponent(lastRequestIdRef.current)}` : ""}`;
       console.log("[Voice] Connecting to voice relay...");
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
@@ -2517,6 +2536,8 @@ export function useVoiceInterview(
   }), []);
 
   return {
+    /** T12: correlation id for the Support ID on error cards. */
+    lastRequestId,
     interviewState,
     aiState,
     transcript,

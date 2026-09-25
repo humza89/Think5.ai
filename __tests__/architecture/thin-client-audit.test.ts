@@ -114,6 +114,9 @@ describe("REM-2: Thin I/O Terminal — Return type is I/O only", () => {
     "reconnectMax",
     // T11: durability posture reported by voice-init ("postgres+redis" | "postgres"); display-only.
     "durability",
+    // T12 correlation: the x-request-id echoed by voice-init / the relay hello
+    // frame, surfaced as a Support ID. Display-only; no decision logic.
+    "lastRequestId",
     // Data fields
     "transcript",
     "questionCount",

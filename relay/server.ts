@@ -260,12 +260,29 @@ wss.on("connection", (clientWs: WebSocket, req: IncomingMessage) => {
   }
 
   const { interviewId } = payload;
+  // T12 correlation: the browser mirrors the web tier's x-request-id as ?rid=
+  // (falls back to an incoming x-request-id header or the W3C traceparent
+  // trace-id). It is kept on this connection's log lines and Sentry scope and
+  // echoed in the hello frame so the room can show a Support ID that ops can
+  // search across the web and relay tiers. Only [A-Za-z0-9._-] is accepted.
+  const ridCandidate =
+    requestUrl.searchParams.get("rid") ||
+    (typeof req.headers["x-request-id"] === "string" ? req.headers["x-request-id"] : "") ||
+    (typeof req.headers["traceparent"] === "string" ? req.headers["traceparent"].split("-")[1] || "" : "");
+  const requestId = /^[A-Za-z0-9._-]{8,128}$/.test(ridCandidate) ? ridCandidate : "";
+  const logSuffix = requestId ? ` rid=${requestId}` : "";
+  if (requestId) Sentry.getCurrentScope().setTag("request_id", requestId);
   const clientIp =
     (req.headers["x-forwarded-for"] as string)?.split(",")[0] || req.socket.remoteAddress || "unknown";
 
   console.log(
-    `[Relay] Client connected: interview=${interviewId} ip=${clientIp}`
+    `[Relay] Client connected: interview=${interviewId} ip=${clientIp}${logSuffix}`
   );
+  try {
+    clientWs.send(JSON.stringify({ type: "relay.hello", interviewId, requestId: requestId || null }));
+  } catch {
+    // advisory frame; the session proceeds without it
+  }
 
   metrics.activeConnections++;
   metrics.totalConnections++;
@@ -337,17 +354,17 @@ wss.on("connection", (clientWs: WebSocket, req: IncomingMessage) => {
       metrics.geminiConsecutiveConnectFailures = 0;
       metrics.geminiLastConnectedAt = Date.now();
       geminiAlive = true;
-      console.log(`[Relay] Gemini connected for interview=${interviewId}`);
+      console.log(`[Relay] Gemini connected for interview=${interviewId}${logSuffix}`);
 
       // If reconnecting, resend the cached setup message first
       if (isReconnecting && setupMessage) {
-        console.log(`[Relay] Resending setup message for interview=${interviewId}`);
+        console.log(`[Relay] Resending setup message for interview=${interviewId}${logSuffix}`);
         ws.send(setupMessage);
         armSetupWatchdog(ws);
       }
       // Always drain buffered messages (handles initial connect race + reconnect)
       if (messageBuffer.length > 0) {
-        console.log(`[Relay] Draining ${messageBuffer.length} buffered message(s) for interview=${interviewId}`);
+        console.log(`[Relay] Draining ${messageBuffer.length} buffered message(s) for interview=${interviewId}${logSuffix}`);
         while (messageBuffer.length > 0) {
           const msg = messageBuffer.shift()!;
           metrics.bufferedMessages = Math.max(0, metrics.bufferedMessages - 1);
@@ -378,7 +395,7 @@ wss.on("connection", (clientWs: WebSocket, req: IncomingMessage) => {
       clearTimeout(connectTimer);
       if (!geminiAlive) metrics.geminiConsecutiveConnectFailures++;
       console.error(
-        `[Relay] Gemini WS error for interview=${interviewId}:`,
+        `[Relay] Gemini WS error for interview=${interviewId}:${logSuffix}`,
         err.message
       );
       Sentry.captureException(err, {
@@ -399,7 +416,7 @@ wss.on("connection", (clientWs: WebSocket, req: IncomingMessage) => {
       // Intentional close from our side (during cleanup/reconnect)
       if (code === 1000 || code === 1001) return;
 
-      console.log(`[Relay] Gemini closed unexpectedly (code=${code}) for interview=${interviewId}, attempting reconnect...`);
+      console.log(`[Relay] Gemini closed unexpectedly (code=${code}) for interview=${interviewId}, attempting reconnect...${logSuffix}`);
       Sentry.addBreadcrumb({
         category: "gemini",
         message: `Gemini closed unexpectedly (code=${code})`,
@@ -417,7 +434,7 @@ wss.on("connection", (clientWs: WebSocket, req: IncomingMessage) => {
 
   function attemptGeminiReconnect() {
     if (reconnectAttempts >= MAX_GEMINI_RECONNECTS) {
-      console.error(`[Relay] Gemini reconnect exhausted (${MAX_GEMINI_RECONNECTS} attempts) for interview=${interviewId}`);
+      console.error(`[Relay] Gemini reconnect exhausted (${MAX_GEMINI_RECONNECTS} attempts) for interview=${interviewId}${logSuffix}`);
       metrics.geminiReconnectFailures++;
       metrics.bufferedMessages = Math.max(0, metrics.bufferedMessages - messageBuffer.length);
       messageBuffer.length = 0;
@@ -451,7 +468,7 @@ wss.on("connection", (clientWs: WebSocket, req: IncomingMessage) => {
     reconnectAttempts++;
     metrics.geminiReconnects++;
 
-    console.log(`[Relay] Reconnecting to Gemini in ${delay}ms (attempt ${reconnectAttempts}/${MAX_GEMINI_RECONNECTS}) for interview=${interviewId}`);
+    console.log(`[Relay] Reconnecting to Gemini in ${delay}ms (attempt ${reconnectAttempts}/${MAX_GEMINI_RECONNECTS}) for interview=${interviewId}${logSuffix}`);
 
     setTimeout(() => {
       if (!clientAlive || cleanedUp) return;
@@ -475,7 +492,7 @@ wss.on("connection", (clientWs: WebSocket, req: IncomingMessage) => {
         const text = typeof data === "string" ? data : data.toString("utf8");
         if (text.includes('"setup"')) {
           setupMessage = data;
-          console.log(`[Relay] Updated cached setup message for interview=${interviewId}`);
+          console.log(`[Relay] Updated cached setup message for interview=${interviewId}${logSuffix}`);
         }
       } catch { /* ignore parse errors for binary audio frames */ }
     }
@@ -494,7 +511,7 @@ wss.on("connection", (clientWs: WebSocket, req: IncomingMessage) => {
         messageBuffer.push(data);
         metrics.bufferedMessages++;
       } else {
-        console.warn(`[Relay] Buffer overflow (${MESSAGE_BUFFER_LIMIT} msgs) for interview=${interviewId}, dropping message`);
+        console.warn(`[Relay] Buffer overflow (${MESSAGE_BUFFER_LIMIT} msgs) for interview=${interviewId}, dropping message${logSuffix}`);
         metrics.bufferOverflows++;
         // Task 32: buffer overflows mean audio is being lost. Capture
         // as a warning (not error) since it's a degradation, not a
@@ -512,7 +529,7 @@ wss.on("connection", (clientWs: WebSocket, req: IncomingMessage) => {
 
   clientWs.on("error", (err) => {
     console.error(
-      `[Relay] Client WS error for interview=${interviewId}:`,
+      `[Relay] Client WS error for interview=${interviewId}:${logSuffix}`,
       err.message
     );
     Sentry.captureException(err, {
@@ -528,7 +545,7 @@ wss.on("connection", (clientWs: WebSocket, req: IncomingMessage) => {
     cleanedUp = true;
 
     console.log(
-      `[Relay] Disconnected (${source}): interview=${interviewId}`
+      `[Relay] Disconnected (${source}): interview=${interviewId}${logSuffix}`
     );
     metrics.activeConnections = Math.max(0, metrics.activeConnections - 1);
 
