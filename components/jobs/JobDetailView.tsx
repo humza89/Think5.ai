@@ -29,6 +29,7 @@ import {
   LayoutGrid,
   List,
 } from "lucide-react";
+import { apiFetch } from "@/lib/api-client";
 
 interface JobDetailViewProps {
   job: any;
@@ -62,7 +63,7 @@ export function JobDetailView({ job }: JobDetailViewProps) {
   async function handleStatusChange(newStatus: string) {
     setStatusLoading(true);
     try {
-      const res = await fetch(`/api/jobs/${job.id}`, {
+      const res = await apiFetch(`/api/jobs/${job.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: newStatus }),

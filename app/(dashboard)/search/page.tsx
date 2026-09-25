@@ -32,6 +32,7 @@ import {
   Inbox,
   Loader2,
 } from "lucide-react";
+import { apiFetch } from "@/lib/api-client";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -143,7 +144,7 @@ export default function SearchPage() {
         if (searchQuery.trim()) params.set("search", searchQuery.trim());
         if (status && status !== "all") params.set("status", status);
 
-        const res = await fetch(`/api/candidates?${params.toString()}`);
+        const res = await apiFetch(`/api/candidates?${params.toString()}`);
         if (!res.ok) throw new Error(`Search failed (${res.status})`);
         const data = await res.json();
         const list = Array.isArray(data) ? data : data.candidates ?? [];

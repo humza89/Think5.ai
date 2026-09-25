@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import Link from "next/link";
+import { apiFetch } from "@/lib/api-client";
 
 interface SharedReport {
   id: string;
@@ -46,7 +47,7 @@ export default function AdminSharedReportsPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/admin/shared-reports");
+      const res = await apiFetch("/api/admin/shared-reports");
       if (!res.ok) throw new Error("Failed to fetch shared reports");
       const data = await res.json();
       setReports(data.sharedReports || []);
@@ -60,7 +61,7 @@ export default function AdminSharedReportsPage() {
   async function handleRevoke(report: SharedReport) {
     setRevokingId(report.id);
     const revokePromise = (async () => {
-      const res = await fetch(
+      const res = await apiFetch(
         `/api/interviews/${report.interview.id}/report/share/revoke`,
         { method: "DELETE" }
       );

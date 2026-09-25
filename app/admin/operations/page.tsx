@@ -15,6 +15,7 @@ import {
   FileWarning,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { apiFetch } from "@/lib/api-client";
 
 interface OperationsData {
   overview: {
@@ -63,7 +64,7 @@ export default function OperationsDashboard() {
   const fetchData = async () => {
     try {
       setLoading(true);
-      const res = await fetch("/api/admin/operations");
+      const res = await apiFetch("/api/admin/operations");
       if (!res.ok) throw new Error("Failed to fetch operations data");
       setData(await res.json());
       setError(null);

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Shield, Loader2 } from "lucide-react";
+import { apiFetch } from "@/lib/api-client";
 
 interface EmailVerificationGateProps {
   token: string;
@@ -22,7 +23,7 @@ export function EmailVerificationGate({ token }: EmailVerificationGateProps) {
     setLoading(true);
 
     try {
-      const res = await fetch(`/api/reports/shared/${token}/verify-email`, {
+      const res = await apiFetch(`/api/reports/shared/${token}/verify-email`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: email.trim() }),

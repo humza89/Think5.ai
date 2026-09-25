@@ -22,6 +22,7 @@ import {
   User,
   Loader2,
 } from "lucide-react";
+import { apiFetch } from "@/lib/api-client";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -124,7 +125,7 @@ export default function MessagingPage() {
   const fetchConversations = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/messages");
+      const res = await apiFetch("/api/messages");
       if (!res.ok) throw new Error(`Failed to fetch messages (${res.status})`);
       const data = await res.json();
       const list = Array.isArray(data) ? data : data.conversations ?? [];
@@ -157,7 +158,7 @@ export default function MessagingPage() {
 
     setSending(true);
     try {
-      const res = await fetch("/api/messages", {
+      const res = await apiFetch("/api/messages", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

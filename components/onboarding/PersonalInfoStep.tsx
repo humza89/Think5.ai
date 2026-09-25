@@ -26,6 +26,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import type { PersonalInfoData } from "@/lib/validations/onboarding";
+import { apiFetch } from "@/lib/api-client";
 
 // ============================================
 // Types
@@ -165,7 +166,7 @@ export function PersonalInfoStep({
         const formData = new FormData();
         formData.append("file", file);
 
-        const res = await fetch("/api/candidate/onboarding/photo-upload", {
+        const res = await apiFetch("/api/candidate/onboarding/photo-upload", {
           method: "POST",
           body: formData,
         });

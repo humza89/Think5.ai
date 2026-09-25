@@ -16,6 +16,7 @@ import {
   ChevronRight,
   Filter,
 } from "lucide-react";
+import { apiFetch } from "@/lib/api-client";
 
 const employmentLabels: Record<string, string> = {
   FULL_TIME: "Full-time",
@@ -47,7 +48,7 @@ export default function CandidateJobsPage() {
         ...(params.location || location ? { location: params.location || location } : {}),
         ...(params.remoteType || remoteType ? { remoteType: params.remoteType || remoteType } : {}),
       });
-      const res = await fetch(`/api/candidate/jobs?${qp}`);
+      const res = await apiFetch(`/api/candidate/jobs?${qp}`);
       const data = await res.json();
       setJobs(data.jobs || []);
       setPagination(data.pagination || { page: 1, limit: 20, total: 0, totalPages: 0 });

@@ -18,6 +18,7 @@ import {
   Loader2,
   CheckCircle,
 } from "lucide-react";
+import { apiFetch } from "@/lib/api-client";
 
 const employmentLabels: Record<string, string> = {
   FULL_TIME: "Full-time",
@@ -38,7 +39,7 @@ export default function CandidateJobDetailPage() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    fetch(`/api/candidate/jobs/${jobId}`)
+    apiFetch(`/api/candidate/jobs/${jobId}`)
       .then((r) => r.json())
       .then((data) => {
         if (data.error) {
@@ -57,7 +58,7 @@ export default function CandidateJobDetailPage() {
   async function handleApply() {
     setApplying(true);
     try {
-      const res = await fetch(`/api/candidate/jobs/${jobId}`, {
+      const res = await apiFetch(`/api/candidate/jobs/${jobId}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({}),

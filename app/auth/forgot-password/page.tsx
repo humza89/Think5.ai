@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Check } from "lucide-react";
 import { AuthShell, AuthError, AuthNotice, Spinner, authField, authButton } from "@/components/marketing/AuthShell";
 import { cn } from "@/lib/utils";
+import { apiFetch } from "@/lib/api-client";
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState("");
@@ -20,7 +21,7 @@ export default function ForgotPasswordPage() {
     setError(null);
 
     try {
-      const res = await fetch("/api/auth/forgot-password", {
+      const res = await apiFetch("/api/auth/forgot-password", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email }),

@@ -14,6 +14,7 @@ import {
   AlertTriangle,
   RefreshCw,
 } from "lucide-react";
+import { apiFetch } from "@/lib/api-client";
 
 const statusConfig: Record<string, { label: string; className: string }> = {
   APPLIED: { label: "Applied", className: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300" },
@@ -35,7 +36,7 @@ export default function CandidateApplicationsPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/candidate/applications");
+      const res = await apiFetch("/api/candidate/applications");
       if (!res.ok) {
         throw new Error(`Failed to load applications (${res.status})`);
       }

@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { ScoreCircle } from "@/components/interview/ScoreCircle";
 import { RecommendationBadge } from "@/components/interview/RecommendationBadge";
 import { Loader2 } from "lucide-react";
+import { apiFetch } from "@/lib/api-client";
 
 interface CompareReport {
   id: string;
@@ -52,7 +53,7 @@ export default function ComparePage() {
       try {
         const results = await Promise.all(
           ids.map(async (id) => {
-            const res = await fetch(`/api/interviews/${id}`);
+            const res = await apiFetch(`/api/interviews/${id}`);
             if (res.ok) return res.json();
             return null;
           })

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import { apiFetch } from "@/lib/api-client";
 
 type Template = {
   id: string;
@@ -50,7 +51,7 @@ export default function AdminInterviewTemplatesPage() {
     try {
       const params = new URLSearchParams();
       if (filterStatus) params.set("status", filterStatus);
-      const res = await fetch(`/api/admin/templates?${params}`);
+      const res = await apiFetch(`/api/admin/templates?${params}`);
       if (!res.ok) throw new Error("Failed to fetch templates");
       const data = await res.json();
       setTemplates(data.templates || []);
@@ -64,7 +65,7 @@ export default function AdminInterviewTemplatesPage() {
   async function handleStatusTransition(templateId: string, newStatus: string) {
     setActionLoading(templateId);
     try {
-      const res = await fetch("/api/admin/templates", {
+      const res = await apiFetch("/api/admin/templates", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

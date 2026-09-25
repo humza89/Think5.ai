@@ -36,6 +36,7 @@ import PreferencesStep from "./PreferencesStep";
 import type { JobPreferences, PreferencesErrors } from "./PreferencesStep";
 import { validatePreferences } from "./PreferencesStep";
 import ReviewSubmitStep from "./ReviewSubmitStep";
+import { apiFetch } from "@/lib/api-client";
 
 // ============================================
 // Helpers
@@ -157,7 +158,7 @@ export function OnboardingWizard({
     async (step: number, stepData: Record<string, unknown>) => {
       setIsSaving(true);
       try {
-        const res = await fetch("/api/candidate/onboarding", {
+        const res = await apiFetch("/api/candidate/onboarding", {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ step, data: stepData }),

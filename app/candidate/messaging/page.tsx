@@ -15,6 +15,7 @@ import {
   Loader2,
   Clock,
 } from "lucide-react";
+import { apiFetch } from "@/lib/api-client";
 
 interface Message {
   id: string;
@@ -48,7 +49,7 @@ export default function MessagingPage() {
   const fetchConversations = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/messages");
+      const res = await apiFetch("/api/messages");
       if (res.ok) {
         const data = await res.json();
         setConversations(data.conversations || []);
@@ -70,7 +71,7 @@ export default function MessagingPage() {
   const fetchMessages = useCallback(async (conversationId: string) => {
     setLoadingMessages(true);
     try {
-      const res = await fetch(`/api/messages?conversationId=${conversationId}`);
+      const res = await apiFetch(`/api/messages?conversationId=${conversationId}`);
       if (res.ok) {
         const data = await res.json();
         setMessages(data.messages || []);
@@ -96,7 +97,7 @@ export default function MessagingPage() {
     if (!newMessage.trim() || !selectedConversation) return;
     setSendingMessage(true);
     try {
-      const res = await fetch("/api/messages", {
+      const res = await apiFetch("/api/messages", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

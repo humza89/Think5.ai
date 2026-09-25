@@ -32,6 +32,7 @@ import {
   AlertTriangle,
   RefreshCw,
 } from "lucide-react";
+import { apiFetch } from "@/lib/api-client";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -179,7 +180,7 @@ export default function AnalyticsPage() {
         startDate: start.toISOString(),
         endDate: end.toISOString(),
       });
-      const res = await fetch(`/api/analytics?${params.toString()}`);
+      const res = await apiFetch(`/api/analytics?${params.toString()}`);
       if (!res.ok) {
         throw new Error(`Failed to load analytics (${res.status})`);
       }

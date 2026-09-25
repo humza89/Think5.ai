@@ -12,6 +12,7 @@ import {
   ArrowRight,
   RefreshCw,
 } from "lucide-react";
+import { apiFetch } from "@/lib/api-client";
 
 interface OnboardingState {
   completed: boolean;
@@ -26,7 +27,7 @@ export default function RecruiterOnboardingStatusPage() {
   useEffect(() => {
     async function fetchStatus() {
       try {
-        const res = await fetch("/api/recruiter/onboarding");
+        const res = await apiFetch("/api/recruiter/onboarding");
         if (!res.ok) throw new Error("Failed to fetch");
         const data = await res.json();
         setState({

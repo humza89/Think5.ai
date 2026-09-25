@@ -23,6 +23,7 @@ import {
   Star,
   Calendar,
 } from "lucide-react";
+import { api, apiFetch } from "@/lib/api-client";
 
 interface Experience {
   id: string;
@@ -119,7 +120,7 @@ export default function CandidateProfilePage() {
   useEffect(() => {
     async function fetchProfile() {
       try {
-        const res = await fetch("/api/candidate/profile");
+        const res = await apiFetch("/api/candidate/profile");
         if (res.ok) {
           const data = await res.json();
           setProfile(data);
@@ -140,17 +141,12 @@ export default function CandidateProfilePage() {
     setSaving(true);
     setSaved(false);
     try {
-      const res = await fetch("/api/candidate/profile", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ first_name: firstName, last_name: lastName }),
-      });
-      if (res.ok) {
-        setSaved(true);
-        setTimeout(() => setSaved(false), 3000);
-      }
+      // T1 exemplar: typed client throws ApiError on non-2xx.
+      await api.put("/api/candidate/profile", { first_name: firstName, last_name: lastName });
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
     } catch {
-      // ignore
+      // Keep the previous behaviour: a failed save simply does not show "Saved".
     } finally {
       setSaving(false);
     }

@@ -6,6 +6,7 @@ import { Check, XCircle, Clock, Mail } from "lucide-react";
 import { useState, Suspense } from "react";
 import { AuthShell, AuthNotice, authField, authButton, authButtonGhost } from "@/components/marketing/AuthShell";
 import { cn } from "@/lib/utils";
+import { apiFetch } from "@/lib/api-client";
 
 function VerifyContent() {
   const searchParams = useSearchParams();
@@ -43,7 +44,7 @@ function VerifyContent() {
 
     setIsResending(true);
     try {
-      const response = await fetch("/api/auth/verify", {
+      const response = await apiFetch("/api/auth/verify", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email }),

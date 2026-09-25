@@ -16,6 +16,7 @@ import {
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
+import { apiFetch } from "@/lib/api-client";
 
 interface Invitation {
   id: string;
@@ -71,7 +72,7 @@ export default function InvitationsPage() {
     try {
       const params = new URLSearchParams({ page: String(page), limit: "20" });
       if (statusFilter) params.set("status", statusFilter);
-      const response = await fetch(`/api/invitations?${params}`);
+      const response = await apiFetch(`/api/invitations?${params}`);
       if (response.ok) {
         const data = await response.json();
         setInvitations(data.data || []);
@@ -88,7 +89,7 @@ export default function InvitationsPage() {
   async function handleAction(id: string, action: "resend" | "revoke") {
     setActionLoading(id);
     try {
-      const response = await fetch(`/api/invitations/${id}`, {
+      const response = await apiFetch(`/api/invitations/${id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action }),

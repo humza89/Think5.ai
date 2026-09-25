@@ -16,13 +16,14 @@ import {
   Loader2,
   Trash2,
 } from "lucide-react";
+import { apiFetch } from "@/lib/api-client";
 
 export default function InterviewTemplatesPage() {
   const [templates, setTemplates] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch("/api/interview-templates")
+    apiFetch("/api/interview-templates")
       .then((r) => r.json())
       .then((data) => {
         setTemplates(Array.isArray(data) ? data : []);
@@ -33,7 +34,7 @@ export default function InterviewTemplatesPage() {
 
   async function handleDelete(id: string) {
     const deletePromise = (async () => {
-      const res = await fetch(`/api/interview-templates/${id}`, { method: "DELETE" });
+      const res = await apiFetch(`/api/interview-templates/${id}`, { method: "DELETE" });
       if (!res.ok) throw new Error("Failed to delete template");
     })();
 

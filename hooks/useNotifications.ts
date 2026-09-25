@@ -8,6 +8,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { apiFetch } from "@/lib/api-client";
 
 interface Notification {
   id: string;
@@ -38,7 +39,7 @@ export function useNotifications(
 
   const fetchNotifications = useCallback(async () => {
     try {
-      const res = await fetch("/api/candidate/notifications?limit=20");
+      const res = await apiFetch("/api/candidate/notifications?limit=20");
       if (!res.ok) return;
       const data = await res.json();
       setNotifications(data.notifications || []);
@@ -56,7 +57,7 @@ export function useNotifications(
 
   const markAsRead = useCallback(async (id: string) => {
     try {
-      await fetch(`/api/candidate/notifications`, {
+      await apiFetch(`/api/candidate/notifications`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id, read: true }),
@@ -72,7 +73,7 @@ export function useNotifications(
 
   const markAllAsRead = useCallback(async () => {
     try {
-      await fetch(`/api/candidate/notifications`, {
+      await apiFetch(`/api/candidate/notifications`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ markAllRead: true }),

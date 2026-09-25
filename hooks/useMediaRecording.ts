@@ -9,6 +9,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { apiFetch } from "@/lib/api-client";
 
 interface UseMediaRecordingOptions {
   interviewId: string;
@@ -56,7 +57,7 @@ export function useMediaRecording({
           formData.append("chunkIndex", String(index));
           formData.append("checksum", checksum);
 
-          const res = await fetch(`/api/interviews/${interviewId}/recording`, {
+          const res = await apiFetch(`/api/interviews/${interviewId}/recording`, {
             method: "POST",
             headers: { "Authorization": `Bearer ${accessToken}` },
             body: formData,
@@ -153,7 +154,7 @@ export function useMediaRecording({
             formData.append("chunk", chunk.blob);
             formData.append("chunkIndex", String(chunk.chunkIndex));
             formData.append("checksum", chunk.checksum);
-            const res = await fetch(`/api/interviews/${interviewId}/recording`, {
+            const res = await apiFetch(`/api/interviews/${interviewId}/recording`, {
               method: "POST",
               headers: { "Authorization": `Bearer ${accessToken}` },
               body: formData,
@@ -169,7 +170,7 @@ export function useMediaRecording({
 
       // Check for gaps before finalizing
       try {
-        const gapRes = await fetch(`/api/interviews/${interviewId}/recording`, {
+        const gapRes = await apiFetch(`/api/interviews/${interviewId}/recording`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -190,7 +191,7 @@ export function useMediaRecording({
 
       // Finalize
       try {
-        await fetch(`/api/interviews/${interviewId}/recording`, {
+        await apiFetch(`/api/interviews/${interviewId}/recording`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -233,7 +234,7 @@ export function useMediaRecording({
             formData.append("chunkIndex", String(chunk.chunkIndex));
             formData.append("checksum", chunk.checksum);
 
-            const res = await fetch(`/api/interviews/${interviewId}/recording`, {
+            const res = await apiFetch(`/api/interviews/${interviewId}/recording`, {
               method: "POST",
               headers: { "Authorization": `Bearer ${accessToken}` },
               body: formData,

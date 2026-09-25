@@ -42,6 +42,7 @@ import {
   Shield,
   Calendar,
 } from "lucide-react";
+import { apiFetch } from "@/lib/api-client";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -142,7 +143,7 @@ export default function TeamPage() {
   const fetchTeam = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/team");
+      const res = await apiFetch("/api/team");
       if (!res.ok) throw new Error(`Failed to fetch team (${res.status})`);
       const data = await res.json();
       const list = Array.isArray(data) ? data : data.members ?? [];
@@ -167,7 +168,7 @@ export default function TeamPage() {
 
     setInviting(true);
     try {
-      const res = await fetch("/api/team", {
+      const res = await apiFetch("/api/team", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

@@ -10,6 +10,7 @@ import {
   Clock,
   UserCheck,
 } from "lucide-react";
+import { apiFetch } from "@/lib/api-client";
 
 interface RetentionPolicy {
   policy: {
@@ -25,7 +26,7 @@ export default function CandidatePolicyPage() {
 
   useEffect(() => {
     // Try to fetch retention policy (may fail if candidate doesn't have admin access)
-    fetch("/api/admin/retention")
+    apiFetch("/api/admin/retention")
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => setRetention(data))
       .catch(() => setRetention(null));

@@ -5,6 +5,7 @@ import { useSearchParams, useRouter } from "next/navigation";
 import { Loader2, AlertCircle, CheckCircle } from "lucide-react";
 import { LogoMark } from "@/components/brand/LogoMark";
 import { cn } from "@/lib/utils";
+import { apiFetch } from "@/lib/api-client";
 
 interface InvitationData {
   id: string;
@@ -67,7 +68,7 @@ function AcceptInvitationContent() {
 
     async function validateToken() {
       try {
-        const res = await fetch(`/api/auth/invite?token=${encodeURIComponent(token!)}`);
+        const res = await apiFetch(`/api/auth/invite?token=${encodeURIComponent(token!)}`);
         if (!res.ok) {
           const data = await res.json();
           setError(data.error || "Invalid invitation.");
@@ -93,7 +94,7 @@ function AcceptInvitationContent() {
     setError(null);
 
     try {
-      const res = await fetch("/api/interviews/accept", {
+      const res = await apiFetch("/api/interviews/accept", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ token }),

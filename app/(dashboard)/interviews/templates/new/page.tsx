@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import { ArrowLeft, Plus, X, Loader2, GripVertical } from "lucide-react";
+import { apiFetch } from "@/lib/api-client";
 
 interface Question {
   text: string;
@@ -59,7 +60,7 @@ export default function NewTemplatePage() {
 
     setSaving(true);
     try {
-      const res = await fetch("/api/interview-templates", {
+      const res = await apiFetch("/api/interview-templates", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

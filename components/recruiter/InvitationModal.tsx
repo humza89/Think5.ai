@@ -30,6 +30,7 @@ import {
   CheckCircle,
   Loader2,
 } from "lucide-react";
+import { apiFetch } from "@/lib/api-client";
 
 interface InvitationModalProps {
   open: boolean;
@@ -148,7 +149,7 @@ Looking forward to hearing from you!`;
   async function fetchJobs() {
     setJobsLoading(true);
     try {
-      const res = await fetch("/api/jobs?status=ACTIVE");
+      const res = await apiFetch("/api/jobs?status=ACTIVE");
       if (!res.ok) throw new Error("Failed to fetch jobs");
       const data = await res.json();
       setJobs(Array.isArray(data.jobs) ? data.jobs : []);
@@ -181,7 +182,7 @@ Looking forward to hearing from you!`;
   async function handleSend() {
     setSending(true);
     const sendPromise = (async () => {
-      const res = await fetch(`/api/passive-profiles/${profileId}/invite`, {
+      const res = await apiFetch(`/api/passive-profiles/${profileId}/invite`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

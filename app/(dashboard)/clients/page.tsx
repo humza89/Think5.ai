@@ -15,6 +15,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Building2, Plus, Briefcase } from "lucide-react";
+import { apiFetch } from "@/lib/api-client";
 
 interface Client {
   id: string;
@@ -76,7 +77,7 @@ export default function ClientsPage() {
 
   async function fetchClients() {
     try {
-      const response = await fetch("/api/clients");
+      const response = await apiFetch("/api/clients");
       if (response.ok) {
         const data = await response.json();
         setClients(data);
@@ -96,7 +97,7 @@ export default function ClientsPage() {
 
     setIsImporting(true);
     try {
-      const response = await fetch("/api/clients/import-linkedin", {
+      const response = await apiFetch("/api/clients/import-linkedin", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ linkedinUrl }),
@@ -138,7 +139,7 @@ export default function ClientsPage() {
 
     setIsLoading(true);
     try {
-      const response = await fetch("/api/clients", {
+      const response = await apiFetch("/api/clients", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -192,7 +193,7 @@ export default function ClientsPage() {
         .map((s) => s.trim())
         .filter((s) => s);
 
-      const response = await fetch("/api/roles", {
+      const response = await apiFetch("/api/roles", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

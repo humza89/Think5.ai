@@ -33,6 +33,7 @@ import {
   Loader2,
   RefreshCw,
 } from "lucide-react";
+import { apiFetch } from "@/lib/api-client";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -95,7 +96,7 @@ export default function TalentPoolsPage() {
   const fetchPools = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/talent-pools");
+      const res = await apiFetch("/api/talent-pools");
       if (!res.ok) throw new Error(`Failed to fetch talent pools (${res.status})`);
       const data = await res.json();
       const list = Array.isArray(data) ? data : data.pools ?? [];
@@ -120,7 +121,7 @@ export default function TalentPoolsPage() {
 
     setCreating(true);
     try {
-      const res = await fetch("/api/talent-pools", {
+      const res = await apiFetch("/api/talent-pools", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

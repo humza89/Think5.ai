@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Building2, Globe, MapPin, Users, Calendar, ArrowLeft, Plus, Briefcase, LayoutDashboard, UserCircle, Send, MessageSquare, ChevronRight } from "lucide-react";
+import { apiFetch } from "@/lib/api-client";
 
 interface Client {
   id: string;
@@ -51,7 +52,7 @@ export default function ClientDetailPage() {
 
   async function fetchClient(id: string) {
     try {
-      const response = await fetch(`/api/clients/${id}`);
+      const response = await apiFetch(`/api/clients/${id}`);
       if (response.ok) {
         const data = await response.json();
         setClient(data);

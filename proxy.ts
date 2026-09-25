@@ -32,6 +32,11 @@ const CSRF_EXEMPT_PATTERNS = [
   /^\/api\/csp-report/, // CSP violation reports
   /^\/_next\//, // Next.js internals
   /^\/api\/auth\/callback/, // OAuth callbacks
+  // T1: pre-session flows. The browser may not hold the CSRF cookie yet
+  // (fresh device, cleared storage) and these routes are rate-limited and
+  // token/credential-validated on their own. Still subject to applyRateLimit.
+  /^\/api\/auth\/(register|forgot-password|reset-password|verify)$/,
+  /^\/api\/auth\/sso\/callback/, // IdP POST binding
 ];
 
 // Routes that use their own token validation (not session-based CSRF)
@@ -61,22 +66,26 @@ async function enforceCsrfAndRateLimit(request: NextRequest): Promise<NextRespon
   const method = request.method;
 
   if (SAFE_METHODS.has(method)) return null;
-  if (CSRF_EXEMPT_PATTERNS.some((p) => p.test(pathname))) return null;
-  if (TOKEN_AUTH_PATTERNS.some((p) => p.test(pathname))) return null;
   if (!pathname.startsWith('/api/')) return null;
 
-  const headerToken = request.headers.get(CSRF_HEADER_NAME);
-  const cookieToken = request.cookies.get(CSRF_COOKIE_NAME)?.value;
-  if (!cookieToken || !headerToken || headerToken !== cookieToken) {
-    return NextResponse.json({ error: 'CSRF token validation failed' }, { status: 403 });
-  }
-
+  // T1: rate-limit every state-changing API request first, including the
+  // CSRF-exempt and token-authenticated routes (voice, recording, proctoring,
+  // accept, pre-session auth). Previously those returned before the limiter.
   const clientIp =
     request.headers.get('x-forwarded-for')?.split(',')[0].trim() ||
     request.headers.get('x-real-ip') ||
     'unknown';
   const rateLimitResponse = await applyRateLimit(pathname, clientIp);
   if (rateLimitResponse) return rateLimitResponse;
+
+  if (CSRF_EXEMPT_PATTERNS.some((p) => p.test(pathname))) return null;
+  if (TOKEN_AUTH_PATTERNS.some((p) => p.test(pathname))) return null;
+
+  const headerToken = request.headers.get(CSRF_HEADER_NAME);
+  const cookieToken = request.cookies.get(CSRF_COOKIE_NAME)?.value;
+  if (!cookieToken || !headerToken || headerToken !== cookieToken) {
+    return NextResponse.json({ error: 'CSRF token validation failed' }, { status: 403 });
+  }
 
   return null;
 }

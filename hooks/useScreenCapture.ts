@@ -8,6 +8,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { apiFetch } from "@/lib/api-client";
 
 interface ScreenCaptureState {
   isActive: boolean;
@@ -59,7 +60,7 @@ export function useScreenCapture({
       const thumbnailUrl = canvas.toDataURL("image/jpeg", 0.5);
 
       // Upload thumbnail
-      await fetch(`/api/interviews/${interviewId}/screen-capture`, {
+      await apiFetch(`/api/interviews/${interviewId}/screen-capture`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -94,7 +95,7 @@ export function useScreenCapture({
       videoRef.current = video;
 
       // Register session with backend
-      const res = await fetch(`/api/interviews/${interviewId}/screen-capture`, {
+      const res = await apiFetch(`/api/interviews/${interviewId}/screen-capture`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ captureType: "screen_share", consentGiven: true }),
@@ -146,7 +147,7 @@ export function useScreenCapture({
     // End session on backend
     if (state.sessionId) {
       try {
-        await fetch(
+        await apiFetch(
           `/api/interviews/${interviewId}/screen-capture?sessionId=${state.sessionId}`,
           { method: "DELETE" }
         );

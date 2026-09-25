@@ -41,6 +41,7 @@ import {
   shouldRateLimit,
 } from "@/lib/reconnect-state-machine";
 import type { ReconnectState, ReconnectPhase } from "@/lib/reconnect-state-machine";
+import { apiFetch } from "@/lib/api-client";
 
 // ── Types ──────────────────────────────────────────────────────────────
 
@@ -412,7 +413,7 @@ export function useVoiceInterview(
             if (turnCommitEnabledRef.current) {
               const seqNum = sequenceNumberRef.current++;
               try {
-                const commitRes = await fetch(`/api/interviews/${interviewId}/voice/turn-commit`, {
+                const commitRes = await apiFetch(`/api/interviews/${interviewId}/voice/turn-commit`, {
                   method: "POST",
                   headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
                   body: JSON.stringify({
@@ -505,7 +506,7 @@ export function useVoiceInterview(
             if (turnCommitEnabledRef.current) {
               const seqNum = sequenceNumberRef.current++;
               try {
-                const commitRes = await fetch(`/api/interviews/${interviewId}/voice/turn-commit`, {
+                const commitRes = await apiFetch(`/api/interviews/${interviewId}/voice/turn-commit`, {
                   method: "POST",
                   headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
                   body: JSON.stringify({
@@ -561,7 +562,7 @@ export function useVoiceInterview(
                   await new Promise(r => setTimeout(r, retryMs));
                   try {
                     const retrySeqNum = sequenceNumberRef.current++;
-                    const retryRes = await fetch(`/api/interviews/${interviewId}/voice/turn-commit`, {
+                    const retryRes = await apiFetch(`/api/interviews/${interviewId}/voice/turn-commit`, {
                       method: "POST",
                       headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
                       body: JSON.stringify({
@@ -626,7 +627,7 @@ export function useVoiceInterview(
             // N4: Persist interrupted fragment to server (non-blocking)
             if (turnCommitEnabledRef.current) {
               const chunkId = crypto.randomUUID();
-              fetch(`/api/interviews/${interviewId}/voice/fragment`, {
+              apiFetch(`/api/interviews/${interviewId}/voice/fragment`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
                 body: JSON.stringify({
@@ -767,7 +768,7 @@ export function useVoiceInterview(
 
   const checkpointTranscript = useCallback(async () => {
     try {
-      const res = await fetch(`/api/interviews/${interviewId}/voice`, {
+      const res = await apiFetch(`/api/interviews/${interviewId}/voice`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -818,7 +819,7 @@ export function useVoiceInterview(
         clearTranscriptBackup(interviewId).catch(() => {});
         // F8: Refresh session TTL on successful checkpoint
         try {
-          const ttlRes = await fetch(`/api/interviews/${interviewId}/voice`, {
+          const ttlRes = await apiFetch(`/api/interviews/${interviewId}/voice`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ accessToken, action: "refresh_ttl" }),
@@ -900,7 +901,7 @@ export function useVoiceInterview(
 
   const reportSLOEvent = useCallback(async (sloName: string, success: boolean) => {
     try {
-      await fetch(`/api/interviews/${interviewId}/voice`, {
+      await apiFetch(`/api/interviews/${interviewId}/voice`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ accessToken, action: "record_slo", sloName, success }),
@@ -977,7 +978,7 @@ export function useVoiceInterview(
 
     // Save final state to server
     try {
-      await fetch(`/api/interviews/${interviewId}/voice`, {
+      await apiFetch(`/api/interviews/${interviewId}/voice`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1094,7 +1095,7 @@ export function useVoiceInterview(
           candidateProfile: candidateProfileRef.current,
         };
       }
-      const initRes = await fetch(`/api/interviews/${interviewId}/voice-init`, {
+      const initRes = await apiFetch(`/api/interviews/${interviewId}/voice-init`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(initBody),
@@ -1464,7 +1465,7 @@ export function useVoiceInterview(
               const abortTimeout = setTimeout(() => controller.abort(), 15000);
               let recoveryRes: Response;
               try {
-                recoveryRes = await fetch(`/api/interviews/${interviewId}/voice/recover`, {
+                recoveryRes = await apiFetch(`/api/interviews/${interviewId}/voice/recover`, {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
                   signal: controller.signal,
@@ -1974,7 +1975,7 @@ export function useVoiceInterview(
 
   const pauseInterview = useCallback(async () => {
     try {
-      await fetch(`/api/interviews/${interviewId}/pause`, {
+      await apiFetch(`/api/interviews/${interviewId}/pause`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "pause", accessToken }),
@@ -1991,7 +1992,7 @@ export function useVoiceInterview(
 
   const resumeInterview = useCallback(async () => {
     try {
-      const res = await fetch(`/api/interviews/${interviewId}/pause`, {
+      const res = await apiFetch(`/api/interviews/${interviewId}/pause`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "resume", accessToken }),
@@ -2059,7 +2060,7 @@ export function useVoiceInterview(
         const abortTimeout = setTimeout(() => controller.abort(), 15000);
         let recoveryRes: Response;
         try {
-          recoveryRes = await fetch(`/api/interviews/${interviewId}/voice/recover`, {
+          recoveryRes = await apiFetch(`/api/interviews/${interviewId}/voice/recover`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             signal: controller.signal,
@@ -2235,7 +2236,7 @@ export function useVoiceInterview(
         const abortTimeout = setTimeout(() => controller.abort(), 15000);
         let recoveryRes: Response;
         try {
-          recoveryRes = await fetch(`/api/interviews/${interviewId}/voice/recover`, {
+          recoveryRes = await apiFetch(`/api/interviews/${interviewId}/voice/recover`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             signal: controller.signal,

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import { apiFetch } from "@/lib/api-client";
 
 interface AnalyticsData {
   period: { days: number; since: string };
@@ -129,7 +130,7 @@ export default function AdminInterviewAnalyticsPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/admin/analytics?days=${days}`);
+      const res = await apiFetch(`/api/admin/analytics?days=${days}`);
       if (!res.ok) throw new Error("Failed to fetch analytics");
       setData(await res.json());
     } catch (err: unknown) {

@@ -22,6 +22,7 @@ import {
   RefreshCw,
   Inbox,
 } from "lucide-react";
+import { apiFetch } from "@/lib/api-client";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -139,7 +140,7 @@ export default function PipelinePage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/candidates");
+      const res = await apiFetch("/api/candidates");
       if (!res.ok) throw new Error(`Failed to fetch candidates (${res.status})`);
       const data = await res.json();
       const list = Array.isArray(data) ? data : data.candidates ?? [];

@@ -66,6 +66,7 @@ import type {
   ApprovalRecruiterDetail,
   RecruiterApprovalsListResponse,
 } from "@/types/approvals";
+import { apiFetch } from "@/lib/api-client";
 
 type ApprovalType = "candidates" | "recruiters";
 type StatusFilter = "PENDING_APPROVAL" | "APPROVED" | "REJECTED" | "ON_HOLD" | "all";
@@ -149,7 +150,7 @@ export default function ApprovalsPage() {
         page: String(page),
         limit: "20",
       });
-      const res = await fetch(`/api/admin/approvals?${params}`);
+      const res = await apiFetch(`/api/admin/approvals?${params}`);
       if (!res.ok) throw new Error("Failed to fetch");
       const json: ApprovalsListResponse = await res.json();
       setData(json);
@@ -188,7 +189,7 @@ export default function ApprovalsPage() {
         page: String(recruiterPage),
         limit: "20",
       });
-      const res = await fetch(`/api/admin/approvals?${params}`);
+      const res = await apiFetch(`/api/admin/approvals?${params}`);
       if (!res.ok) throw new Error("Failed to fetch");
       const json: RecruiterApprovalsListResponse = await res.json();
       setRecruiterData(json);
@@ -219,7 +220,7 @@ export default function ApprovalsPage() {
     setPreviewId(id);
     setPreviewLoading(true);
     try {
-      const res = await fetch(`/api/admin/approvals/${id}`);
+      const res = await apiFetch(`/api/admin/approvals/${id}`);
       if (!res.ok) throw new Error("Failed to fetch");
       setPreviewData(await res.json());
     } catch {
@@ -241,7 +242,7 @@ export default function ApprovalsPage() {
     setRecruiterPreviewId(id);
     setRecruiterPreviewLoading(true);
     try {
-      const res = await fetch(`/api/admin/approvals/${id}?type=recruiter`);
+      const res = await apiFetch(`/api/admin/approvals/${id}?type=recruiter`);
       if (!res.ok) throw new Error("Failed to fetch");
       setRecruiterPreviewData(await res.json());
     } catch {
@@ -262,7 +263,7 @@ export default function ApprovalsPage() {
   async function handleAction(candidateId: string, action: ApprovalActionType, reason?: string) {
     setActionLoading(true);
     try {
-      const res = await fetch(`/api/admin/approvals/${candidateId}`, {
+      const res = await apiFetch(`/api/admin/approvals/${candidateId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action, reason }),
@@ -291,7 +292,7 @@ export default function ApprovalsPage() {
     if (selected.size === 0) return;
     setActionLoading(true);
     try {
-      const res = await fetch("/api/admin/approvals/bulk", {
+      const res = await apiFetch("/api/admin/approvals/bulk", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -321,7 +322,7 @@ export default function ApprovalsPage() {
   async function handleRecruiterAction(recruiterId: string, action: ApprovalActionType, reason?: string) {
     setActionLoading(true);
     try {
-      const res = await fetch(`/api/admin/approvals/${recruiterId}?type=recruiter`, {
+      const res = await apiFetch(`/api/admin/approvals/${recruiterId}?type=recruiter`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action, reason }),

@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Progress } from "@/components/ui/progress";
 import { Camera, Mic, Wifi, CheckCircle2, XCircle, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
+import { apiFetch } from "@/lib/api-client";
 
 interface PreCheckProps {
   onComplete: () => void;
@@ -40,7 +41,7 @@ export function InterviewPreCheck({ onComplete, interviewId, accessToken }: PreC
     try {
       // Latency test
       const startTime = performance.now();
-      const res = await fetch("/api/v1/health?speedtest=true", { cache: 'no-store' });
+      const res = await apiFetch("/api/v1/health?speedtest=true", { cache: 'no-store' });
       const endTime = performance.now();
       const latency = endTime - startTime;
 
@@ -55,7 +56,7 @@ export function InterviewPreCheck({ onComplete, interviewId, accessToken }: PreC
       const body = await res.arrayBuffer();
       const bandwidthStartTime = performance.now();
       // Fetch a second time to measure download speed (first may be cached)
-      const bwRes = await fetch("/api/v1/health?speedtest=true&bw=1", { cache: 'no-store' });
+      const bwRes = await apiFetch("/api/v1/health?speedtest=true&bw=1", { cache: 'no-store' });
       const bwBody = await bwRes.arrayBuffer();
       const bwEndTime = performance.now();
       const downloadTimeMs = bwEndTime - bandwidthStartTime;
@@ -127,7 +128,7 @@ export function InterviewPreCheck({ onComplete, interviewId, accessToken }: PreC
     // Persist readiness verification to server
     if (interviewId && accessToken) {
       try {
-        await fetch(`/api/interviews/${interviewId}/validate`, {
+        await apiFetch(`/api/interviews/${interviewId}/validate`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ accessToken, action: "readiness_verified" }),

@@ -14,6 +14,7 @@ import {
   AlertTriangle,
   Loader2,
 } from "lucide-react";
+import { apiFetch } from "@/lib/api-client";
 
 const PRACTICE_TYPES = [
   {
@@ -52,7 +53,7 @@ export default function PracticeInterviewPage() {
     setError(null);
 
     try {
-      const res = await fetch("/api/candidate/practice", {
+      const res = await apiFetch("/api/candidate/practice", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ type }),

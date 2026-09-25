@@ -23,6 +23,7 @@ import {
   Plus,
   Loader2,
 } from "lucide-react";
+import { api, apiFetch, ApiError } from "@/lib/api-client";
 
 interface Client {
   id: string;
@@ -80,7 +81,7 @@ export function JobCreationWizard() {
   });
 
   useEffect(() => {
-    fetch("/api/clients")
+    apiFetch("/api/clients")
       .then((res) => res.json())
       .then((data) => setClients(Array.isArray(data) ? data : []))
       .catch(() => setClients([]));
@@ -114,22 +115,12 @@ export function JobCreationWizard() {
   async function handleSubmit(status: "DRAFT" | "ACTIVE") {
     setLoading(true);
     try {
-      const res = await fetch("/api/jobs", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...formData,
-          status,
-          skills,
-        }),
+      // T1 exemplar: typed client; ApiError carries the server's message.
+      const job = await api.post<{ id: string }>("/api/jobs", {
+        ...formData,
+        status,
+        skills,
       });
-
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || "Failed to create job");
-      }
-
-      const job = await res.json();
       toast.success("Job created successfully");
       router.push(`/jobs/${job.id}`);
     } catch (error: any) {

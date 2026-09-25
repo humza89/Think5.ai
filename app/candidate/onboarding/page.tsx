@@ -7,6 +7,7 @@ import {
   type OnboardingData,
   type PrefillData,
 } from "@/components/onboarding/OnboardingWizard";
+import { apiFetch } from "@/lib/api-client";
 
 /** Convert an ISO date string (or Date) to MM/YYYY for form display */
 function toMMYYYY(value: unknown): string {
@@ -73,7 +74,7 @@ export default function OnboardingPage() {
   useEffect(() => {
     async function loadOnboardingState() {
       try {
-        const res = await fetch("/api/candidate/onboarding");
+        const res = await apiFetch("/api/candidate/onboarding");
         if (!res.ok) throw new Error("Failed to load onboarding state");
 
         const state = await res.json();

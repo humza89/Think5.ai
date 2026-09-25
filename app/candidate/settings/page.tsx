@@ -23,6 +23,7 @@ import {
   MessageSquare,
   Monitor,
 } from "lucide-react";
+import { apiFetch } from "@/lib/api-client";
 
 interface NotificationPreferences {
   emailNotifications: boolean;
@@ -94,7 +95,7 @@ export default function SettingsPage() {
   const fetchSettings = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/candidate/settings");
+      const res = await apiFetch("/api/candidate/settings");
       if (res.ok) {
         const data = await res.json();
         setSettings(data);
@@ -113,7 +114,7 @@ export default function SettingsPage() {
   const saveSettings = async (updates: Partial<SettingsData>, fieldName: string) => {
     setSavingField(fieldName);
     try {
-      const res = await fetch("/api/candidate/settings", {
+      const res = await apiFetch("/api/candidate/settings", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(updates),
@@ -159,7 +160,7 @@ export default function SettingsPage() {
     if (deleteConfirmText !== "DELETE") return;
     setDeleting(true);
     try {
-      const res = await fetch("/api/candidate/settings", {
+      const res = await apiFetch("/api/candidate/settings", {
         method: "DELETE",
       });
       if (res.ok) {

@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogT
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { Mail, CheckCircle2 } from "lucide-react";
+import { apiFetch } from "@/lib/api-client";
 
 interface SendInvitationModalProps {
   mode: "candidate" | "passive";
@@ -32,7 +33,7 @@ export function SendInvitationModal({ mode, targetId, defaultEmail, defaultName,
 
     setIsLoading(true);
     try {
-      const res = await fetch("/api/v1/interviews/invite", {
+      const res = await apiFetch("/api/v1/interviews/invite", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

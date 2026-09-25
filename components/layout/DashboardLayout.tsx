@@ -6,6 +6,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { DashboardSidebar } from "./DashboardSidebar";
 import { DashboardTopBar } from "./DashboardTopBar";
 import { MobileSidebar } from "./MobileSidebar";
+import { apiFetch } from "@/lib/api-client";
 
 export function DashboardLayout({ children }: { children: React.ReactNode }) {
   const [collapsed, setCollapsed] = useState(false);
@@ -31,7 +32,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
       }
 
       try {
-        const res = await fetch("/api/recruiter/onboarding");
+        const res = await apiFetch("/api/recruiter/onboarding");
         if (!res.ok) {
           // Fail-closed: block access if onboarding status can't be verified
           router.replace("/auth/signin");

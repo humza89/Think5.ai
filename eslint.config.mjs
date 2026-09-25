@@ -79,6 +79,26 @@ export default [
     },
   },
   {
+    // T1: one CSRF strategy. Browser code must call our API through
+    // lib/api-client (apiFetch or api.*), which adds x-csrf-token on writes.
+    // A raw fetch("/api/…") silently 403s on every mutation.
+    files: ["app/**/*.ts", "app/**/*.tsx", "components/**/*.ts", "components/**/*.tsx", "hooks/**/*.ts", "contexts/**/*.tsx"],
+    ignores: ["app/api/**"],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector: 'CallExpression[callee.type="Identifier"][callee.name="fetch"] > Literal.arguments[value=/^\\/api(\\/|$|\\?)/]',
+          message: "Use apiFetch or api.* from @/lib/api-client for /api requests (adds the CSRF header on writes).",
+        },
+        {
+          selector: 'CallExpression[callee.type="Identifier"][callee.name="fetch"] > TemplateLiteral.arguments > TemplateElement:first-child[value.raw=/^\\/api(\\/|$|\\?)/]',
+          message: "Use apiFetch or api.* from @/lib/api-client for /api requests (adds the CSRF header on writes).",
+        },
+      ],
+    },
+  },
+  {
     files: ["load-tests/**/*.js"],
     languageOptions: {
       globals: {

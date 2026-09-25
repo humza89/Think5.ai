@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { CandidateSidebar } from "./CandidateSidebar";
 import { CandidateTopBar } from "./CandidateTopBar";
 import { CandidateMobileSidebar } from "./CandidateMobileSidebar";
+import { apiFetch } from "@/lib/api-client";
 
 export function CandidateLayout({ children }: { children: React.ReactNode }) {
   const [collapsed, setCollapsed] = useState(false);
@@ -22,7 +23,7 @@ export function CandidateLayout({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     async function checkOnboarding() {
       try {
-        const res = await fetch("/api/candidate/onboarding");
+        const res = await apiFetch("/api/candidate/onboarding");
         if (!res.ok) {
           setOnboardingChecked(true);
           return;

@@ -9,6 +9,7 @@ import type { UserRole } from "@/types/supabase";
 import { Eye, EyeOff, Check } from "lucide-react";
 import { AuthShell, AuthError, AuthNotice, Spinner, authField, authButton } from "@/components/marketing/AuthShell";
 import { cn } from "@/lib/utils";
+import { apiFetch } from "@/lib/api-client";
 
 // Only Candidate and Recruiter can self-register
 const roles: { value: UserRole; label: string; description: string }[] = [
@@ -54,7 +55,7 @@ export default function SignUpPage() {
     setIsLoading(true);
 
     try {
-      const response = await fetch("/api/auth/register", {
+      const response = await apiFetch("/api/auth/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

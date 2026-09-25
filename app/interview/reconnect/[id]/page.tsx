@@ -9,6 +9,7 @@
 
 import { useEffect, useState, use } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { apiFetch } from "@/lib/api-client";
 
 interface InterviewStatus {
   id: string;
@@ -62,7 +63,7 @@ export default function ReconnectPage({
 
   async function fetchStatus() {
     try {
-      const res = await fetch(`/api/interviews/${id}`);
+      const res = await apiFetch(`/api/interviews/${id}`);
       if (!res.ok) throw new Error("Failed to fetch interview status");
       const data = await res.json();
 
@@ -107,7 +108,7 @@ export default function ReconnectPage({
     setIsRetrying(true);
     try {
       // Call recovery API for authoritative session reconciliation
-      const res = await fetch(`/api/interviews/${id}/voice/recover`, {
+      const res = await apiFetch(`/api/interviews/${id}/voice/recover`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

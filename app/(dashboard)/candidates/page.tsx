@@ -37,6 +37,7 @@ import {
   UserPlus,
   Trash2,
 } from "lucide-react";
+import { apiFetch } from "@/lib/api-client";
 
 interface Experience {
   title: string;
@@ -175,7 +176,7 @@ export default function CandidatesPage() {
 
   async function fetchCandidates() {
     try {
-      const response = await fetch("/api/candidates");
+      const response = await apiFetch("/api/candidates");
       if (response.ok) {
         const result = await response.json();
         const list = Array.isArray(result) ? result : result.data ?? [];
@@ -191,7 +192,7 @@ export default function CandidatesPage() {
     setShadowLoading(true);
     try {
       const statusParam = shadowStatusFilter !== "all" ? `&status=${shadowStatusFilter.toUpperCase()}` : "";
-      const response = await fetch(`/api/passive-profiles?limit=100${statusParam}`);
+      const response = await apiFetch(`/api/passive-profiles?limit=100${statusParam}`);
       if (response.ok) {
         const data = await response.json();
         setShadowProfiles(data.data || []);
@@ -205,7 +206,7 @@ export default function CandidatesPage() {
 
   async function handleDeleteShadowProfile(id: string) {
     try {
-      const response = await fetch(`/api/passive-profiles/${id}`, { method: "DELETE" });
+      const response = await apiFetch(`/api/passive-profiles/${id}`, { method: "DELETE" });
       if (response.ok) {
         setShadowProfiles(prev => prev.filter(p => p.id !== id));
         toast.success("Profile deleted");
@@ -480,7 +481,7 @@ export default function CandidatesPage() {
         formData.append("linkedinUrl", linkedinUrl);
       }
 
-      const parseResponse = await fetch("/api/upload", {
+      const parseResponse = await apiFetch("/api/upload", {
         method: "POST",
         body: formData,
       });
@@ -491,7 +492,7 @@ export default function CandidatesPage() {
 
       const parsedData = await parseResponse.json();
 
-      const createResponse = await fetch("/api/candidates", {
+      const createResponse = await apiFetch("/api/candidates", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(parsedData),
