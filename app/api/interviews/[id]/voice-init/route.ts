@@ -474,7 +474,7 @@ async function handlePost(request: NextRequest, id: string) {
     const { signRelayToken } = await import("@/lib/relay-jwt");
     const sessionToken = signRelayToken(id, interview.candidate.id);
 
-    console.log(`[voice-init] SUCCESS: relayUrl=${relayUrl}, tokenLen=${sessionToken.length}, candidate=${interview.candidate.fullName}`);
+    logger.debug("[voice-init] session issued", { interviewId: id, relayConfigured: true }); // T13: no candidate PII, no token facts
 
     // On reconnect, include server-side enterprise memory fields so client refs stay in sync
     let enterpriseMemory: Record<string, unknown> | undefined;

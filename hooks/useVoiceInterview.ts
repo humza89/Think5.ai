@@ -44,6 +44,7 @@ import type { ReconnectState, ReconnectPhase } from "@/lib/reconnect-state-machi
 import { drainingUntil, isRelayDrainingFrame, planReconnect } from "@/lib/relay-drain";
 import type { Durability } from "@/lib/contracts/interview-session-store";
 import { apiFetch } from "@/lib/api-client";
+import { logger } from "@/lib/logger";
 
 // ── Types ──────────────────────────────────────────────────────────────
 
@@ -1355,8 +1356,8 @@ export function useVoiceInterview(
             (setupMsg.setup as Record<string, unknown>).tools = [{ functionDeclarations }];
           }
 
-          console.log("[Voice] Setup model:", (setupMsg.setup as Record<string, unknown>).model);
-          console.log("[Voice] Setup message:", JSON.stringify(setupMsg).slice(0, 500));
+          // T13: never log the setup payload (it carries the system prompt).
+          logger.debug("[Voice] Setup sent", { model: String((setupMsg.setup as Record<string, unknown>).model ?? "") });
           ws.send(JSON.stringify(setupMsg));
         };
 
@@ -1371,7 +1372,7 @@ export function useVoiceInterview(
               text = "{}";
             }
             const data = JSON.parse(text);
-            console.log("[Voice] Setup response:", JSON.stringify(data).slice(0, 200));
+            logger.debug("[Voice] Setup response received");
             if (data.setupComplete) {
               clearTimeout(timeout);
               console.log("[Voice] Setup complete — Gemini ready");

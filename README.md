@@ -1,352 +1,89 @@
-# Think5 - AI-Powered Recruitment Dashboard
+# Think5
 
-A full-stack recruitment agency platform that automatically matches candidates with job roles using AI-powered embeddings and semantic similarity.
+AI-powered recruiting platform: recruiters source and manage candidates, run AI voice or text interviews with "Aria", and share structured reports; candidates apply, practise and interview from their own dashboard. This README is generated from the preservation manifest (`docs/preservation/manifest.json`) and the Phase 0 plan; it describes what is in the repository today.
 
-## Features
+## Stack
 
-### Core Functionality
-- **Candidate Management**: Upload resumes (PDF/DOCX) or LinkedIn profiles
-- **AI Resume Parsing**: Automatic extraction of skills, experience, and contact info
-- **Client & Role Management**: Track companies and their open positions
-- **Smart Matching Engine**: AI-powered candidate-to-role matching with fit scores
-- **Dashboard Analytics**: Overview of candidates, clients, roles, and top matches
-- **Status Tracking**: Pipeline management (Sourced, Contacted, Interviewed, etc.)
+| Layer | What |
+| --- | --- |
+| Web | Next.js 16 (App Router, Turbopack), React 19, TypeScript, Tailwind + shadcn/ui |
+| Data | PostgreSQL on Supabase, Prisma 6 (soft-delete extension in `lib/soft-delete.ts`), additive migrations only |
+| Auth | Supabase Auth (email/password, SSO via OIDC + SAML, native TOTP MFA), profiles table with role gates in `proxy.ts` |
+| Jobs | Inngest durable functions (`inngest/functions/*`: report generation, recording processing, retention, webhooks retry, usage aggregation, ATS sync) |
+| Cache / limits | Upstash Redis as an accelerator only (rate limits, session hot state, locks); Postgres stays authoritative (`lib/redis-degradation.ts`) |
+| Voice | Fly.io WebSocket relay (`relay/`) between the browser and Gemini Live; the API key never leaves the server |
+| Storage | Supabase Storage (resumes, private + signed URLs) and Cloudflare R2 (interview recordings, chunked upload) |
+| Observability | OpenTelemetry (`lib/otel.ts`, `relay/otel.ts`) exported over OTLP to Grafana Cloud when configured; Sentry for error capture; `x-request-id` correlation and a Support ID on the interview room |
+| Integrations | Greenhouse (Harvest) behind the `ATSAdapter` contract (`lib/ats/adapters/greenhouse.ts`); other ATSs are Phase 3 |
+| Contracts | `lib/contracts/*` — canonical interfaces (telemetry, entitlements, usage, session store, ATS, avatar, messaging, plane boundaries) with conformance runners every implementation must pass |
 
-### Technical Features
-- Next.js 15 with App Router and Server Components
-- TypeScript for type safety
-- PostgreSQL database with Prisma ORM
-- OpenAI API for embeddings and parsing
-- Tailwind CSS + ShadCN UI components
-- RESTful API architecture
+Services in production: Vercel (web + crons), Supabase (Postgres, Auth, Storage), Upstash (Redis), Inngest (queues), Fly.io (voice relay), Cloudflare R2 (recordings), Resend (email), Sentry, Grafana Cloud (OTLP), Google Gemini (interviews).
 
-## Tech Stack
-
-### Frontend
-- **Framework**: Next.js 15
-- **Language**: TypeScript
-- **Styling**: Tailwind CSS
-- **UI Components**: ShadCN UI (Radix UI primitives)
-- **Icons**: Lucide React
-
-### Backend
-- **Runtime**: Node.js
-- **Database**: PostgreSQL
-- **ORM**: Prisma
-- **AI/ML**: OpenAI API (text-embedding-3-large, GPT-4)
-- **File Parsing**: pdf-parse, mammoth
-
-### AI Features
-- **Resume Parsing**: OpenAI GPT-4 for structured data extraction
-- **Embeddings**: text-embedding-3-large for semantic search
-- **Matching**: Cosine similarity algorithm
-- **Summaries**: AI-generated candidate and match summaries
-
-## Project Structure
+## Repository map
 
 ```
-think5/
-├── app/
-│   ├── api/
-│   │   ├── candidates/     # Candidate CRUD endpoints
-│   │   ├── clients/        # Client CRUD endpoints
-│   │   ├── roles/          # Role CRUD endpoints
-│   │   ├── matches/        # Matching engine endpoints
-│   │   └── upload/         # File upload & parsing
-│   ├── dashboard/          # Dashboard page
-│   ├── candidates/         # Candidates management page
-│   ├── clients/            # Clients & roles page
-│   ├── layout.tsx
-│   ├── page.tsx
-│   └── globals.css
-├── components/
-│   └── ui/                 # ShadCN UI components
-├── lib/
-│   ├── prisma.ts          # Database client
-│   ├── openai.ts          # OpenAI utilities
-│   ├── resume-parser.ts   # Resume parsing logic
-│   ├── linkedin-scraper.ts # LinkedIn integration
-│   ├── matching-engine.ts  # AI matching algorithm
-│   └── utils.ts           # Utility functions
-├── prisma/
-│   └── schema.prisma      # Database schema
-└── public/                # Static assets
+app/                  Next.js routes: (dashboard) recruiter shell, candidate/ shell, admin, interview/ room, api/
+components/           UI (shadcn primitives, layout shells, interview room, brand)
+lib/                  Domain code: contracts/, auth, messaging/, usage/, entitlements/, ats/, session store, telemetry
+inngest/              Durable functions and the Inngest client
+relay/                Fly.io voice relay (separate package; imports no Prisma)
+prisma/               schema.prisma + migrations (additive; each Phase 0 task ships its own folder)
+supabase/             Local stack config (supabase/config.toml) and SQL migrations (storage buckets, RLS, profiles)
+e2e/                  Playwright: golden suite (route matrix, visual baselines, writes-* specs) with real Supabase sessions
+__tests__/            Vitest: unit, API, architecture guards, chaos, contract conformance
+scripts/              preservation-manifest, route-matrix, e2e-db/e2e-seed, backfills
+docs/                 Product/plan docs (superpowers/), ops runbooks (ops/), preservation manifest, legacy material (legacy/)
 ```
 
-## Database Schema
+## Local setup
 
-### Tables
-- **Candidate**: Stores candidate profiles, skills, experience, embeddings
-- **Client**: Company information
-- **Role**: Job openings with requirements
-- **Match**: Candidate-role matches with fit scores
-- **Recruiter**: Recruitment staff
-- **Note**: Private notes on candidates
+Prerequisites: Node 22, Docker (for the local Supabase stack), `npx supabase` (CLI 2.117+; Homebrew is optional).
 
-## Getting Started
-
-### Prerequisites
-- Node.js 18+
-- PostgreSQL database
-- OpenAI API key
-
-### Installation
-
-1. **Clone and install dependencies**:
 ```bash
-cd Think5
-npm install
+npm ci
+cp .env.example .env          # fill in what you have; see the sections in .env.example
+npm run e2e:stack             # local Supabase (db, auth, rest, storage) on 54321/54322
+npm run e2e:db                # prisma db push + supabase/migrations against the local stack
+npm run e2e:seed              # deterministic recruiter / candidate / identity accounts and data
+npm run dev                   # http://localhost:3000
 ```
 
-2. **Set up environment variables**:
-```bash
-cp .env.example .env
-```
+For the voice room you also need the relay (`cd relay && npm ci && npm run dev`) and `GEMINI_API_KEY`, `RELAY_JWT_SECRET`, `VOICE_RELAY_URL`. Text interviews work without the relay.
 
-Edit `.env` and add:
-```env
-DATABASE_URL="postgresql://user:password@localhost:5432/think5"
-OPENAI_API_KEY="your-openai-api-key"
-JWT_SECRET="your-secret-key"
-```
+Local gotchas: the Supabase CLI reads `.env` and rejects bare heading lines; `prisma db push` on a non-fresh local database returns P4002 (reset with `npx supabase db reset --no-seed` first); Turbopack refuses a symlinked `node_modules`.
 
-3. **Set up the database**:
-```bash
-# Generate Prisma client
-npx prisma generate
+## Scripts
 
-# Run migrations
-npx prisma migrate dev --name init
+| Script | Purpose |
+| --- | --- |
+| `npm run dev` / `build` / `start` | Next.js |
+| `npm run lint` | ESLint (includes the `apiFetch` guard for browser writes and the plane-boundary import rules) |
+| `npm test` | Vitest unit + architecture + chaos + contract conformance |
+| `npm run test:eval` | Interview evaluation harness (mock mode in CI) |
+| `npm run manifest` / `manifest:check` | Regenerate / verify `docs/preservation/manifest.json` (pages, APIs, models, Inngest, crons, flags, contracts) |
+| `npm run route:matrix` | Curl every public page logged out and every gated page for its redirect |
+| `npm run test:e2e:golden` | Playwright golden suite against the local stack (needs `E2E_AUTH_FIXTURES=true`, `E2E_SEED_PASSWORD`) |
+| `npm run test:e2e:golden:update` | Refresh visual baselines (CI-captured chromium-linux PNGs are the committed ones) |
+| `npm run e2e:stack` / `e2e:db` / `e2e:seed` | Local Supabase stack, schema, seed |
+| `npm run predeploy` | Pre-deploy checks |
 
-# Optional: Open Prisma Studio to view data
-npx prisma studio
-```
+## Testing
 
-4. **Run the development server**:
-```bash
-npm run dev
-```
+- **Unit / contract**: `npx vitest run`. Every `lib/contracts` implementation is run through its conformance harness (`lib/contracts/conformance/*`).
+- **Golden E2E** (`e2e/golden`): a `setup` project signs the seeded accounts in through the real form; specs cover the preservation route matrix, visual baselines, and one `writes-*.spec.ts` per Phase 0 task (CSRF client, interview credential, candidate results, soft delete, security guards, messaging, identity/MFA, ATS, stubs).
+- **CI** (`.github/workflows/eval-gate.yml`): TypeScript, Preservation Gates (boots Supabase, seeds, runs the golden suite, verifies the manifest), Eval Harness, Hard Navigation Hydration. `ats-sandbox-nightly.yml` runs the Greenhouse sandbox loop when its secrets exist.
 
-5. **Open your browser**:
-Navigate to [http://localhost:3000](http://localhost:3000)
+## Feature flags
 
-## Usage Guide
+Phase 0 behaviour changes sit behind `FF_P0_*` flags declared in `lib/feature-flags.ts` (cookie interview auth, single interview room, Redis safe-to-fail, usage metering, MFA enforcement, …). Defaults are on, except `FF_P0_MFA_ENFORCEMENT`, which stays off until every admin has enrolled (`docs/ops/identity.md`).
 
-### Adding Candidates
+## Deploy
 
-1. Go to **Candidates** page
-2. Click **Add Candidate**
-3. Either:
-   - Upload a resume (PDF or DOCX)
-   - Paste a LinkedIn URL
-4. The system will automatically:
-   - Parse the resume/LinkedIn profile
-   - Extract skills, experience, contact info
-   - Generate an AI summary
-   - Create embeddings for matching
+- **Web**: Vercel from `main` (squash merges only; no direct pushes). Crons in `vercel.json` (`report-retry`, `fragment-cleanup`, `retention-purge`) need `CRON_SECRET`. Environment: see `.env.example` — Supabase, database (pooler + direct URLs), Upstash, Inngest, Resend, R2, Sentry, OTEL, ATS encryption key.
+- **Database**: Prisma migrations are additive; apply with `prisma migrate deploy` (or `db push` on ephemeral stacks). Supabase SQL migrations live in `supabase/migrations`.
+- **Relay**: `cd relay && fly deploy` (rolling, two machines, `kill_timeout` above the drain window). Secrets via `fly secrets set`: `GEMINI_API_KEY`, `RELAY_JWT_SECRET`, `SENTRY_DSN`, optional `OTEL_*`.
+- **Runbooks**: `docs/ops/regional-failure.md` (relay/Redis loss), `docs/ops/observability.md` (Grafana Cloud), `docs/ops/identity.md` (SSO/MFA rollout), `docs/ops/ats-greenhouse.md` (sandbox and webhooks), `docs/preservation/README.md` (manifest and gates).
 
-### Adding Clients & Roles
+## Phase 0
 
-1. Go to **Clients** page
-2. Click **Add Client** to create a company
-3. Fill in company details (name, industry, funding, size)
-4. Click **Add Role** on a client card
-5. Enter job details:
-   - Title, location, salary range
-   - Required skills (comma-separated)
-   - Job description
-6. The system will automatically:
-   - Generate embeddings for the role
-   - Find and rank matching candidates
-
-### Viewing Matches
-
-- **Dashboard**: See top matches across all roles
-- **Client Page**: View best candidates for each role
-- **Candidate Page**: See role recommendations for each candidate
-
-Matches are scored 0-100% based on:
-- Skill overlap
-- Experience level alignment
-- Industry match
-- Semantic similarity of embeddings
-
-## API Endpoints
-
-### Candidates
-- `GET /api/candidates` - List all candidates
-- `POST /api/candidates` - Create candidate
-- `GET /api/candidates/[id]` - Get candidate details
-- `PATCH /api/candidates/[id]` - Update candidate
-- `DELETE /api/candidates/[id]` - Delete candidate
-
-### Clients
-- `GET /api/clients` - List all clients
-- `POST /api/clients` - Create client
-
-### Roles
-- `GET /api/roles` - List all roles
-- `POST /api/roles` - Create role (auto-generates matches)
-
-### Matches
-- `GET /api/matches` - List matches (filterable)
-- `POST /api/matches` - Generate matches for candidate or role
-
-### Upload
-- `POST /api/upload` - Upload and parse resume/LinkedIn
-
-## AI Matching Algorithm
-
-### How It Works
-
-1. **Embedding Generation**: Convert candidate profiles and job descriptions into vector embeddings using OpenAI's text-embedding-3-large model
-
-2. **Cosine Similarity**: Calculate similarity between candidate and role vectors:
-   ```
-   similarity = (A · B) / (||A|| × ||B||)
-   ```
-
-3. **Fit Score**: Convert similarity to 0-100 scale:
-   ```
-   fitScore = (similarity + 1) × 50
-   ```
-
-4. **Reasoning**: Use GPT-4 to generate human-readable match explanations
-
-### Matching Factors
-- **Skills**: Technical abilities and tools
-- **Experience**: Years of experience and seniority
-- **Industry**: Domain expertise alignment
-- **Semantic Content**: Overall profile-to-job description similarity
-
-## Configuration
-
-### OpenAI API
-The system uses:
-- **text-embedding-3-large**: High-quality embeddings (3072 dimensions)
-- **gpt-4o-mini**: Resume parsing and summary generation
-
-### File Upload
-- Supported formats: PDF, DOCX
-- Max file size: 10MB (configurable in `.env`)
-- Files stored in `/uploads` directory
-
-### LinkedIn Integration
-The current implementation uses mock data. For production:
-1. Use LinkedIn API (requires OAuth)
-2. Use third-party services (Proxycurl, ScrapingBee)
-3. Implement browser automation (Puppeteer/Playwright)
-
-## Deployment
-
-### Build for Production
-```bash
-npm run build
-npm start
-```
-
-### Environment Variables (Production)
-- Set `DATABASE_URL` to production PostgreSQL
-- Add `OPENAI_API_KEY`
-- Set secure `JWT_SECRET`
-- Configure file storage (S3, etc.)
-
-### Recommended Platforms
-- **Vercel**: Easiest deployment for Next.js
-- **Railway**: Includes PostgreSQL hosting
-- **AWS/GCP**: Full control with EC2/Compute Engine
-
-## Future Enhancements
-
-### Planned Features
-- [ ] Real LinkedIn integration
-- [ ] Email automation (outreach, follow-ups)
-- [ ] Calendar integration for interviews
-- [ ] Advanced filtering and search
-- [ ] Bulk candidate import
-- [ ] Custom matching weights
-- [ ] Client portal access
-- [ ] Analytics dashboard
-- [ ] Multi-tenant support
-- [ ] Role templates
-
-### Technical Improvements
-- [ ] Add authentication (NextAuth.js)
-- [ ] Implement file storage (S3/Cloudinary)
-- [ ] Add rate limiting
-- [ ] Implement caching (Redis)
-- [ ] Add testing (Jest, Playwright)
-- [ ] Real-time updates (WebSockets)
-- [ ] Background job processing (Bull/BullMQ)
-
-## Security Considerations
-
-- Store files encrypted (use S3 with encryption)
-- Add JWT authentication for API routes
-- Implement role-based access control
-- Rate limit API endpoints
-- Validate all user inputs
-- Use environment variables for secrets
-- LinkedIn scraping: Only use public data
-
-## Troubleshooting
-
-### Common Issues
-
-**Database connection error**:
-- Verify PostgreSQL is running
-- Check `DATABASE_URL` in `.env`
-- Run `npx prisma migrate dev`
-
-**OpenAI API errors**:
-- Verify `OPENAI_API_KEY` is set correctly
-- Check API quota and billing
-- Handle rate limits gracefully
-
-**File upload fails**:
-- Check file size limit
-- Verify `/uploads` directory exists and is writable
-- Ensure supported file format (PDF/DOCX)
-
-**No matches generated**:
-- Ensure OpenAI API key is configured
-- Check that embeddings were generated (Prisma Studio)
-- Verify cosine similarity threshold (currently >50%)
-
-## Contributing
-
-This is a demonstration project. To extend:
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Test thoroughly
-5. Submit a pull request
-
-## License
-
-MIT License - feel free to use this project as a starting point for your own recruitment platform.
-
-## Support
-
-For issues or questions:
-- Check the troubleshooting section
-- Review the code comments
-- Open an issue with detailed information
-
-## Acknowledgments
-
-- Built with Next.js, React, and TypeScript
-- UI components from ShadCN UI
-- AI powered by OpenAI
-- Icons from Lucide React
-- Inspired by Think5's recruitment platform
-
----
-
-**Note**: This is a full-featured recruitment platform starter. Remember to:
-- Add proper authentication before production use
-- Configure secure file storage
-- Set up proper LinkedIn scraping (or use mock data)
-- Add monitoring and logging
-- Implement proper error handling
-- Scale database and API as needed
+The stabilisation programme (T0–T16) is tracked in `docs/superpowers/plans/2026-09-16-phase-0-stabilise.md`; its exit criteria and evidence are recorded in `docs/preservation/phase-0-exit.md`.

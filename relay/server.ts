@@ -24,6 +24,7 @@ import { WebSocketServer, WebSocket } from "ws";
 import jwt from "jsonwebtoken";
 import { URL } from "url";
 import * as Sentry from "@sentry/node";
+import { relayMetrics, startRelayTelemetry } from "./otel";
 
 // ── Task 32: Sentry initialization ───────────────────────────────────
 //
@@ -286,6 +287,8 @@ wss.on("connection", (clientWs: WebSocket, req: IncomingMessage) => {
 
   metrics.activeConnections++;
   metrics.totalConnections++;
+  relayMetrics.activeConnections.add(1);
+  relayMetrics.connectionsTotal.add(1, { has_request_id: String(Boolean(requestId)) });
 
   // ── Session state ──
   let clientAlive = true;
@@ -325,6 +328,7 @@ wss.on("connection", (clientWs: WebSocket, req: IncomingMessage) => {
       setupTimer = null;
       if (cleanedUp || ws.readyState !== WebSocket.OPEN) return;
       metrics.geminiSetupTimeouts++;
+      relayMetrics.geminiSetupTimeoutsTotal.add(1);
       console.warn(`[Relay] Gemini setup timeout (${GEMINI_SETUP_TIMEOUT_MS}ms) for interview=${interviewId} — terminating upstream to trigger reconnect`);
       Sentry.captureMessage("Gemini setup timeout", { level: "warning", tags: { component: "gemini_setup", interviewId }, extra: { timeoutMs: GEMINI_SETUP_TIMEOUT_MS } });
       try { ws.terminate(); } catch { /* already gone */ }
@@ -343,6 +347,7 @@ wss.on("connection", (clientWs: WebSocket, req: IncomingMessage) => {
     const connectTimer = setTimeout(() => {
       if (ws.readyState === WebSocket.CONNECTING) {
         metrics.geminiConnectTimeouts++;
+        relayMetrics.geminiConnectTimeoutsTotal.add(1);
         metrics.geminiConsecutiveConnectFailures++;
         console.warn(`[Relay] Gemini connect timeout (${GEMINI_CONNECT_TIMEOUT_MS}ms) for interview=${interviewId}`);
         try { ws.terminate(); } catch { /* ignore */ }
@@ -384,8 +389,10 @@ wss.on("connection", (clientWs: WebSocket, req: IncomingMessage) => {
       }
       if (clientAlive) {
         metrics.totalMessages++;
+        relayMetrics.messagesTotal.add(1);
         const size = typeof data === "string" ? data.length : data.byteLength;
         metrics.totalBytes += size;
+        relayMetrics.bytesTotal.add(size);
         clientWs.send(data);
         resetIdle();
       }
@@ -436,6 +443,7 @@ wss.on("connection", (clientWs: WebSocket, req: IncomingMessage) => {
     if (reconnectAttempts >= MAX_GEMINI_RECONNECTS) {
       console.error(`[Relay] Gemini reconnect exhausted (${MAX_GEMINI_RECONNECTS} attempts) for interview=${interviewId}${logSuffix}`);
       metrics.geminiReconnectFailures++;
+      relayMetrics.geminiReconnectFailuresTotal.add(1);
       metrics.bufferedMessages = Math.max(0, metrics.bufferedMessages - messageBuffer.length);
       messageBuffer.length = 0;
       // Task 32: this is the terminal provider failure — the interview
@@ -467,6 +475,7 @@ wss.on("connection", (clientWs: WebSocket, req: IncomingMessage) => {
     const delay = Math.round(baseDelay * (0.5 + Math.random() * 0.5));
     reconnectAttempts++;
     metrics.geminiReconnects++;
+    relayMetrics.geminiReconnectsTotal.add(1);
 
     console.log(`[Relay] Reconnecting to Gemini in ${delay}ms (attempt ${reconnectAttempts}/${MAX_GEMINI_RECONNECTS}) for interview=${interviewId}${logSuffix}`);
 
@@ -498,8 +507,10 @@ wss.on("connection", (clientWs: WebSocket, req: IncomingMessage) => {
     }
 
     metrics.totalMessages++;
+        relayMetrics.messagesTotal.add(1);
     const size = typeof data === "string" ? data.length : data.byteLength;
     metrics.totalBytes += size;
+        relayMetrics.bytesTotal.add(size);
     resetIdle();
 
     if (geminiAlive && !isReconnecting) {
@@ -513,6 +524,7 @@ wss.on("connection", (clientWs: WebSocket, req: IncomingMessage) => {
       } else {
         console.warn(`[Relay] Buffer overflow (${MESSAGE_BUFFER_LIMIT} msgs) for interview=${interviewId}, dropping message${logSuffix}`);
         metrics.bufferOverflows++;
+        relayMetrics.bufferOverflowsTotal.add(1);
         // Task 32: buffer overflows mean audio is being lost. Capture
         // as a warning (not error) since it's a degradation, not a
         // crash — but include the interview ID so ops can correlate
@@ -548,6 +560,7 @@ wss.on("connection", (clientWs: WebSocket, req: IncomingMessage) => {
       `[Relay] Disconnected (${source}): interview=${interviewId}${logSuffix}`
     );
     metrics.activeConnections = Math.max(0, metrics.activeConnections - 1);
+    relayMetrics.activeConnections.add(-1);
 
     clearTimeout(idleTimer);
     clearInterval(pingInterval);
@@ -571,6 +584,9 @@ wss.on("connection", (clientWs: WebSocket, req: IncomingMessage) => {
 // ── Start ─────────────────────────────────────────────────────────────
 
 httpServer.listen(PORT, () => {
+  startRelayTelemetry(FLY_REGION)
+    .then((on) => console.log(`[Relay] OpenTelemetry export: ${on ? "on" : "off (no OTEL_EXPORTER_OTLP_ENDPOINT)"}`))
+    .catch((err) => console.error("[Relay] OpenTelemetry start failed:", err instanceof Error ? err.message : err));
   console.log(`[Relay] Voice relay server listening on port ${PORT}`);
   console.log(`[Relay] Region: ${FLY_REGION}`);
   console.log(`[Relay] Health check: http://localhost:${PORT}/health`);
@@ -582,6 +598,7 @@ const GRACEFUL_DRAIN_MS = 10_000; // 10s max wait for sessions to checkpoint
 
 process.on("SIGTERM", () => {
   metrics.draining = true; // T11: /health reports degraded while draining
+  relayMetrics.drainStartedTotal.add(1);
   const activeCount = wss.clients.size;
   console.log(
     `[Relay] SIGTERM received, draining ${activeCount} active session(s)...` +
@@ -630,6 +647,7 @@ process.on("SIGTERM", () => {
     const remaining = wss.clients.size;
     if (remaining > 0) {
       console.warn(`[Relay] Drain timeout — ${remaining} session(s) forcefully terminated`);
+      relayMetrics.drainForceTerminatedTotal.add(remaining);
       Sentry.captureMessage(`Drain timeout — ${remaining} session(s) forcefully terminated`, {
         level: "warning",
         tags: { component: "relay_drain" },
