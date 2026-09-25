@@ -125,6 +125,19 @@ export async function POST(
       },
     });
 
+    // T15: push the new application to the tenant's ATS (durable, idempotent per application).
+    try {
+      const { integrationsForCompany } = await import("@/lib/ats/server");
+      const companyId = (await prisma.job.findUnique({ where: { id: jobId }, select: { companyId: true } }))?.companyId;
+      const integrations = companyId ? await integrationsForCompany(companyId) : [];
+      if (integrations.length > 0) {
+        const { inngest } = await import("@/inngest/client");
+        await inngest.send(integrations.map((i) => ({ name: "ats/sync.requested", data: { integrationId: i.id, direction: "export", applicationId: application.id, trigger: "event" } })));
+      }
+    } catch {
+      /* ATS export is best-effort here; the scheduled reconciliation surfaces gaps */
+    }
+
     return NextResponse.json(application, { status: 201 });
   } catch (error) {
     const { error: message, status } = handleAuthError(error);
