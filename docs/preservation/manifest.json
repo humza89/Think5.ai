@@ -1887,6 +1887,36 @@
       ]
     },
     {
+      "route": "/api/messaging/conversations",
+      "file": "app/api/messaging/conversations/route.ts",
+      "methods": [
+        "GET",
+        "POST"
+      ]
+    },
+    {
+      "route": "/api/messaging/conversations/[id]/messages",
+      "file": "app/api/messaging/conversations/[id]/messages/route.ts",
+      "methods": [
+        "GET",
+        "POST"
+      ]
+    },
+    {
+      "route": "/api/messaging/conversations/[id]/read",
+      "file": "app/api/messaging/conversations/[id]/read/route.ts",
+      "methods": [
+        "POST"
+      ]
+    },
+    {
+      "route": "/api/messaging/stream",
+      "file": "app/api/messaging/stream/route.ts",
+      "methods": [
+        "GET"
+      ]
+    },
+    {
       "route": "/api/metrics",
       "file": "app/api/metrics/route.ts",
       "methods": [
@@ -2974,6 +3004,57 @@
           }
         ],
         "indexes": []
+      },
+      {
+        "name": "Conversation",
+        "fields": [
+          {
+            "name": "id",
+            "type": "String"
+          },
+          {
+            "name": "participantAId",
+            "type": "String"
+          },
+          {
+            "name": "participantARole",
+            "type": "MessageSenderRole"
+          },
+          {
+            "name": "participantBId",
+            "type": "String"
+          },
+          {
+            "name": "participantBRole",
+            "type": "MessageSenderRole"
+          },
+          {
+            "name": "tenantId",
+            "type": "String?"
+          },
+          {
+            "name": "lastMessageAt",
+            "type": "DateTime?"
+          },
+          {
+            "name": "lastMessage",
+            "type": "String?"
+          },
+          {
+            "name": "createdAt",
+            "type": "DateTime"
+          },
+          {
+            "name": "updatedAt",
+            "type": "DateTime"
+          }
+        ],
+        "indexes": [
+          "unique([participantAId, participantBId])",
+          "index([participantAId, lastMessageAt])",
+          "index([participantBId, lastMessageAt])",
+          "index([tenantId])"
+        ]
       },
       {
         "name": "DataDeletionRequest",
@@ -5191,6 +5272,10 @@
           },
           {
             "name": "readAt",
+            "type": "DateTime?"
+          },
+          {
+            "name": "deliveredAt",
             "type": "DateTime?"
           },
           {
