@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { CheckCircle, Loader2 } from "lucide-react";
+import { apiFetch } from "@/lib/api-client";
 
 interface InterviewCompleteProps {
   interviewId: string;
@@ -70,7 +71,7 @@ export function InterviewComplete({
       if (pollInterval) return;
       pollInterval = setInterval(async () => {
         try {
-          const res = await fetch(
+          const res = await apiFetch(
             `/api/interviews/${interviewId}/report-status`,
             {
               method: "POST",

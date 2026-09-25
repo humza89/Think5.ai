@@ -13,6 +13,7 @@ import {
   ResponsiveDialogHeader,
   ResponsiveDialogTitle,
 } from "@/components/ui/responsive-dialog";
+import { apiFetch } from "@/lib/api-client";
 
 const INTERVIEW_TYPES = [
   { value: "TECHNICAL", label: "Technical", description: "Coding, system design, architecture" },
@@ -106,7 +107,7 @@ export function ScheduleInterviewDialog({
       const primaryType = selectedTypes[0];
       const primaryMode = selectedModes.length > 1 ? "HYBRID" : selectedModes[0];
 
-      const createRes = await fetch("/api/interviews", {
+      const createRes = await apiFetch("/api/interviews", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -130,7 +131,7 @@ export function ScheduleInterviewDialog({
 
       // Optionally send invite
       if (sendInvite && email) {
-        const inviteRes = await fetch(
+        const inviteRes = await apiFetch(
           `/api/interviews/${interview.id}/invite`,
           {
             method: "POST",

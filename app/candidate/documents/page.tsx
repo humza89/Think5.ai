@@ -32,6 +32,7 @@ import {
   Clock,
   Loader2,
 } from "lucide-react";
+import { apiFetch } from "@/lib/api-client";
 
 interface Document {
   id: string;
@@ -75,7 +76,7 @@ export default function DocumentsPage() {
   const fetchDocuments = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/candidate/documents");
+      const res = await apiFetch("/api/candidate/documents");
       if (res.ok) {
         const data = await res.json();
         setDocuments(data.documents || []);
@@ -113,7 +114,7 @@ export default function DocumentsPage() {
       formData.append("file", selectedFile);
       formData.append("type", docType);
 
-      const res = await fetch("/api/upload", {
+      const res = await apiFetch("/api/upload", {
         method: "POST",
         body: formData,
       });
@@ -136,7 +137,7 @@ export default function DocumentsPage() {
   const handleDelete = async (id: string) => {
     setDeletingId(id);
     try {
-      const res = await fetch(`/api/candidate/documents?id=${id}`, {
+      const res = await apiFetch(`/api/candidate/documents?id=${id}`, {
         method: "DELETE",
       });
       if (res.ok) {

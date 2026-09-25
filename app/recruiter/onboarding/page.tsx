@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { RecruiterOnboardingWizard } from "@/components/recruiter-onboarding/RecruiterOnboardingWizard";
 import type { RecruiterOnboardingData, RecruiterOnboardingResponse } from "@/types/recruiter-onboarding";
+import { apiFetch } from "@/lib/api-client";
 
 const DEFAULT_DATA: RecruiterOnboardingData = {
   personalInfo: {
@@ -33,7 +34,7 @@ export default function RecruiterOnboardingPage() {
   useEffect(() => {
     async function loadOnboarding() {
       try {
-        const res = await fetch("/api/recruiter/onboarding");
+        const res = await apiFetch("/api/recruiter/onboarding");
         if (!res.ok) {
           setLoading(false);
           return;

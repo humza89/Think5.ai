@@ -9,6 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { Phone, Mail, MessageSquare, Voicemail, Trash2, Edit, Save, X, Plus } from "lucide-react";
+import { apiFetch } from "@/lib/api-client";
 
 interface Note {
   id: string;
@@ -60,7 +61,7 @@ export default function NotesClient({
     setLoading(true);
 
     const createPromise = (async () => {
-      const response = await fetch(`/api/candidates/${candidateId}/notes`, {
+      const response = await apiFetch(`/api/candidates/${candidateId}/notes`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -109,7 +110,7 @@ export default function NotesClient({
     setLoading(true);
 
     const updatePromise = (async () => {
-      const response = await fetch(
+      const response = await apiFetch(
         `/api/candidates/${candidateId}/notes/${noteId}`,
         {
           method: "PUT",
@@ -184,7 +185,7 @@ export default function NotesClient({
   const executeDelete = async (noteId: string) => {
     if (undoDeleteRef.current) return;
     try {
-      const response = await fetch(
+      const response = await apiFetch(
         `/api/candidates/${candidateId}/notes/${noteId}`,
         { method: "DELETE" }
       );

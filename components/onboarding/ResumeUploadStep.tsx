@@ -24,6 +24,7 @@ import type {
   ResumeUploadData,
   AIProfileReviewData,
 } from "@/lib/validations/onboarding";
+import { apiFetch } from "@/lib/api-client";
 
 // ============================================
 // Types
@@ -101,7 +102,7 @@ export function ResumeUploadStep({
         const formData = new FormData();
         formData.append("file", file);
 
-        const res = await fetch("/api/candidate/onboarding/resume-upload", {
+        const res = await apiFetch("/api/candidate/onboarding/resume-upload", {
           method: "POST",
           body: formData,
         });
@@ -162,7 +163,7 @@ export function ResumeUploadStep({
         await new Promise((r) => setTimeout(r, INTERVAL));
 
         try {
-          const res = await fetch(
+          const res = await apiFetch(
             `/api/candidate/onboarding/resume-upload?jobId=${jobId}`
           );
           if (!res.ok) continue;

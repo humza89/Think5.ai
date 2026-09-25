@@ -8,6 +8,7 @@ import { useRouter } from "next/navigation";
 import Editor from "@monaco-editor/react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useVoiceInterview } from "@/hooks/useVoiceInterview";
+import { apiFetch } from "@/lib/api-client";
 
 interface InterviewRoomProps {
   interviewId: string;
@@ -107,7 +108,7 @@ export function InterviewRoom({ interviewId, candidateName, jobTitle, accessToke
             const nw = w + 1;
             if (nw >= 3 && integrityMode === "strict") {
                  toast.error("Interview terminated due to repeated strict mode violations.");
-                 fetch(`/api/interviews/${interviewId}/proctoring`, {
+                 apiFetch(`/api/interviews/${interviewId}/proctoring`, {
                     method: "POST", headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ accessToken, eventType: "STRICT_VIOLATION_TERMINATED", severity: "CRITICAL" })
                  });
@@ -121,7 +122,7 @@ export function InterviewRoom({ interviewId, candidateName, jobTitle, accessToke
             return nw;
         });
 
-        fetch(`/api/interviews/${interviewId}/proctoring`, {
+        apiFetch(`/api/interviews/${interviewId}/proctoring`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ accessToken, eventType: "TAB_SWITCHED", severity: "MEDIUM" })
@@ -141,7 +142,7 @@ export function InterviewRoom({ interviewId, candidateName, jobTitle, accessToke
                 }
                 return nw;
             });
-            fetch(`/api/interviews/${interviewId}/proctoring`, {
+            apiFetch(`/api/interviews/${interviewId}/proctoring`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ accessToken, eventType: "FULLSCREEN_EXITED", severity: "LOW" })
@@ -237,7 +238,7 @@ export function InterviewRoom({ interviewId, candidateName, jobTitle, accessToke
     
     try {
       toast.info("Securely uploading interview recording...");
-      const res = await fetch(`/api/interviews/${interviewId}/recording`, {
+      const res = await apiFetch(`/api/interviews/${interviewId}/recording`, {
         method: "POST",
         body: formData
       });

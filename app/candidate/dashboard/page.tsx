@@ -17,6 +17,7 @@ import {
   Briefcase,
   Send,
 } from "lucide-react";
+import { apiFetch } from "@/lib/api-client";
 
 interface Interview {
   id: string;
@@ -44,7 +45,7 @@ export default function CandidateDashboard() {
   useEffect(() => {
     async function fetchInterviews() {
       try {
-        const res = await fetch("/api/candidate/interviews");
+        const res = await apiFetch("/api/candidate/interviews");
         if (res.ok) {
           const data = await res.json();
           setInterviews(data.interviews || []);

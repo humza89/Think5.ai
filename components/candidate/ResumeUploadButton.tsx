@@ -3,6 +3,7 @@
 import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { apiFetch } from "@/lib/api-client";
 
 export default function ResumeUploadButton({ candidateId }: { candidateId: string }) {
   const [isUploading, setIsUploading] = useState(false);
@@ -20,7 +21,7 @@ export default function ResumeUploadButton({ candidateId }: { candidateId: strin
       formData.append("file", file);
       formData.append("candidateId", candidateId);
 
-      const response = await fetch("/api/upload-resume", {
+      const response = await apiFetch("/api/upload-resume", {
         method: "POST",
         body: formData,
       });

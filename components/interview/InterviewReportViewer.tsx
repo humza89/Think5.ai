@@ -23,6 +23,7 @@ import {
   TrendingUp,
   Briefcase,
 } from "lucide-react";
+import { apiFetch } from "@/lib/api-client";
 
 interface SkillRating {
   skill: string;
@@ -178,7 +179,7 @@ export function InterviewReportViewer({
     if (!interviewId) return;
     setShareLoading(true);
     try {
-      const res = await fetch(
+      const res = await apiFetch(
         `/api/interviews/${interviewId}/report/share`,
         { method: "POST" }
       );

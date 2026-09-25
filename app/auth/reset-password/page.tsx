@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Check, Eye, EyeOff } from "lucide-react";
 import { AuthShell, AuthError, AuthNotice, Spinner, authField, authButton } from "@/components/marketing/AuthShell";
 import { cn } from "@/lib/utils";
+import { apiFetch } from "@/lib/api-client";
 
 function ResetPasswordForm() {
   const searchParams = useSearchParams();
@@ -47,7 +48,7 @@ function ResetPasswordForm() {
     setIsLoading(true);
 
     try {
-      const res = await fetch("/api/auth/reset-password", {
+      const res = await apiFetch("/api/auth/reset-password", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ token, password }),

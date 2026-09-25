@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback, useRef } from "react";
+import { apiFetch } from "@/lib/api-client";
 
 interface Message {
   id: string;
@@ -50,7 +51,7 @@ export function useInterviewSession({
       abortRef.current = new AbortController();
 
       try {
-        const response = await fetch(
+        const response = await apiFetch(
           `/api/interviews/${interviewId}/stream`,
           {
             method: "POST",

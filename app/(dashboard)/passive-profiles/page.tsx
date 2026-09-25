@@ -17,6 +17,7 @@ import {
   Loader2,
   Trash2,
 } from "lucide-react";
+import { apiFetch } from "@/lib/api-client";
 
 const statusConfig: Record<string, { label: string; className: string }> = {
   CREATED: { label: "Created", className: "bg-gray-100 text-gray-700" },
@@ -38,7 +39,7 @@ export default function PassiveProfilesPage() {
 
   async function fetchProfiles() {
     try {
-      const res = await fetch("/api/passive-profiles");
+      const res = await apiFetch("/api/passive-profiles");
       const data = await res.json();
       setProfiles(Array.isArray(data) ? data : []);
     } catch {
@@ -54,7 +55,7 @@ export default function PassiveProfilesPage() {
     }
     setCreating(true);
     try {
-      const res = await fetch("/api/passive-profiles", {
+      const res = await apiFetch("/api/passive-profiles", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...form, source: "manual" }),
@@ -70,7 +71,7 @@ export default function PassiveProfilesPage() {
   }
 
   async function handleDelete(id: string) {
-    const deletePromise = fetch(`/api/passive-profiles/${id}`, { method: "DELETE" }).then((res) => {
+    const deletePromise = apiFetch(`/api/passive-profiles/${id}`, { method: "DELETE" }).then((res) => {
       if (!res.ok) throw new Error("Failed to delete profile");
     });
 

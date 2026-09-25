@@ -29,6 +29,7 @@ import {
   Users,
 } from "lucide-react";
 import { KanbanCard, type KanbanApplication } from "./KanbanCard";
+import { apiFetch } from "@/lib/api-client";
 
 const PIPELINE_STAGES = [
   { id: "APPLIED", label: "Applied", color: "bg-blue-500" },
@@ -255,7 +256,7 @@ export function PipelineKanban({ jobId, applications }: PipelineKanbanProps) {
 
     // Persist to server
     try {
-      const res = await fetch(`/api/jobs/${jobId}/applications/${activeId}`, {
+      const res = await apiFetch(`/api/jobs/${jobId}/applications/${activeId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: targetStatus }),

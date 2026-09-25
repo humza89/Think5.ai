@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import { ArrowLeft, Plus, X, Loader2, GripVertical, ChevronDown, ChevronUp } from "lucide-react";
+import { apiFetch } from "@/lib/api-client";
 
 interface Question {
   text: string;
@@ -68,7 +69,7 @@ export default function EditTemplatePage({
   useEffect(() => {
     async function fetchTemplate() {
       try {
-        const res = await fetch(`/api/interview-templates/${id}`);
+        const res = await apiFetch(`/api/interview-templates/${id}`);
         if (!res.ok) throw new Error("Template not found");
         const data = await res.json();
 
@@ -141,7 +142,7 @@ export default function EditTemplatePage({
       if (maxDurationMinutes) body.maxDurationMinutes = parseInt(maxDurationMinutes);
       if (minDurationMinutes) body.minDurationMinutes = parseInt(minDurationMinutes);
 
-      const res = await fetch(`/api/interview-templates/${id}`, {
+      const res = await apiFetch(`/api/interview-templates/${id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),

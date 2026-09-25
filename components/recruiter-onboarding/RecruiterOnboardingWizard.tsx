@@ -11,6 +11,7 @@ import { TeamConfigStep } from "./TeamConfigStep";
 import { HiringPreferencesStep } from "./HiringPreferencesStep";
 import { ReviewLaunchStep } from "./ReviewLaunchStep";
 import type { RecruiterOnboardingData } from "@/types/recruiter-onboarding";
+import { apiFetch } from "@/lib/api-client";
 
 const STEPS = [
   { label: "Personal Info", icon: User },
@@ -85,7 +86,7 @@ export function RecruiterOnboardingWizard({
           break;
       }
 
-      const res = await fetch("/api/recruiter/onboarding", {
+      const res = await apiFetch("/api/recruiter/onboarding", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ step: stepNumber + 1, data: stepData }),

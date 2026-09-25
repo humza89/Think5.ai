@@ -16,6 +16,7 @@ import {
   CheckCircle,
 } from "lucide-react";
 import ProfilePreviewCard from "@/components/recruiter/ProfilePreviewCard";
+import { apiFetch } from "@/lib/api-client";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -108,7 +109,7 @@ export default function SourcePage() {
 
     setImportingLinkedin(true);
     try {
-      const res = await fetch("/api/passive-profiles", {
+      const res = await apiFetch("/api/passive-profiles", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ linkedinUrl: url, source: "linkedin" }),
@@ -149,7 +150,7 @@ export default function SourcePage() {
       const formData = new FormData();
       formData.append("file", resumeFile);
 
-      const uploadRes = await fetch("/api/upload", {
+      const uploadRes = await apiFetch("/api/upload", {
         method: "POST",
         body: formData,
       });
@@ -164,7 +165,7 @@ export default function SourcePage() {
       const filename = uploadData.filename ?? resumeFile.name;
 
       // Step 2: Create a passive profile from the uploaded resume
-      const profileRes = await fetch("/api/passive-profiles/upload", {
+      const profileRes = await apiFetch("/api/passive-profiles/upload", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -265,7 +266,7 @@ export default function SourcePage() {
     }
 
     try {
-      const res = await fetch(`/api/passive-profiles/${id}`, {
+      const res = await apiFetch(`/api/passive-profiles/${id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

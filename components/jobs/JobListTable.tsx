@@ -18,6 +18,7 @@ import {
   ChevronRight,
   Filter,
 } from "lucide-react";
+import { apiFetch } from "@/lib/api-client";
 
 interface Job {
   id: string;
@@ -78,7 +79,7 @@ export function JobListTable({ initialJobs, initialPagination }: JobListTablePro
         ...(params.status || statusFilter ? { status: params.status || statusFilter } : {}),
       });
 
-      const res = await fetch(`/api/jobs?${queryParams}`);
+      const res = await apiFetch(`/api/jobs?${queryParams}`);
       const data = await res.json();
       setJobs(data.jobs);
       setPagination(data.pagination);

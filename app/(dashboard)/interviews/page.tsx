@@ -31,6 +31,7 @@ import {
   Loader2,
   ArrowUpDown,
 } from "lucide-react";
+import { apiFetch } from "@/lib/api-client";
 
 interface Interview {
   id: string;
@@ -110,7 +111,7 @@ export default function InterviewsDashboard() {
       if (dateFrom) params.set("dateFrom", dateFrom);
       if (dateTo) params.set("dateTo", dateTo);
 
-      const res = await fetch(`/api/interviews?${params.toString()}`);
+      const res = await apiFetch(`/api/interviews?${params.toString()}`);
       if (res.ok) {
         const data = await res.json();
         setInterviews(data.interviews);
@@ -154,7 +155,7 @@ export default function InterviewsDashboard() {
   const handleResendInvite = async (interviewId: string) => {
     setActionLoading(`resend-${interviewId}`);
     try {
-      const res = await fetch(`/api/interviews/${interviewId}/invite`, {
+      const res = await apiFetch(`/api/interviews/${interviewId}/invite`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({}),
@@ -186,7 +187,7 @@ export default function InterviewsDashboard() {
   const handleCancel = async (interviewId: string) => {
     setActionLoading(`cancel-${interviewId}`);
     const cancelPromise = (async () => {
-      const res = await fetch(`/api/interviews/${interviewId}`, {
+      const res = await apiFetch(`/api/interviews/${interviewId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: "CANCELLED" }),
@@ -214,7 +215,7 @@ export default function InterviewsDashboard() {
   const handleGenerateReport = async (interviewId: string) => {
     setActionLoading(`report-${interviewId}`);
     try {
-      const res = await fetch(`/api/interviews/${interviewId}/report`, {
+      const res = await apiFetch(`/api/interviews/${interviewId}/report`, {
         method: "POST",
       });
       if (res.ok) {

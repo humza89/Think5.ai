@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { apiFetch } from "@/lib/api-client";
 
 interface ProctoringEvent {
   id: string;
@@ -28,7 +29,7 @@ export default function ProctoringEventsPage() {
       if (severityFilter !== "ALL") params.set("severity", severityFilter);
       if (searchId) params.set("interviewId", searchId);
       params.set("limit", "100");
-      const res = await fetch(`/api/admin/proctoring-events?${params}`);
+      const res = await apiFetch(`/api/admin/proctoring-events?${params}`);
       if (res.ok) {
         const data = await res.json();
         setEvents(data.events || []);

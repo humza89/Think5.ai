@@ -37,6 +37,7 @@ import {
   Hash,
 } from "lucide-react";
 import Link from "next/link";
+import { apiFetch } from "@/lib/api-client";
 
 // ============================================
 // Types
@@ -331,7 +332,7 @@ function UserManagementTab() {
       if (search) params.set("search", search);
       if (roleFilter && roleFilter !== "all") params.set("role", roleFilter);
 
-      const res = await fetch(`/api/admin/users?${params.toString()}`);
+      const res = await apiFetch(`/api/admin/users?${params.toString()}`);
       if (!res.ok) throw new Error("Failed to fetch users");
 
       const data = await res.json();
@@ -357,7 +358,7 @@ function UserManagementTab() {
   const handleRoleChange = async (userId: string, newRole: string) => {
     setUpdating(userId);
     try {
-      const res = await fetch(`/api/admin/users/${userId}`, {
+      const res = await apiFetch(`/api/admin/users/${userId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ role: newRole }),
@@ -381,7 +382,7 @@ function UserManagementTab() {
   ) => {
     setUpdating(userId);
     try {
-      const res = await fetch(`/api/admin/users/${userId}`, {
+      const res = await apiFetch(`/api/admin/users/${userId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email_verified: !currentVerified }),
@@ -639,7 +640,7 @@ function AuditLogTab() {
       const params = new URLSearchParams({ page: String(page), pageSize: "25" });
       if (actionFilter) params.set("action", actionFilter);
       if (entityTypeFilter) params.set("entityType", entityTypeFilter);
-      const res = await fetch(`/api/admin/audit-logs?${params}`);
+      const res = await apiFetch(`/api/admin/audit-logs?${params}`);
       if (!res.ok) throw new Error("Failed to load");
       const data = await res.json();
       setLogs(data.logs);
@@ -806,7 +807,7 @@ function ModelGovernanceTab() {
   useEffect(() => {
     async function fetchData() {
       try {
-        const res = await fetch("/api/admin/model-governance");
+        const res = await apiFetch("/api/admin/model-governance");
         if (!res.ok) throw new Error("Failed to load");
         setData(await res.json());
       } catch {
@@ -930,7 +931,7 @@ export default function AdminPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/admin");
+      const res = await apiFetch("/api/admin");
       if (!res.ok) {
         throw new Error(`Failed to load admin data (${res.status})`);
       }

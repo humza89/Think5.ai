@@ -11,6 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { ArrowLeft, Loader2, X, Plus } from "lucide-react";
+import { apiFetch } from "@/lib/api-client";
 
 interface Skill {
   skillName: string;
@@ -54,8 +55,8 @@ export default function EditJobPage() {
 
   useEffect(() => {
     Promise.all([
-      fetch(`/api/jobs/${jobId}`).then((r) => r.json()),
-      fetch("/api/clients").then((r) => r.json()),
+      apiFetch(`/api/jobs/${jobId}`).then((r) => r.json()),
+      apiFetch("/api/clients").then((r) => r.json()),
     ]).then(([job, clientsData]) => {
       setClients(Array.isArray(clientsData) ? clientsData : []);
       setFormData({
@@ -100,7 +101,7 @@ export default function EditJobPage() {
   async function handleSave() {
     setSaving(true);
     try {
-      const res = await fetch(`/api/jobs/${jobId}`, {
+      const res = await apiFetch(`/api/jobs/${jobId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...formData, skills }),

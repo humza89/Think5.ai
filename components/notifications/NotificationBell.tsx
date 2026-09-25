@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { Bell, Check, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/AuthContext";
+import { apiFetch } from "@/lib/api-client";
 
 interface Notification {
   id: string;
@@ -53,7 +54,7 @@ export function NotificationBell({ variant = "light" }: NotificationBellProps) {
 
   async function fetchNotifications() {
     try {
-      const res = await fetch("/api/notifications?limit=10");
+      const res = await apiFetch("/api/notifications?limit=10");
       if (res.ok) {
         const data = await res.json();
         setNotifications(data.notifications || []);
@@ -66,7 +67,7 @@ export function NotificationBell({ variant = "light" }: NotificationBellProps) {
 
   async function markAllRead() {
     try {
-      await fetch("/api/notifications", { method: "PATCH" });
+      await apiFetch("/api/notifications", { method: "PATCH" });
       setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
       setUnreadCount(0);
     } catch (err) {
@@ -76,7 +77,7 @@ export function NotificationBell({ variant = "light" }: NotificationBellProps) {
 
   async function markRead(id: string) {
     try {
-      await fetch(`/api/notifications/${id}`, {
+      await apiFetch(`/api/notifications/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ read: true }),

@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import Link from "next/link";
+import { apiFetch } from "@/lib/api-client";
 
 interface Membership {
   id: string;
@@ -50,7 +51,7 @@ export default function AdminHmMembershipsPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/admin/hm-memberships");
+      const res = await apiFetch("/api/admin/hm-memberships");
       if (!res.ok) throw new Error("Failed to fetch memberships");
       const data = await res.json();
       setMemberships(data.memberships || []);
@@ -63,7 +64,7 @@ export default function AdminHmMembershipsPage() {
 
   async function fetchCompanies() {
     try {
-      const res = await fetch("/api/companies");
+      const res = await apiFetch("/api/companies");
       if (res.ok) {
         const data = await res.json();
         setCompanies(
@@ -82,7 +83,7 @@ export default function AdminHmMembershipsPage() {
   async function handleRevoke(id: string) {
     setRevokingId(id);
     const revokePromise = (async () => {
-      const res = await fetch(`/api/admin/hm-memberships?id=${id}`, {
+      const res = await apiFetch(`/api/admin/hm-memberships?id=${id}`, {
         method: "DELETE",
       });
       if (!res.ok) {
@@ -116,7 +117,7 @@ export default function AdminHmMembershipsPage() {
     setFormLoading(true);
     setFormError(null);
     try {
-      const res = await fetch("/api/admin/hm-memberships", {
+      const res = await apiFetch("/api/admin/hm-memberships", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

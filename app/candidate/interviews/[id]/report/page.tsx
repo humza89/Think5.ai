@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import { InterviewReportViewer } from "@/components/interview/InterviewReportViewer";
 import { ArrowLeft } from "lucide-react";
+import { apiFetch } from "@/lib/api-client";
 
 interface ReportPageData {
   report: {
@@ -41,7 +42,7 @@ export default function CandidateReportPage() {
   useEffect(() => {
     async function fetchReport() {
       try {
-        const res = await fetch(`/api/candidate/interviews/${id}/report`);
+        const res = await apiFetch(`/api/candidate/interviews/${id}/report`);
         if (!res.ok) {
           const body = await res.json();
           setError(body.error || "Failed to load report");

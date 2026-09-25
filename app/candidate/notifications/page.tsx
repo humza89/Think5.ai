@@ -18,6 +18,7 @@ import {
   CheckCheck,
   Loader2,
 } from "lucide-react";
+import { apiFetch } from "@/lib/api-client";
 
 interface Notification {
   id: string;
@@ -57,7 +58,7 @@ export default function NotificationsPage() {
   const fetchNotifications = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/candidate/notifications");
+      const res = await apiFetch("/api/candidate/notifications");
       if (res.ok) {
         const data = await res.json();
         setNotifications(data.notifications || []);
@@ -75,7 +76,7 @@ export default function NotificationsPage() {
 
   const markAsRead = async (id: string) => {
     try {
-      const res = await fetch(`/api/candidate/notifications`, {
+      const res = await apiFetch(`/api/candidate/notifications`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id, read: true }),
@@ -93,7 +94,7 @@ export default function NotificationsPage() {
   const markAllRead = async () => {
     setMarkingAllRead(true);
     try {
-      const res = await fetch("/api/candidate/notifications", {
+      const res = await apiFetch("/api/candidate/notifications", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ markAllRead: true }),

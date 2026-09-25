@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { apiFetch } from "@/lib/api-client";
 
 interface ResumeUploadProps {
   candidateId: string;
@@ -42,7 +43,7 @@ export default function ResumeUpload({ candidateId, hasResume = false }: ResumeU
       const formData = new FormData();
       formData.append("file", file);
 
-      const response = await fetch(`/api/candidates/${candidateId}/resume`, {
+      const response = await apiFetch(`/api/candidates/${candidateId}/resume`, {
         method: "POST",
         body: formData,
       });

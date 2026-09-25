@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Plus, ExternalLink, FileText, Send, X } from "lucide-react";
 import { ScheduleInterviewDialog } from "@/components/interview/ScheduleInterviewDialog";
 import Link from "next/link";
+import { apiFetch } from "@/lib/api-client";
 
 interface Report {
   id: string;
@@ -141,7 +142,7 @@ function InterviewCard({ interview, candidateEmail, onStatusChange }: { intervie
   const handleCancelInterview = async () => {
     setCancelling(true);
     const cancelPromise = (async () => {
-      const res = await fetch(`/api/interviews/${interview.id}`, {
+      const res = await apiFetch(`/api/interviews/${interview.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: "CANCELLED" }),
@@ -171,7 +172,7 @@ function InterviewCard({ interview, candidateEmail, onStatusChange }: { intervie
   const handleResendInvite = async () => {
     setSending(true);
     try {
-      const res = await fetch(`/api/interviews/${interview.id}/invite`, {
+      const res = await apiFetch(`/api/interviews/${interview.id}/invite`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: candidateEmail }),

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { apiFetch } from "@/lib/api-client";
 
 interface SLOStatus {
   name: string;
@@ -27,8 +28,8 @@ export default function ReliabilityPage() {
   const fetchData = useCallback(async () => {
     try {
       const [healthRes, sloRes] = await Promise.all([
-        fetch("/api/health"),
-        fetch("/api/admin/reliability"),
+        apiFetch("/api/health"),
+        apiFetch("/api/admin/reliability"),
       ]);
       if (healthRes.ok) setHealth(await healthRes.json());
       if (sloRes.ok) {

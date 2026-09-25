@@ -4,6 +4,7 @@ import { createContext, useContext, useEffect, useState, useCallback, useRef, Re
 import { User, Session } from '@supabase/supabase-js';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import type { Profile, UserRole } from '@/types/supabase';
+import { apiFetch } from "@/lib/api-client";
 
 /** Race a promise against a timeout — returns fallback if the promise doesn't resolve in time. */
 function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
@@ -37,7 +38,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const fetchProfile = useCallback(async (_userId: string) => {
     try {
       const res = await withTimeout(
-        fetch('/api/auth/profile'),
+        apiFetch('/api/auth/profile'),
         10000,
         new Response(JSON.stringify({ profile: null }), { status: 408 })
       );

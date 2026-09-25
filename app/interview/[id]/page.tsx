@@ -17,6 +17,7 @@ import { useScreenCapture } from "@/hooks/useScreenCapture";
 import { useMediaRecording } from "@/hooks/useMediaRecording";
 import { classifyError } from "@/lib/error-classification";
 import { csrfHeaders } from "@/lib/csrf-client";
+import { apiFetch } from "@/lib/api-client";
 
 type InterviewStage =
   | "LOADING"
@@ -85,7 +86,7 @@ export default function InterviewRoom() {
   useEffect(() => {
     async function validate() {
       try {
-        const res = await fetch(`/api/interviews/${interviewId}/validate`, {
+        const res = await apiFetch(`/api/interviews/${interviewId}/validate`, {
           method: "POST",
           // POST /api routes are CSRF-checked by the proxy; echo the mirror cookie.
           headers: { "Content-Type": "application/json", ...csrfHeaders() },
@@ -142,7 +143,7 @@ export default function InterviewRoom() {
   const handleStart = useCallback(async (consent: { consentRecording: boolean; consentProctoring: boolean; consentPrivacy: boolean }) => {
     // Persist consent to the backend — MUST succeed before starting
     try {
-      const res = await fetch(`/api/interviews/${interviewId}/validate`, {
+      const res = await apiFetch(`/api/interviews/${interviewId}/validate`, {
         method: "POST",
         // POST /api routes are CSRF-checked by the proxy; echo the mirror cookie.
         headers: { "Content-Type": "application/json", ...csrfHeaders() },
@@ -215,7 +216,7 @@ export default function InterviewRoom() {
   // Pause/Resume handlers for text interview mode
   const handlePause = useCallback(async () => {
     try {
-      await fetch(`/api/interviews/${interviewId}/pause`, {
+      await apiFetch(`/api/interviews/${interviewId}/pause`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "pause", accessToken }),
@@ -228,7 +229,7 @@ export default function InterviewRoom() {
 
   const handleResumePause = useCallback(async () => {
     try {
-      const res = await fetch(`/api/interviews/${interviewId}/pause`, {
+      const res = await apiFetch(`/api/interviews/${interviewId}/pause`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "resume", accessToken }),

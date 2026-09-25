@@ -31,6 +31,7 @@ import {
   Wrench,
   Loader2,
 } from "lucide-react";
+import { apiFetch } from "@/lib/api-client";
 
 interface Skill {
   id: string;
@@ -63,7 +64,7 @@ export default function SkillsPage() {
   const fetchSkills = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/candidate/skills");
+      const res = await apiFetch("/api/candidate/skills");
       if (res.ok) {
         const data = await res.json();
         setSkills(data.skills || []);
@@ -86,7 +87,7 @@ export default function SkillsPage() {
     }
     setSaving(true);
     try {
-      const res = await fetch("/api/candidate/skills", {
+      const res = await apiFetch("/api/candidate/skills", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -114,7 +115,7 @@ export default function SkillsPage() {
   const handleDeleteSkill = async (id: string) => {
     setDeletingId(id);
     try {
-      const res = await fetch(`/api/candidate/skills?id=${id}`, {
+      const res = await apiFetch(`/api/candidate/skills?id=${id}`, {
         method: "DELETE",
       });
       if (res.ok) {

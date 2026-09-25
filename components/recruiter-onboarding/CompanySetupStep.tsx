@@ -9,6 +9,7 @@ import { Card } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Building2, Search, Plus, Loader2 } from "lucide-react";
 import type { CompanySetupData } from "@/types/recruiter-onboarding";
+import { apiFetch } from "@/lib/api-client";
 
 interface CompanySetupStepProps {
   data: CompanySetupData;
@@ -37,7 +38,7 @@ export function CompanySetupStep({ data, onChange }: CompanySetupStepProps) {
     if (!searchQuery.trim()) return;
     setSearching(true);
     try {
-      const res = await fetch(`/api/clients?search=${encodeURIComponent(searchQuery)}`);
+      const res = await apiFetch(`/api/clients?search=${encodeURIComponent(searchQuery)}`);
       if (res.ok) {
         const result = await res.json();
         setSearchResults(Array.isArray(result) ? result : result.clients || []);
