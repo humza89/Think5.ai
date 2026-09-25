@@ -136,6 +136,7 @@ const publicRoutes = [
   '/auth/callback',
   '/auth/forgot-password',
   '/auth/reset-password',
+  '/auth/error', // T9: SSO / verification failure landing page
 ];
 const publicPrefixes = ['/api/auth/', '/api/health', '/_next/', '/uploads/', '/Logos/', '/favicon', '/interview', '/reports/shared'];
 

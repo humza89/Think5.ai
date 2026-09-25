@@ -85,6 +85,8 @@ export const FeatureFlags = {
   P0_SINGLE_INTERVIEW_ROOM: envBool("FF_P0_SINGLE_INTERVIEW_ROOM", true),
   /** Phase 0 T11: Redis loss is a durability downgrade (limiters fall back in-memory, session store reports durability=postgres) instead of a hard failure. Read from the environment in lib/redis-degradation.ts. */
   P0_REDIS_SAFE_TO_FAIL: envBool("FF_P0_REDIS_SAFE_TO_FAIL", true),
+  /** Phase 0 T9: server-side MFA enforcement (admins, tenant owners/admins, tenants with GovernancePolicy.requireMfa). Default off until every admin has enrolled in staging (T14 checklist); read from the environment in lib/mfa.ts. */
+  P0_MFA_ENFORCEMENT: envBool("FF_P0_MFA_ENFORCEMENT", false),
 } as const;
 
 /**

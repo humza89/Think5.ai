@@ -57,6 +57,14 @@ enable_anonymous_sign_ins = false
 enable_manual_linking = false
 minimum_password_length = 8
 
+# Phase 0 T9: native TOTP MFA for the identity golden E2E.
+[auth.mfa]
+max_enrolled_factors = 10
+
+[auth.mfa.totp]
+enroll_enabled = true
+verify_enabled = true
+
 [auth.email]
 enable_signup = true
 double_confirm_changes = false

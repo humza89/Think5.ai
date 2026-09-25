@@ -13,88 +13,18 @@ import { prisma } from "@/lib/prisma";
 import { requireCandidateRole, handleAuthError } from "@/lib/auth";
 import { inngest } from "@/inngest/client";
 import { logInterviewActivity } from "@/lib/interview-audit";
+import { requestCandidateDeletion } from "@/lib/account-deletion";
 
 const GRACE_PERIOD_DAYS = 30;
 
-// POST — Request data deletion
+// POST — Request data deletion (T9: shared with /api/account/delete and DELETE /api/candidate/settings)
 export async function POST(request: NextRequest) {
   try {
     const { candidate } = await requireCandidateRole();
-
-    // Check for existing pending request
-    const existing = await prisma.dataDeletionRequest.findFirst({
-      where: {
-        candidateId: candidate.id,
-        status: { in: ["PENDING", "PROCESSING"] },
-      },
-    });
-
-    if (existing) {
-      return NextResponse.json(
-        {
-          error: "A deletion request is already pending",
-          requestId: existing.id,
-          status: existing.status,
-          gracePeriodEndsAt: existing.gracePeriodEndsAt,
-        },
-        { status: 409 }
-      );
-    }
-
-    // Check for legal hold
-    if (candidate.legalHold) {
-      return NextResponse.json(
-        { error: "Your data is subject to a legal hold and cannot be deleted at this time. Please contact support." },
-        { status: 403 }
-      );
-    }
-
     const body = await request.json().catch(() => ({}));
     const reason = (body as { reason?: string }).reason || null;
-
-    const gracePeriodEndsAt = new Date(
-      Date.now() + GRACE_PERIOD_DAYS * 24 * 60 * 60 * 1000
-    );
-
-    const deletionRequest = await prisma.dataDeletionRequest.create({
-      data: {
-        candidateId: candidate.id,
-        reason,
-        gracePeriodEndsAt,
-      },
-    });
-
-    // Dispatch Inngest durable function to execute after grace period
-    await inngest
-      .send({
-        name: "candidate/deletion.requested",
-        data: {
-          requestId: deletionRequest.id,
-          candidateId: candidate.id,
-          gracePeriodEndsAt: gracePeriodEndsAt.toISOString(),
-        },
-      })
-      .catch((err) => {
-        console.error("Failed to dispatch deletion job:", err);
-      });
-
-    // Audit log
-    logInterviewActivity({
-      interviewId: candidate.id,
-      action: "dsar.deletion_requested",
-      userId: candidate.id,
-      userRole: "candidate",
-    }).catch(() => {});
-
-    return NextResponse.json(
-      {
-        requestId: deletionRequest.id,
-        status: "PENDING",
-        gracePeriodEndsAt,
-        message: `Your data deletion request has been received. You have ${GRACE_PERIOD_DAYS} days to cancel before deletion is permanent.`,
-      },
-      { status: 201 }
-    );
+    const result = await requestCandidateDeletion(candidate, reason);
+    return NextResponse.json(result.body, { status: result.status });
   } catch (error) {
     const { error: message, status } = handleAuthError(error);
     return NextResponse.json({ error: message }, { status });

@@ -1,6 +1,7 @@
+import { requestCandidateDeletion } from "@/lib/account-deletion";
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { requireRole, handleAuthError } from '@/lib/auth';
+import { requireRole, requireCandidateRole, handleAuthError } from '@/lib/auth';
 
 export async function GET() {
   try {
@@ -62,6 +63,23 @@ export async function PUT(request: NextRequest) {
     });
 
     return NextResponse.json({ preferences });
+  } catch (error) {
+    const { error: message, status } = handleAuthError(error);
+    return NextResponse.json({ error: message }, { status });
+  }
+}
+
+/**
+ * DELETE /api/candidate/settings { confirm: "DELETE", reason? } (Phase 0 T9):
+ * same 30-day-grace deletion request as /api/candidate/data-deletion-request.
+ */
+export async function DELETE(request: NextRequest) {
+  try {
+    const { candidate } = await requireCandidateRole();
+    const body = await request.json().catch(() => ({}));
+    if (body.confirm !== "DELETE") return NextResponse.json({ error: 'Type "DELETE" to confirm' }, { status: 400 });
+    const result = await requestCandidateDeletion(candidate, typeof body.reason === "string" ? body.reason.slice(0, 500) : null);
+    return NextResponse.json(result.body, { status: result.status });
   } catch (error) {
     const { error: message, status } = handleAuthError(error);
     return NextResponse.json({ error: message }, { status });

@@ -506,7 +506,8 @@ describe("Master Prompt Matrix Compliance Tests", () => {
 
     it("all flags default to true (enterprise mode) except opt-in enterprise flags", () => {
       // ENTERPRISE_SOURCE_GROUNDING_REQUIRED defaults to false (opt-in for enterprise sessions)
-      const optInFlags = new Set(["ENTERPRISE_SOURCE_GROUNDING_REQUIRED", "CONTEXT_CAPSULE_PROTOCOL", "PERSONA_IDENTITY_TOKEN"]);
+      // P0_MFA_ENFORCEMENT (T9) is rollout-gated: it stays off until every admin has enrolled (docs/ops/identity.md).
+      const optInFlags = new Set(["ENTERPRISE_SOURCE_GROUNDING_REQUIRED", "CONTEXT_CAPSULE_PROTOCOL", "PERSONA_IDENTITY_TOKEN", "P0_MFA_ENFORCEMENT"]);
       for (const [name, value] of Object.entries(FeatureFlags)) {
         if (optInFlags.has(name)) {
           expect(value).toBe(false);

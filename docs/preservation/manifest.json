@@ -283,6 +283,14 @@
       "dynamic": false
     },
     {
+      "route": "/auth/error",
+      "file": "app/auth/error/page.tsx",
+      "public": true,
+      "roles": [],
+      "protectedRouteComponent": false,
+      "dynamic": false
+    },
+    {
       "route": "/auth/forgot-password",
       "file": "app/auth/forgot-password/page.tsx",
       "public": true,
@@ -989,6 +997,30 @@
   ],
   "apis": [
     {
+      "route": "/api/account/delete",
+      "file": "app/api/account/delete/route.ts",
+      "methods": [
+        "DELETE",
+        "GET",
+        "POST"
+      ]
+    },
+    {
+      "route": "/api/account/password",
+      "file": "app/api/account/password/route.ts",
+      "methods": [
+        "POST"
+      ]
+    },
+    {
+      "route": "/api/account/sessions",
+      "file": "app/api/account/sessions/route.ts",
+      "methods": [
+        "DELETE",
+        "GET"
+      ]
+    },
+    {
       "route": "/api/admin",
       "file": "app/api/admin/route.ts",
       "methods": [
@@ -1265,6 +1297,49 @@
       ]
     },
     {
+      "route": "/api/auth/mfa/challenge",
+      "file": "app/api/auth/mfa/challenge/route.ts",
+      "methods": [
+        "POST"
+      ]
+    },
+    {
+      "route": "/api/auth/mfa/enroll",
+      "file": "app/api/auth/mfa/enroll/route.ts",
+      "methods": [
+        "POST"
+      ]
+    },
+    {
+      "route": "/api/auth/mfa/factor",
+      "file": "app/api/auth/mfa/factor/route.ts",
+      "methods": [
+        "DELETE",
+        "POST"
+      ]
+    },
+    {
+      "route": "/api/auth/mfa/recover",
+      "file": "app/api/auth/mfa/recover/route.ts",
+      "methods": [
+        "POST"
+      ]
+    },
+    {
+      "route": "/api/auth/mfa/status",
+      "file": "app/api/auth/mfa/status/route.ts",
+      "methods": [
+        "GET"
+      ]
+    },
+    {
+      "route": "/api/auth/mfa/verify",
+      "file": "app/api/auth/mfa/verify/route.ts",
+      "methods": [
+        "POST"
+      ]
+    },
+    {
       "route": "/api/auth/profile",
       "file": "app/api/auth/profile/route.ts",
       "methods": [
@@ -1425,6 +1500,7 @@
       "route": "/api/candidate/settings",
       "file": "app/api/candidate/settings/route.ts",
       "methods": [
+        "DELETE",
         "GET",
         "PUT"
       ]
@@ -2101,6 +2177,64 @@
   ],
   "prisma": {
     "models": [
+      {
+        "name": "AccountDeletionRequest",
+        "fields": [
+          {
+            "name": "id",
+            "type": "String"
+          },
+          {
+            "name": "userId",
+            "type": "String"
+          },
+          {
+            "name": "email",
+            "type": "String"
+          },
+          {
+            "name": "role",
+            "type": "String"
+          },
+          {
+            "name": "status",
+            "type": "String"
+          },
+          {
+            "name": "reason",
+            "type": "String?"
+          },
+          {
+            "name": "requestedAt",
+            "type": "DateTime"
+          },
+          {
+            "name": "gracePeriodEndsAt",
+            "type": "DateTime"
+          },
+          {
+            "name": "processedAt",
+            "type": "DateTime?"
+          },
+          {
+            "name": "cancelledAt",
+            "type": "DateTime?"
+          },
+          {
+            "name": "createdAt",
+            "type": "DateTime"
+          },
+          {
+            "name": "updatedAt",
+            "type": "DateTime"
+          }
+        ],
+        "indexes": [
+          "index([userId])",
+          "index([status])",
+          "index([gracePeriodEndsAt])"
+        ]
+      },
       {
         "name": "ActivityLog",
         "fields": [
@@ -3297,6 +3431,10 @@
           },
           {
             "name": "enforced",
+            "type": "Boolean"
+          },
+          {
+            "name": "requireMfa",
             "type": "Boolean"
           },
           {
@@ -5338,6 +5476,35 @@
         ]
       },
       {
+        "name": "MfaRecoveryCode",
+        "fields": [
+          {
+            "name": "id",
+            "type": "String"
+          },
+          {
+            "name": "userId",
+            "type": "String"
+          },
+          {
+            "name": "codeHash",
+            "type": "String"
+          },
+          {
+            "name": "usedAt",
+            "type": "DateTime?"
+          },
+          {
+            "name": "createdAt",
+            "type": "DateTime"
+          }
+        ],
+        "indexes": [
+          "unique([userId, codeHash])",
+          "index([userId])"
+        ]
+      },
+      {
         "name": "Note",
         "fields": [
           {
@@ -5666,6 +5833,10 @@
           },
           {
             "name": "onboardingCompleted",
+            "type": "Boolean"
+          },
+          {
+            "name": "isTenantAdmin",
             "type": "Boolean"
           },
           {
@@ -6854,6 +7025,11 @@
       "name": "P0_COOKIE_INTERVIEW_AUTH",
       "env": "FF_P0_COOKIE_INTERVIEW_AUTH",
       "default": true
+    },
+    {
+      "name": "P0_MFA_ENFORCEMENT",
+      "env": "FF_P0_MFA_ENFORCEMENT",
+      "default": false
     },
     {
       "name": "P0_REDIS_SAFE_TO_FAIL",

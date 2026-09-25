@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import type { UserRole } from "@/types/supabase";
+import { MfaGate } from "@/components/auth/MfaGate";
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
@@ -61,5 +62,6 @@ export function ProtectedRoute({
     return null;
   }
 
-  return <>{children}</>;
+  // T9: mirror of the server-side MFA policy; a no-op while FF_P0_MFA_ENFORCEMENT is off.
+  return <MfaGate>{children}</MfaGate>;
 }

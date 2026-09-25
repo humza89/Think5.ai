@@ -6,7 +6,9 @@ import { logger } from "@/lib/logger";
 export class AuthError extends Error {
   constructor(
     message: string,
-    public statusCode: number
+    public statusCode: number,
+    /** Machine-readable reason, e.g. MFA_REQUIRED (T9). */
+    public code?: string
   ) {
     super(message);
     this.name = 'AuthError';
@@ -49,19 +51,41 @@ export async function getAuthenticatedUser() {
     throw new AuthError('Account deactivated.', 403);
   }
 
-  return { user, profile };
+  return { user, profile, supabase };
+}
+
+/**
+ * T9: reject an aal1 session where the MFA policy requires aal2. Enforcement
+ * is behind FF_P0_MFA_ENFORCEMENT; the assurance level is read from the
+ * session JWT (no network call).
+ */
+export async function enforceMfa(
+  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
+  profile: { id: string; email: string; role: UserRole },
+): Promise<void> {
+  const { mfaEnforcementEnabled, resolveMfaPolicy, prismaMfaLookup, mfaVerdict } = await import('@/lib/mfa');
+  if (!mfaEnforcementEnabled()) return;
+  const policy = await resolveMfaPolicy(profile, prismaMfaLookup(prisma));
+  if (!policy.required) return;
+  const { data } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+  const verdict = mfaVerdict(policy, { currentLevel: data?.currentLevel ?? null, nextLevel: data?.nextLevel ?? null }, true);
+  if (!verdict.ok) throw new AuthError(verdict.message, 403, verdict.code);
 }
 
 /**
  * Require that the authenticated user has one of the specified roles.
- * Throws AuthError(403) if the user's role is not in allowedRoles.
+ * Throws AuthError(403) if the user's role is not in allowedRoles, or (T9)
+ * AuthError(403, MFA_REQUIRED | MFA_ENROLLMENT_REQUIRED) when the MFA policy
+ * for the role is not satisfied by this session.
  */
 export async function requireRole(allowedRoles: UserRole[]) {
-  const { user, profile } = await getAuthenticatedUser();
+  const { user, profile, supabase } = await getAuthenticatedUser();
 
   if (!profile || !allowedRoles.includes(profile.role)) {
     throw new AuthError('Forbidden: insufficient permissions', 403);
   }
+
+  await enforceMfa(supabase, profile as { id: string; email: string; role: UserRole });
 
   return { user, profile };
 }
@@ -304,7 +328,7 @@ export async function requireInterviewAccess(interviewId: string) {
  */
 export function handleAuthError(error: unknown) {
   if (error instanceof AuthError) {
-    return { error: error.message, status: error.statusCode };
+    return error.code ? { error: error.message, status: error.statusCode, code: error.code } : { error: error.message, status: error.statusCode };
   }
   // Log full error to Sentry but return generic message to client
   try {

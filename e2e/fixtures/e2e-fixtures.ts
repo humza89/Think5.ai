@@ -38,6 +38,17 @@ export const E2E_FIXTURES = {
     lastName: "Alvarez",
     fullName: "Jordan Alvarez",
   },
+  /**
+   * T9: a recruiter account reserved for the identity spec, which rotates its
+   * password and enrols/removes MFA factors. Keeping that off the shared
+   * recruiter means no other spec's session or sign-in can be disturbed.
+   */
+  identity: {
+    email: "e2e-identity@think5.test",
+    firstName: "Sam",
+    lastName: "Okafor",
+    name: "Sam Okafor",
+  },
   ids,
   tokens: {
     invitation: "e2e-invitation-token-0001",
