@@ -6577,6 +6577,11 @@
       "default": true
     },
     {
+      "name": "P0_SINGLE_INTERVIEW_ROOM",
+      "env": "FF_P0_SINGLE_INTERVIEW_ROOM",
+      "default": true
+    },
+    {
       "name": "PERSONA_IDENTITY_TOKEN",
       "env": "FF_PERSONA_IDENTITY_TOKEN",
       "default": false
