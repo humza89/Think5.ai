@@ -910,6 +910,19 @@ model InterviewerStateSnapshot {
   @@index([interviewId])
 }
 
+// Phase 0 T11: Postgres-authoritative lease for InterviewSessionStore (lib/interview-session-store.ts).
+// Fences interview writers with an opaque token; correct even while Redis is unavailable.
+model InterviewLease {
+  interviewId String   @id
+  ownerId     String
+  token       String
+  expiresAt   DateTime
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([expiresAt])
+}
+
 // ============================================
 // Interview Event Timeline — Replay-grade observability
 // ============================================

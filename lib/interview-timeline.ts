@@ -15,6 +15,7 @@ import { logger } from "@/lib/logger";
 // ── Types ────────────────────────────────────────────────────────────
 
 export type EventType =
+  | "durability_downgrade" // T11: voice-init proceeded with durability=postgres (Redis unavailable)
   | "connect"
   | "disconnect"
   | "reconnect"

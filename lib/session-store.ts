@@ -9,6 +9,15 @@
 import { randomUUID, createHmac, createHash, timingSafeEqual } from "crypto";
 import { recordSLOEvent } from "@/lib/slo-monitor";
 import { logger } from "@/lib/logger";
+import { noteRedisDegraded, redisSafeToFailEnabled, withRedisTimeout, REDIS_CALL_TIMEOUT_MS } from "@/lib/redis-degradation";
+import type { Durability } from "@/lib/contracts/interview-session-store";
+
+/** T11: what a caller can rely on after a session write. */
+export interface DurableStoreStatus {
+  durable: boolean;
+  durability: Durability;
+  reason?: string;
+}
 
 // HMAC secret for signing reconnect tokens — required in production
 // Lazy-initialized to avoid crashing at build time (Next.js collects page data in production mode)
@@ -41,7 +50,14 @@ async function getRedis() {
 
   if (!url || !token) {
     if (isProduction()) {
-      throw new Error("Redis unavailable in production — UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN must be set");
+      // T11: missing Redis in production is a durability downgrade (Postgres
+      // holds the authoritative ledger and snapshots) unless the legacy
+      // fail-closed mode is pinned with FF_P0_REDIS_SAFE_TO_FAIL=false.
+      if (!redisSafeToFailEnabled()) {
+        throw new Error("Redis unavailable in production — UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN must be set");
+      }
+      noteRedisDegraded("session-store", "not configured");
+      return null;
     }
     logger.warn("Upstash Redis not configured. Using in-memory session fallback (dev/test only).");
     return null;
@@ -54,10 +70,39 @@ async function getRedis() {
     return redisClient;
   } catch (err) {
     if (isProduction()) {
-      throw new Error(`Redis initialization failed in production: ${err}`);
+      if (!redisSafeToFailEnabled()) {
+        throw new Error(`Redis initialization failed in production: ${err}`);
+      }
+      noteRedisDegraded("session-store", err);
+      return null;
     }
     logger.warn("Failed to initialize Redis client. Using in-memory fallback (dev/test only).");
     return null;
+  }
+}
+
+/**
+ * T11: report the durable-store status instead of throwing. Redis reachability
+ * is probed with a bounded PING so a hung network path cannot stall voice-init.
+ * durability "postgres" means the interview proceeds on the authoritative
+ * Postgres ledger/snapshots with per-instance hot state only.
+ */
+export async function checkDurableStore(): Promise<DurableStoreStatus> {
+  let redis: any;
+  try {
+    redis = await getRedis();
+  } catch (err) {
+    return { durable: false, durability: "postgres", reason: err instanceof Error ? err.message : String(err) };
+  }
+  if (!redis) {
+    return { durable: false, durability: "postgres", reason: isProduction() ? "redis_not_configured" : "redis_not_configured_dev" };
+  }
+  try {
+    await withRedisTimeout(redis.ping(), REDIS_CALL_TIMEOUT_MS, "ping");
+    return { durable: true, durability: "postgres+redis" };
+  } catch (err) {
+    noteRedisDegraded("session-store", err);
+    return { durable: false, durability: "postgres", reason: err instanceof Error ? err.message : String(err) };
   }
 }
 
@@ -67,6 +112,7 @@ async function getRedis() {
  */
 export async function assertDurableStore(): Promise<void> {
   if (!isProduction()) return;
+  if (redisSafeToFailEnabled()) return; // T11: callers use checkDurableStore() and downgrade
   const redis = await getRedis();
   if (!redis) {
     throw new Error("Redis unavailable in production — cannot proceed without durable session store");
@@ -149,7 +195,7 @@ function sessionKey(interviewId: string): string {
 export async function saveSessionState(
   interviewId: string,
   state: SessionState
-): Promise<void> {
+): Promise<Durability> {
   const key = sessionKey(interviewId);
   const serialized = JSON.stringify(state);
   const sizeBytes = Buffer.byteLength(serialized, "utf8");
@@ -168,8 +214,8 @@ export async function saveSessionState(
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       try {
-        await redis.set(key, serialized, { ex: SESSION_TTL_SECONDS });
-        return; // Success — exit early
+        await withRedisTimeout(redis.set(key, serialized, { ex: SESSION_TTL_SECONDS }), REDIS_CALL_TIMEOUT_MS, "session set");
+        return "postgres+redis"; // Success — exit early
       } catch (err) {
         lastErr = err;
         if (attempt < maxRetries) {
@@ -191,11 +237,19 @@ export async function saveSessionState(
         timestamp: new Date().toISOString(),
       }));
       recordSLOEvent("session.save.failure_rate", false).catch(() => {});
-      throw new Error(`Session save failed for ${interviewId} — Redis write failure after ${maxRetries + 1} attempts`);
+      if (!redisSafeToFailEnabled()) {
+        throw new Error(`Session save failed for ${interviewId} — Redis write failure after ${maxRetries + 1} attempts`);
+      }
+      // T11: durability downgrade. The canonical ledger and InterviewerStateSnapshot
+      // in Postgres remain authoritative; recovery reconstructs from them
+      // (reconstructSessionFromLedger) when this instance's memory copy is gone.
+      noteRedisDegraded("session-store", lastErr);
+    } else {
+      logger.error(JSON.stringify({ event: "session_save_fallback", interviewId, attempts: maxRetries + 1, error: (lastErr as Error)?.message, severity: "error", timestamp: new Date().toISOString() }));
     }
-    logger.error(JSON.stringify({ event: "session_save_fallback", interviewId, attempts: maxRetries + 1, error: (lastErr as Error)?.message, severity: "error", timestamp: new Date().toISOString() }));
     memoryStore.set(key, serialized);
     memoryExpiry.set(key, Date.now() + SESSION_TTL_SECONDS * 1000);
+    return "postgres";
   } else {
     if (isProduction()) {
       logger.error(JSON.stringify({
@@ -206,10 +260,14 @@ export async function saveSessionState(
         error: "no durable store available",
         timestamp: new Date().toISOString(),
       }));
-      throw new Error(`Session save failed for ${interviewId} — no durable store available`);
+      if (!redisSafeToFailEnabled()) {
+        throw new Error(`Session save failed for ${interviewId} — no durable store available`);
+      }
+      noteRedisDegraded("session-store", "not configured");
     }
     memoryStore.set(key, serialized);
     memoryExpiry.set(key, Date.now() + SESSION_TTL_SECONDS * 1000);
+    return "postgres";
   }
 }
 
@@ -517,8 +575,19 @@ export async function acquireSessionLock(
   }
 
   const key = `voice-lock:${interviewId}`;
-  const result = await redis.set(key, token, { nx: true, ex: LOCK_TTL_SECONDS });
-  return { acquired: result === "OK", ownerToken: result === "OK" ? token : "" };
+  try {
+    const result = await withRedisTimeout(redis.set(key, token, { nx: true, ex: LOCK_TTL_SECONDS }), REDIS_CALL_TIMEOUT_MS, "lock set");
+    return { acquired: result === "OK", ownerToken: result === "OK" ? token : "" };
+  } catch (err) {
+    // T11: a Redis error must not turn into a 500 on voice-init. With
+    // FF_P0_REDIS_SAFE_TO_FAIL on, fall back to the per-instance lock (documented
+    // limitation: cross-instance duplicate detection is lost during the outage).
+    if (isProduction() && !redisSafeToFailEnabled()) throw err;
+    noteRedisDegraded("session-lock", err);
+    if (memoryLocks.has(key)) return { acquired: false, ownerToken: "" };
+    memoryLocks.set(key, token);
+    return { acquired: true, ownerToken: token };
+  }
 }
 
 /**

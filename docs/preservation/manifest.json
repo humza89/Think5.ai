@@ -4133,6 +4133,38 @@
         ]
       },
       {
+        "name": "InterviewLease",
+        "fields": [
+          {
+            "name": "interviewId",
+            "type": "String"
+          },
+          {
+            "name": "ownerId",
+            "type": "String"
+          },
+          {
+            "name": "token",
+            "type": "String"
+          },
+          {
+            "name": "expiresAt",
+            "type": "DateTime"
+          },
+          {
+            "name": "createdAt",
+            "type": "DateTime"
+          },
+          {
+            "name": "updatedAt",
+            "type": "DateTime"
+          }
+        ],
+        "indexes": [
+          "index([expiresAt])"
+        ]
+      },
+      {
         "name": "InterviewQualityMetrics",
         "fields": [
           {
@@ -6821,6 +6853,11 @@
     {
       "name": "P0_COOKIE_INTERVIEW_AUTH",
       "env": "FF_P0_COOKIE_INTERVIEW_AUTH",
+      "default": true
+    },
+    {
+      "name": "P0_REDIS_SAFE_TO_FAIL",
+      "env": "FF_P0_REDIS_SAFE_TO_FAIL",
       "default": true
     },
     {

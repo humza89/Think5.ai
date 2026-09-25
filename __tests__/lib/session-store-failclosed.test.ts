@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 /**
  * Session Store Fail-Closed Tests
@@ -24,8 +24,11 @@ vi.mock("@/lib/slo-monitor", () => ({
 // or throw (in production)
 delete process.env.UPSTASH_REDIS_REST_URL;
 delete process.env.UPSTASH_REDIS_REST_TOKEN;
+// T11: the legacy fail-closed contract below is the FF_P0_REDIS_SAFE_TO_FAIL=false
+// mode. The default (on) is covered further down and in __tests__/chaos/redis-loss.test.ts.
+process.env.FF_P0_REDIS_SAFE_TO_FAIL = "false";
 
-import { saveSessionState, getSessionState } from "@/lib/session-store";
+import { saveSessionState, getSessionState, checkDurableStore, assertDurableStore } from "@/lib/session-store";
 
 describe("Session Store — Fail-Closed Behavior", () => {
   const env = process.env as Record<string, string | undefined>;
@@ -58,7 +61,7 @@ describe("Session Store — Fail-Closed Behavior", () => {
         moduleScores: [],
         questionCount: 0,
       } as any)
-    ).resolves.toBeUndefined();
+    ).resolves.toBe("postgres");
 
     // Verify it was stored and is retrievable
     const state = await getSessionState("test-interview-2");
@@ -81,5 +84,24 @@ describe("Session Store — Fail-Closed Behavior", () => {
     expect(state).not.toBeNull();
     expect(state?.questionCount).toBe(5);
     expect(state?.moduleScores).toHaveLength(1);
+  });
+});
+
+describe("Session Store — T11 safe-to-fail (FF_P0_REDIS_SAFE_TO_FAIL on)", () => {
+  const env = process.env as Record<string, string | undefined>;
+  const originalNodeEnv = env.NODE_ENV;
+  beforeEach(() => { env.FF_P0_REDIS_SAFE_TO_FAIL = "true"; env.NODE_ENV = "production"; });
+  afterEach(() => { env.FF_P0_REDIS_SAFE_TO_FAIL = "false"; env.NODE_ENV = originalNodeEnv; });
+
+  it("production save without Redis resolves with durability=postgres instead of throwing", async () => {
+    await expect(
+      saveSessionState("test-interview-4", { interviewId: "test-interview-4", moduleScores: [], questionCount: 1 } as any)
+    ).resolves.toBe("postgres");
+    expect((await getSessionState("test-interview-4"))?.questionCount).toBe(1);
+  });
+
+  it("assertDurableStore is a no-op and checkDurableStore reports the downgrade", async () => {
+    await expect(assertDurableStore()).resolves.toBeUndefined();
+    expect(await checkDurableStore()).toMatchObject({ durable: false, durability: "postgres", reason: "redis_not_configured" });
   });
 });

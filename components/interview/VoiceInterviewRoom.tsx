@@ -102,6 +102,7 @@ export function VoiceInterviewRoom({
     isReconnecting: voiceReconnecting,
     isPaused,
     reconnectPhase,
+    durability,
     reconnectAttempt,
     reconnectMax,
     startInterview,
@@ -522,6 +523,12 @@ export function VoiceInterviewRoom({
                 <button onClick={reconnect} className="underline text-xs">Retry</button>
                 <button onClick={() => setShowTextInput(true)} className="underline text-xs">Text Mode</button>
               </div>
+            </div>
+          )}
+          {durability === "postgres" && !voiceReconnecting && (
+            <div className="flex items-center gap-2 bg-amber-500/80 px-4 py-2 text-sm text-white" data-testid="reduced-resilience-banner">
+              <AlertTriangle className="h-4 w-4" />
+              <span>Reduced resilience: the live session cache is unavailable. Your answers are still being saved.</span>
             </div>
           )}
           {micIsSilent && isMicEnabled && interviewState === "IN_PROGRESS" && (

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { redisDegradationStatus } from "@/lib/redis-degradation";
 
 /**
  * Public Health Check Endpoint
@@ -81,6 +82,7 @@ export async function GET() {
       if (res.ok) {
         const data = await res.json();
         checks.relay = data.status === "healthy" ? "healthy" : "degraded";
+        if (data.region) checks.relayRegion = String(data.region);
       } else {
         checks.relay = "unhealthy";
       }
@@ -91,7 +93,20 @@ export async function GET() {
     checks.relay = "unhealthy";
   }
 
+  // T11: one voice verdict for the room. "down" = relay unreachable or not
+  // configured (text mode only); "degraded" = relay draining/under pressure
+  // or provider unreachable (voice may start; expect reconnects); "ok".
+  const voice: "ok" | "degraded" | "down" =
+    checks.relay === "unhealthy" || checks.relay === "not_configured"
+      ? "down"
+      : checks.relay === "degraded" || checks.gemini === "unhealthy"
+        ? "degraded"
+        : "ok";
+  const redisDegradation = redisDegradationStatus();
+
   const dbHealthy = checks.database === "healthy";
+  const relayRegion = checks.relayRegion;
+  delete checks.relayRegion;
   const allHealthy = Object.values(checks).every(
     (v) => v === "healthy" || v === "configured" || v === "not_configured"
   );
@@ -106,7 +121,13 @@ export async function GET() {
         gemini: checks.gemini,
         inngest: checks.inngest,
         relay: checks.relay,
+        voice,
       },
+      // T11: durability posture. Redis is an accelerator; "postgres" means
+      // interviews continue on the authoritative Postgres ledger.
+      durability: checks.redis === "healthy" ? "postgres+redis" : "postgres",
+      ...(relayRegion ? { relayRegion } : {}),
+      ...(redisDegradation.lastDegradedAt ? { redisDegradedAt: redisDegradation.lastDegradedAt } : {}),
     },
     { status: dbHealthy ? 200 : 503 }
   );

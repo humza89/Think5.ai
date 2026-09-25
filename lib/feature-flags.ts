@@ -83,6 +83,8 @@ export const FeatureFlags = {
 
   /** Phase 0 T4: /candidate/interview/[id] redirects to the single interview room at /interview/[id]. */
   P0_SINGLE_INTERVIEW_ROOM: envBool("FF_P0_SINGLE_INTERVIEW_ROOM", true),
+  /** Phase 0 T11: Redis loss is a durability downgrade (limiters fall back in-memory, session store reports durability=postgres) instead of a hard failure. Read from the environment in lib/redis-degradation.ts. */
+  P0_REDIS_SAFE_TO_FAIL: envBool("FF_P0_REDIS_SAFE_TO_FAIL", true),
 } as const;
 
 /**
