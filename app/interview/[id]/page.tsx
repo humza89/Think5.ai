@@ -18,6 +18,7 @@ import { useMediaRecording } from "@/hooks/useMediaRecording";
 import { classifyError } from "@/lib/error-classification";
 import { csrfHeaders } from "@/lib/csrf-client";
 import { apiFetch } from "@/lib/api-client";
+import { supportId } from "@/lib/request-context";
 
 type InterviewStage =
   | "LOADING"
@@ -67,6 +68,9 @@ export default function InterviewRoom() {
   const [meta, setMeta] = useState<InterviewMeta | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [errorStatus, setErrorStatus] = useState<number | null>(null);
+  // T12: x-request-id echoed by the proxy on the last failed call; shown as a
+  // Support ID on the error card so a candidate can quote something searchable.
+  const [errorRequestId, setErrorRequestId] = useState<string | null>(null);
   const [showEndConfirm, setShowEndConfirm] = useState(false);
   const [proctoringConfig, setProctoringConfig] = useState<ProctoringConfig>({ tier: "strict" });
   const autoEndTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -103,6 +107,7 @@ export default function InterviewRoom() {
         if (!res.ok) {
           const data = await res.json().catch(() => ({}));
           setErrorStatus(res.status);
+          setErrorRequestId(res.headers.get("x-request-id"));
           setError(data.error || "Unable to access this interview");
           return;
         }
@@ -172,6 +177,7 @@ export default function InterviewRoom() {
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         setErrorStatus(res.status);
+        setErrorRequestId(res.headers.get("x-request-id"));
         setError(data.error || "Failed to save consent. Please try again.");
         return;
       }
@@ -332,6 +338,11 @@ export default function InterviewRoom() {
           <h1 className="text-xl font-bold text-white mb-2">{classified.title}</h1>
           <p className="text-zinc-400 mb-2">{classified.message}</p>
           <p className="text-zinc-500 text-sm">{classified.action}</p>
+          {supportId(interviewId, errorRequestId ?? undefined) && (
+            <p className="mt-3 font-mono text-xs text-zinc-600" data-testid="support-id">
+              Support ID: {supportId(interviewId, errorRequestId ?? undefined)}
+            </p>
+          )}
           {classified.recoverable && (
             <button
               onClick={() => window.location.reload()}

@@ -171,7 +171,19 @@ function getRoleHomePage(role: string): string {
   }
 }
 
+const REQUEST_ID_HEADER = 'x-request-id';
+
+/** T12: every request carries an id; clients may supply one, otherwise we mint it. */
+function ensureRequestId(request: NextRequest): string {
+  const incoming = request.headers.get(REQUEST_ID_HEADER);
+  if (incoming && /^[A-Za-z0-9._-]{8,128}$/.test(incoming)) return incoming;
+  const id = randomUUID();
+  request.headers.set(REQUEST_ID_HEADER, id);
+  return id;
+}
+
 export async function proxy(request: NextRequest) {
+  const requestId = ensureRequestId(request);
   // HTTPS enforcement in production (tokens must never travel over HTTP)
   if (
     process.env.NODE_ENV === 'production' &&
@@ -183,9 +195,13 @@ export async function proxy(request: NextRequest) {
   }
 
   const rejected = await enforceCsrfAndRateLimit(request);
-  if (rejected) return rejected;
+  if (rejected) {
+    rejected.headers.set(REQUEST_ID_HEADER, requestId);
+    return rejected;
+  }
 
   const response = await authorize(request);
+  response.headers.set(REQUEST_ID_HEADER, requestId);
   return attachCsrfCookies(request, response);
 }
 
