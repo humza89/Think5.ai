@@ -49,6 +49,7 @@ interface InterviewMeta {
   templateMode?: string | null;
   candidateReportPolicy?: Record<string, boolean> | null;
   isPractice?: boolean;
+  accommodations?: Record<string, unknown> | null;
 }
 
 const MAX_DURATION_MS = 45 * 60 * 1000; // 45 minutes
@@ -71,7 +72,13 @@ export default function InterviewRoom() {
   const autoEndTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const session = useInterviewSession({ interviewId, accessToken });
-  const proctoring = useProctoring(proctoringConfig);
+  // T3: the hook batches integrity events to the server for this interview.
+  const proctoring = useProctoring({ ...proctoringConfig, interviewId });
+  // T3: accommodations chosen on the welcome screen (extendedTime, textOnly, …).
+  const [accommodations, setAccommodations] = useState<{ extendedTime?: boolean; textOnly?: boolean } | null>(null);
+  const textOnly = accommodations?.textOnly === true;
+  const durationFactor = accommodations?.extendedTime ? 1.25 : 1;
+  const useVoiceRoom = meta?.voiceProvider === "gemini-live" && !textOnly;
   const voice = useVoiceInput();
   const screenCapture = useScreenCapture({ interviewId });
   const recording = useMediaRecording({
@@ -140,7 +147,14 @@ export default function InterviewRoom() {
   }, [interviewId, accessToken]);
 
   // Handle start — save consent, request fullscreen + start monitoring
-  const handleStart = useCallback(async (consent: { consentRecording: boolean; consentProctoring: boolean; consentPrivacy: boolean }) => {
+  const handleStart = useCallback(async (consent: {
+    consentRecording: boolean;
+    consentProctoring: boolean;
+    consentPrivacy: boolean;
+    accommodations?: { extendedTime: boolean; textOnly: boolean; captioning: boolean; screenReader: boolean };
+  }) => {
+    const chosen = consent.accommodations ?? (meta?.accommodations as typeof consent.accommodations | undefined) ?? null;
+    setAccommodations(chosen);
     // Persist consent to the backend — MUST succeed before starting
     try {
       const res = await apiFetch(`/api/interviews/${interviewId}/validate`, {
@@ -152,6 +166,7 @@ export default function InterviewRoom() {
           consentRecording: consent.consentRecording,
           consentProctoring: consent.consentProctoring,
           consentPrivacy: consent.consentPrivacy,
+          ...(chosen ? { accommodations: chosen } : {}),
         }),
       });
       if (!res.ok) {
@@ -176,7 +191,7 @@ export default function InterviewRoom() {
     // SECURITY: Always start proctoring monitoring regardless of voice provider
     proctoring.startMonitoring();
 
-    if (meta?.voiceProvider !== "gemini-live") {
+    if (meta?.voiceProvider !== "gemini-live" || chosen?.textOnly) {
       await proctoring.requestFullscreen();
       await session.startInterview();
       // Start recording if webcam is active and consent given
@@ -200,6 +215,7 @@ export default function InterviewRoom() {
   const handleEndConfirm = useCallback(async () => {
     setShowEndConfirm(false);
     setStage("CLOSING");
+    await proctoring.flushIntegrityEvents();
     await session.endInterview(proctoring.integrityEvents);
     // Finalize recording
     const elapsed = meta?.duration ? Math.round((Date.now() - (meta.duration ?? 0)) / 1000) : 0;
@@ -266,13 +282,14 @@ export default function InterviewRoom() {
 
     autoEndTimerRef.current = setTimeout(async () => {
       setStage("CLOSING");
-      await session.endInterview(proctoring.integrityEvents);
+      await proctoring.flushIntegrityEvents();
+    await session.endInterview(proctoring.integrityEvents);
       proctoring.stopWebcam();
       if (document.fullscreenElement) {
         document.exitFullscreen().catch(() => {});
       }
       setStage("COMPLETE");
-    }, MAX_DURATION_MS);
+    }, MAX_DURATION_MS * durationFactor);
 
     return () => {
       if (autoEndTimerRef.current) {
@@ -402,14 +419,14 @@ export default function InterviewRoom() {
   }
 
   // Voice interview mode — route to VoiceInterviewRoom (only after consent via WelcomeScreen)
-  if (meta?.voiceProvider === "gemini-live" && stage === "ACTIVE") {
+  if (useVoiceRoom && meta && stage === "ACTIVE") {
     return (
       <VoiceInterviewRoom
         interviewId={interviewId}
         candidateName={meta.candidateName}
         jobTitle={meta.jobTitle || "Interview"}
         accessToken={accessToken}
-        durationMinutes={meta.durationMinutes || 30}
+        durationMinutes={Math.round((meta.durationMinutes || 30) * durationFactor)}
       />
     );
   }

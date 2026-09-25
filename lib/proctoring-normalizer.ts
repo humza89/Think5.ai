@@ -31,9 +31,91 @@ function mapSeverity(eventType: string): ProctoringEventSeverity {
   return "LOW";
 }
 
+/** Idempotency key for one client integrity event. */
+export function integrityEventKey(interviewId: string, type: string, timestampIso: string): string {
+  return `${interviewId}:${type}:${timestampIso}`;
+}
+
+export interface IntegrityBatchResult {
+  persisted: number;
+  deduplicated: number;
+}
+
 /**
- * Persist integrity events as structured ProctoringEvent rows.
- * Deduplicates by checking for existing events with same type and timestamp.
+ * T3: persist a batch of client integrity events exactly once.
+ *
+ * Deduplicates within the batch and against rows already stored for the
+ * interview (same type + timestamp), writes the fresh rows and, unless
+ * disabled, appends them to Interview.integrityEvents in the same
+ * transaction so the JSON column (read by the text path and reports) and
+ * the structured rows never diverge.
+ */
+export async function persistIntegrityBatch(
+  interviewId: string,
+  events: IntegrityEvent[],
+  options: { appendToInterview?: boolean } = {},
+): Promise<IntegrityBatchResult> {
+  const appendToInterview = options.appendToInterview ?? true;
+  if (!events || events.length === 0) return { persisted: 0, deduplicated: 0 };
+
+  const unique = new Map<string, IntegrityEvent & { timestamp: string }>();
+  for (const event of events) {
+    const parsed = Date.parse(event.timestamp);
+    if (!event.type || Number.isNaN(parsed)) continue;
+    const timestamp = new Date(parsed).toISOString();
+    const key = integrityEventKey(interviewId, event.type, timestamp);
+    if (!unique.has(key)) unique.set(key, { ...event, timestamp });
+  }
+
+  const candidates = [...unique.values()];
+  if (candidates.length === 0) return { persisted: 0, deduplicated: events.length };
+
+  const existing = await prisma.proctoringEvent.findMany({
+    where: { interviewId, timestamp: { in: candidates.map((e) => new Date(e.timestamp)) } },
+    select: { eventType: true, timestamp: true },
+  });
+  const existingKeys = new Set(
+    existing.map((row: { eventType: string; timestamp: Date }) => integrityEventKey(interviewId, row.eventType, row.timestamp.toISOString())),
+  );
+  const fresh = candidates.filter((e) => !existingKeys.has(integrityEventKey(interviewId, e.type, e.timestamp)));
+
+  if (fresh.length > 0) {
+    await prisma.$transaction(async (tx: typeof prisma) => {
+      await tx.proctoringEvent.createMany({
+        data: fresh.map((e) => ({
+          interviewId,
+          eventType: e.type,
+          timestamp: new Date(e.timestamp),
+          details: {
+            ...(e.description ? { description: e.description } : {}),
+            idempotencyKey: integrityEventKey(interviewId, e.type, e.timestamp),
+          },
+          severity: (e.severity as ProctoringEventSeverity | undefined) ?? mapSeverity(e.type),
+        })),
+      });
+      if (appendToInterview) {
+        const current = await tx.interview.findUnique({ where: { id: interviewId }, select: { integrityEvents: true } });
+        const list = Array.isArray(current?.integrityEvents) ? (current!.integrityEvents as unknown[]) : [];
+        await tx.interview.update({
+          where: { id: interviewId },
+          data: {
+            integrityEvents: [
+              ...list,
+              ...fresh.map((e) => ({ type: e.type, description: e.description, timestamp: e.timestamp })),
+            ] as any,
+          },
+        });
+      }
+    });
+  }
+
+  return { persisted: fresh.length, deduplicated: events.length - fresh.length };
+}
+
+/**
+ * Persist integrity events already held on Interview.integrityEvents as
+ * structured ProctoringEvent rows (end-of-interview path). Idempotent:
+ * repeated calls never create duplicate rows.
  */
 export async function persistProctoringEvents(
   interviewId: string,
@@ -42,29 +124,9 @@ export async function persistProctoringEvents(
   if (!events || events.length === 0) {
     return { persisted: 0, hash: "" };
   }
-
-  const rows = events.map((e) => ({
-    interviewId,
-    eventType: e.type,
-    timestamp: new Date(e.timestamp),
-    details: e.description ? { description: e.description } : undefined,
-    severity: mapSeverity(e.type),
-  }));
-
-  // Batch create (skip duplicates by catching unique constraint errors)
-  let persisted = 0;
-  for (const row of rows) {
-    try {
-      await prisma.proctoringEvent.create({ data: row as any });
-      persisted++;
-    } catch {
-      // Skip duplicates or errors — non-critical
-    }
-  }
-
+  const { persisted } = await persistIntegrityBatch(interviewId, events, { appendToInterview: false });
   // Compute integrity hash for tamper detection
   const hash = computeJsonHash(events);
-
   return { persisted, hash };
 }
 

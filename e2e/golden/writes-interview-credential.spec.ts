@@ -116,6 +116,29 @@ test("room in cookie mode reaches voice-init without a token in the URL", async 
     // The credential must resolve. Whether the voice provider is reachable in
     // this environment is outside T2 (tracked for T10/T14 provider mocks).
     expect([400, 401, 403], `voice-init must not fail on credential (got ${initResponse.status()})`).not.toContain(initResponse.status());
+
+    // T3: an integrity event raised in the room reaches the server as a batch
+    // (the hook flushes every 10 s) and lands as a ProctoringEvent row.
+    const batch = page.waitForResponse((r) => r.url().endsWith(`${base}/proctoring`) && r.request().method() === "POST", { timeout: 30_000 });
+    await page.evaluate(() => {
+      Object.defineProperty(document, "hidden", { configurable: true, get: () => true });
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    const batchResponse = await batch;
+    expect(batchResponse.status(), "proctoring batch in cookie mode").toBe(200);
+    expect(((await batchResponse.json()) as { persisted: number }).persisted).toBeGreaterThanOrEqual(1);
+    if (process.env.DATABASE_URL) {
+      const { PrismaClient } = await import("@prisma/client");
+      const raw = new PrismaClient({ datasources: { db: { url: process.env.DATABASE_URL } } });
+      try {
+        const rows = await raw.proctoringEvent.findMany({ where: { interviewId, eventType: "tab_switch" } });
+        expect(rows.length, "tab_switch persisted as a ProctoringEvent row").toBeGreaterThanOrEqual(1);
+        await raw.proctoringEvent.deleteMany({ where: { interviewId } });
+        await raw.interview.update({ where: { id: interviewId }, data: { integrityEvents: [] } });
+      } finally {
+        await raw.$disconnect();
+      }
+    }
   } finally {
     await context.close();
   }
