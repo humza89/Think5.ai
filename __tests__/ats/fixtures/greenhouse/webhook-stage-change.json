@@ -1,0 +1,14 @@
+{
+  "action": "candidate_stage_change",
+  "payload": {
+    "application": {
+      "id": 9002,
+      "updated_at": "2026-09-25T11:00:00.000Z",
+      "status": "active",
+      "candidate": { "id": 7002, "first_name": "Priya", "last_name": "N" },
+      "jobs": [{ "id": 4001, "name": "Senior Backend Engineer" }],
+      "current_stage": { "id": 52, "name": "Technical Interview" },
+      "source": { "id": 1, "name": "Think5" }
+    }
+  }
+}

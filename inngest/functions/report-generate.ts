@@ -216,6 +216,19 @@ export const reportGenerate = inngest.createFunction(
       }
     });
 
+    // Step 8 (T15): push the report to the tenant's ATS through the adapter contract.
+    await step.run("ats-export-report", async () => {
+      const { prisma } = await import("@/lib/prisma");
+      const interview = await prisma.interview.findUnique({ where: { id: interviewId }, select: { companyId: true } });
+      if (!interview?.companyId) return { integrations: 0 };
+      const { integrationsForCompany } = await import("@/lib/ats/server");
+      const integrations = await integrationsForCompany(interview.companyId);
+      if (integrations.length === 0) return { integrations: 0 };
+      const { inngest: client } = await import("@/inngest/client");
+      await client.send(integrations.map((i: { id: string }) => ({ name: "ats/sync.requested", data: { integrationId: i.id, direction: "export", interviewId, trigger: "event" } })));
+      return { integrations: integrations.length };
+    });
+
     return { interviewId, status: "complete" };
   }
 );

@@ -1879,6 +1879,46 @@ model GovernancePolicy {
 // ATS Integration — External System Connections
 // ============================================
 
+// Phase 0 T15 (additive): sync runs and entity links proving the ATSAdapter
+// contract end to end (Greenhouse first). Both are append-only bookkeeping;
+// no existing table changes.
+model ATSSyncRun {
+  id            String    @id @default(uuid())
+  integrationId String
+  integration   ATSIntegration @relation(fields: [integrationId], references: [id], onDelete: Cascade)
+  direction     String    // "import" | "export" | "webhook"
+  trigger       String    @default("manual") // "manual" | "schedule" | "event"
+  status        String    @default("running") // "running" | "success" | "error"
+  startedAt     DateTime  @default(now())
+  finishedAt    DateTime?
+  counts        Json?     // { fetched, created, updated, skipped, failed }
+  errors        Json?     // [{ remoteId?, localId?, message }]
+  createdAt     DateTime  @default(now())
+
+  @@index([integrationId, startedAt])
+  @@index([status])
+}
+
+model ATSEntityLink {
+  id              String    @id @default(uuid())
+  integrationId   String
+  integration     ATSIntegration @relation(fields: [integrationId], references: [id], onDelete: Cascade)
+  localType       String    // "job" | "candidate" | "application" | "report" | "idempotency" | "webhook-event"
+  localId         String
+  remoteId        String
+  remoteUpdatedAt DateTime?
+  lastSyncedAt    DateTime  @default(now())
+  checksum        String?   // sha256 of the synced projection; unchanged → skip
+  state           Json?     // last remote/local snapshot for reconciliation, or the stored idempotent result
+  lastError       String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@unique([integrationId, localType, localId])
+  @@unique([integrationId, localType, remoteId])
+  @@index([integrationId, localType])
+}
+
 model ATSIntegration {
   id            String   @id @default(uuid())
   companyId     String
@@ -1894,6 +1934,9 @@ model ATSIntegration {
   syncError     String?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
+  // T15
+  syncRuns      ATSSyncRun[]
+  entityLinks   ATSEntityLink[]
 
   @@unique([companyId, provider])
   @@index([companyId])

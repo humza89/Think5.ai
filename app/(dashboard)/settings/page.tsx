@@ -13,6 +13,7 @@ import {
   FileText,
   Settings as SettingsIcon,
   Key,
+  Plug,
 } from "lucide-react";
 
 export default function SettingsPage() {
@@ -46,6 +47,13 @@ export default function SettingsPage() {
       description: "Password, two-factor authentication, and sessions",
       icon: Shield,
       href: "/settings/security",
+      color: "text-red-600 bg-red-50",
+    },
+{
+      title: "Integrations",
+      description: "Connect Greenhouse; import jobs, push candidates and reports",
+      icon: Plug,
+      href: "/settings/integrations",
       color: "text-red-600 bg-red-50",
     },
     {

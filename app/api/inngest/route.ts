@@ -19,6 +19,8 @@ import {
   updateAriaMemoryGraph,
   webhookRetry,
   usageAggregate,
+  atsSync,
+  atsScheduledImport,
 } from "@/inngest/functions";
 
 export const { GET, POST, PUT } = serve({
@@ -35,5 +37,7 @@ export const { GET, POST, PUT } = serve({
     updateAriaMemoryGraph,
     webhookRetry,
     usageAggregate,
+    atsSync,
+    atsScheduledImport,
   ],
 });

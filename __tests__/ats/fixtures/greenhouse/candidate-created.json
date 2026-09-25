@@ -1,0 +1,1 @@
+{ "id": 7002, "first_name": "Priya", "last_name": "N", "email_addresses": [{ "value": "priya@example.test", "type": "personal" }], "applications": [{ "id": 9002, "jobs": [{ "id": 4001, "name": "Senior Backend Engineer" }], "current_stage": { "id": 50, "name": "Application Review" }, "status": "active" }] }

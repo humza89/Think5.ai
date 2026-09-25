@@ -26,7 +26,9 @@ const CSRF_CLIENT_COOKIE_NAME = 'csrf-token-client';
 const CSRF_HEADER_NAME = 'x-csrf-token';
 
 const CSRF_EXEMPT_PATTERNS = [
-  /^\/api\/integrations\//, // Webhook receivers (use HMAC)
+  // T15: only the webhook receivers are CSRF-exempt (they are HMAC-verified);
+  // connect / sync / links are cookie-authenticated writes and keep the CSRF check.
+  /^\/api\/integrations\/[^/]+\/webhook$/,
   /^\/api\/v1\/health/, // Health checks
   /^\/api\/cron\//, // Server-to-server cron
   /^\/api\/csp-report/, // CSP violation reports
@@ -137,6 +139,7 @@ const publicRoutes = [
   '/auth/forgot-password',
   '/auth/reset-password',
   '/auth/error', // T9: SSO / verification failure landing page
+  '/api/integrations/greenhouse/webhook', // T15: HMAC-verified receiver, no session
 ];
 const publicPrefixes = ['/api/auth/', '/api/health', '/_next/', '/uploads/', '/Logos/', '/favicon', '/interview', '/reports/shared'];
 

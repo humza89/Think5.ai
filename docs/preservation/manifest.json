@@ -933,6 +933,18 @@
       "dynamic": false
     },
     {
+      "route": "/settings/integrations",
+      "file": "app/(dashboard)/settings/integrations/page.tsx",
+      "public": false,
+      "roles": [
+        "candidate",
+        "hiring_manager",
+        "recruiter"
+      ],
+      "protectedRouteComponent": true,
+      "dynamic": false
+    },
+    {
       "route": "/settings/notifications",
       "file": "app/(dashboard)/settings/notifications/page.tsx",
       "public": false,
@@ -1634,6 +1646,45 @@
         "GET",
         "POST",
         "PUT"
+      ]
+    },
+    {
+      "route": "/api/integrations/[provider]/connect",
+      "file": "app/api/integrations/[provider]/connect/route.ts",
+      "methods": [
+        "DELETE",
+        "POST"
+      ]
+    },
+    {
+      "route": "/api/integrations/[provider]/links",
+      "file": "app/api/integrations/[provider]/links/route.ts",
+      "methods": [
+        "DELETE",
+        "GET",
+        "POST"
+      ]
+    },
+    {
+      "route": "/api/integrations/[provider]/status",
+      "file": "app/api/integrations/[provider]/status/route.ts",
+      "methods": [
+        "GET"
+      ]
+    },
+    {
+      "route": "/api/integrations/[provider]/sync",
+      "file": "app/api/integrations/[provider]/sync/route.ts",
+      "methods": [
+        "POST"
+      ]
+    },
+    {
+      "route": "/api/integrations/greenhouse/webhook",
+      "file": "app/api/integrations/greenhouse/webhook/route.ts",
+      "methods": [
+        "GET",
+        "POST"
       ]
     },
     {
@@ -2474,6 +2525,68 @@
         ]
       },
       {
+        "name": "ATSEntityLink",
+        "fields": [
+          {
+            "name": "id",
+            "type": "String"
+          },
+          {
+            "name": "integrationId",
+            "type": "String"
+          },
+          {
+            "name": "integration",
+            "type": "ATSIntegration"
+          },
+          {
+            "name": "localType",
+            "type": "String"
+          },
+          {
+            "name": "localId",
+            "type": "String"
+          },
+          {
+            "name": "remoteId",
+            "type": "String"
+          },
+          {
+            "name": "remoteUpdatedAt",
+            "type": "DateTime?"
+          },
+          {
+            "name": "lastSyncedAt",
+            "type": "DateTime"
+          },
+          {
+            "name": "checksum",
+            "type": "String?"
+          },
+          {
+            "name": "state",
+            "type": "Json?"
+          },
+          {
+            "name": "lastError",
+            "type": "String?"
+          },
+          {
+            "name": "createdAt",
+            "type": "DateTime"
+          },
+          {
+            "name": "updatedAt",
+            "type": "DateTime"
+          }
+        ],
+        "indexes": [
+          "unique([integrationId, localType, localId])",
+          "unique([integrationId, localType, remoteId])",
+          "index([integrationId, localType])"
+        ]
+      },
+      {
         "name": "ATSIntegration",
         "fields": [
           {
@@ -2531,12 +2644,73 @@
           {
             "name": "updatedAt",
             "type": "DateTime"
+          },
+          {
+            "name": "syncRuns",
+            "type": "ATSSyncRun[]"
+          },
+          {
+            "name": "entityLinks",
+            "type": "ATSEntityLink[]"
           }
         ],
         "indexes": [
           "unique([companyId, provider])",
           "index([companyId])",
           "index([provider])"
+        ]
+      },
+      {
+        "name": "ATSSyncRun",
+        "fields": [
+          {
+            "name": "id",
+            "type": "String"
+          },
+          {
+            "name": "integrationId",
+            "type": "String"
+          },
+          {
+            "name": "integration",
+            "type": "ATSIntegration"
+          },
+          {
+            "name": "direction",
+            "type": "String"
+          },
+          {
+            "name": "trigger",
+            "type": "String"
+          },
+          {
+            "name": "status",
+            "type": "String"
+          },
+          {
+            "name": "startedAt",
+            "type": "DateTime"
+          },
+          {
+            "name": "finishedAt",
+            "type": "DateTime?"
+          },
+          {
+            "name": "counts",
+            "type": "Json?"
+          },
+          {
+            "name": "errors",
+            "type": "Json?"
+          },
+          {
+            "name": "createdAt",
+            "type": "DateTime"
+          }
+        ],
+        "indexes": [
+          "index([integrationId, startedAt])",
+          "index([status])"
         ]
       },
       {
@@ -6900,6 +7074,14 @@
     "rlsPolicies": []
   },
   "inngest": [
+    {
+      "name": "atsScheduledImport",
+      "registered": true
+    },
+    {
+      "name": "atsSync",
+      "registered": true
+    },
     {
       "name": "dataDeletionExecute",
       "registered": true
