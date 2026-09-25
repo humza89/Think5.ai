@@ -34,6 +34,8 @@ async function waitForAuthenticatedShell(page: Page) {
 }
 
 test.describe.configure({ mode: "serial" });
+// First hits of /jobs/new and /candidate/profile compile on the dev server; give real writes room.
+test.setTimeout(90_000);
 
 test("recruiter creates a job through the wizard (POST /api/jobs)", async ({ browser }) => {
   test.skip(!fixturesRequired && !recruiterStorage, "requires recruiter storage state");
