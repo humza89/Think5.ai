@@ -16,6 +16,7 @@ import {
   CheckCircle,
 } from "lucide-react";
 import ProfilePreviewCard from "@/components/recruiter/ProfilePreviewCard";
+import { InvitationModal } from "@/components/recruiter/InvitationModal";
 import { apiFetch } from "@/lib/api-client";
 
 // ---------------------------------------------------------------------------
@@ -95,6 +96,8 @@ export default function SourcePage() {
   // Preview state
   const [previewProfile, setPreviewProfile] = useState<Partial<ProfileData> | null>(null);
   const [previewProfileId, setPreviewProfileId] = useState<string | undefined>(undefined);
+  // T10: invitation modal for the saved profile (wired to POST /api/passive-profiles/[id]/invite)
+  const [invite, setInvite] = useState<{ profileId: string; name: string; email: string } | null>(null);
 
   // ---------------------------------------------------------------------------
   // LinkedIn Import
@@ -304,8 +307,16 @@ export default function SourcePage() {
     if (resumeInputRef.current) resumeInputRef.current.value = "";
   }
 
-  function handleSendInvitation() {
-    toast.info("Invitation feature coming soon");
+  function handleSendInvitation(data: ProfileData) {
+    if (!previewProfileId) {
+      toast.info("Save the profile first, then send the invitation");
+      return;
+    }
+    if (!data.email) {
+      toast.warning("Add an email address before inviting");
+      return;
+    }
+    setInvite({ profileId: previewProfileId, name: `${data.firstName ?? ""} ${data.lastName ?? ""}`.trim() || "Candidate", email: data.email });
   }
 
   // ---------------------------------------------------------------------------
@@ -470,6 +481,10 @@ export default function SourcePage() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {invite && (
+        <InvitationModal open onClose={() => setInvite(null)} profileId={invite.profileId} profileName={invite.name} profileEmail={invite.email} />
+      )}
 
       {/* Profile Preview Card */}
       {previewProfile && (

@@ -8,6 +8,7 @@ const tabs = [
   { slug: "resume",    label: "Resume" },
   { slug: "interviews", label: "Interviews" },
   { slug: "notes",     label: "Private notes" },
+  { slug: "activity",  label: "Activity" },
 ];
 
 export default function TabsNav({ id }: { id: string }) {

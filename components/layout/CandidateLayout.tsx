@@ -1,5 +1,6 @@
 "use client";
 
+import { LogoMark } from "@/components/brand/LogoMark";
 import { useState, useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { CandidateSidebar } from "./CandidateSidebar";
@@ -76,9 +77,7 @@ export function CandidateLayout({ children }: { children: React.ReactNode }) {
     return (
       <div className="flex h-screen items-center justify-center bg-background">
         <div className="text-center">
-          <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center mx-auto mb-3">
-            <span className="text-white font-bold text-sm">T5</span>
-          </div>
+          <LogoMark size={32} className="mx-auto mb-3" />
           <p className="text-sm text-muted-foreground">Loading...</p>
         </div>
       </div>

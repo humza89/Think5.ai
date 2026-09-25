@@ -137,6 +137,18 @@ export async function enforceRetentionPolicies(): Promise<RetentionResult> {
   return result;
 }
 
+/** Retention schedule only (no record counts) — safe to show to candidates (T10). */
+export async function getRetentionPolicyDays(companyId?: string): Promise<{ recordingDays: number; transcriptDays: number; candidateDataDays: number; source: "company" | "default" | "fallback" }> {
+  let policy = null;
+  if (companyId) policy = await prisma.retentionPolicy.findUnique({ where: { companyId } });
+  let source: "company" | "default" | "fallback" = policy ? "company" : "fallback";
+  if (!policy) {
+    policy = await prisma.retentionPolicy.findFirst({ where: { isDefault: true } });
+    if (policy) source = "default";
+  }
+  return { recordingDays: policy?.recordingDays ?? 90, transcriptDays: policy?.transcriptDays ?? 365, candidateDataDays: policy?.candidateDataDays ?? 730, source };
+}
+
 /**
  * Get current retention policy status (what would be affected by enforcement).
  */

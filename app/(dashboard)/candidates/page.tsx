@@ -25,9 +25,6 @@ import {
   Upload,
   Search,
   Linkedin,
-  Bookmark,
-  FolderKanban,
-  EyeOff,
   ChevronRight,
   ChevronLeft,
   ChevronDown,
@@ -443,24 +440,6 @@ export default function CandidatesPage() {
       }
       return newSet;
     });
-  }
-
-  function handleSave(candidateId: string) {
-    // TODO: Implement save to list functionality
-    console.log("Save candidate:", candidateId);
-    toast.info("Coming soon");
-  }
-
-  function handleAddToProject(candidateId: string) {
-    // TODO: Implement add to project functionality
-    console.log("Add to project:", candidateId);
-    toast.info("Coming soon");
-  }
-
-  function handleHide(candidateId: string) {
-    // TODO: Implement hide candidate functionality
-    console.log("Hide candidate:", candidateId);
-    toast.info("Coming soon");
   }
 
   async function handleUpload() {
@@ -1275,37 +1254,6 @@ export default function CandidatesPage() {
                         {expandedCandidates.has(candidate.id) ? 'Show less' : `Show all (${education.length})`}
                       </button>
                     )}
-                  </div>
-
-                  {/* Actions Column */}
-                  <div className="col-span-2 flex flex-col gap-1.5">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-7 justify-start text-xs font-normal border-gray-200 hover:bg-gray-50 hover:border-gray-300"
-                      onClick={() => handleSave(candidate.id)}
-                    >
-                      <Bookmark className="h-3.5 w-3.5 mr-1.5" />
-                      Save
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-7 justify-start text-xs font-normal border-gray-200 hover:bg-gray-50 hover:border-gray-300"
-                      onClick={() => handleAddToProject(candidate.id)}
-                    >
-                      <FolderKanban className="h-3.5 w-3.5 mr-1.5" />
-                      Project
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-7 justify-start text-xs font-normal border-gray-200 hover:bg-gray-50 hover:border-gray-300"
-                      onClick={() => handleHide(candidate.id)}
-                    >
-                      <EyeOff className="h-3.5 w-3.5 mr-1.5" />
-                      Hide
-                    </Button>
                   </div>
                 </div>
               );

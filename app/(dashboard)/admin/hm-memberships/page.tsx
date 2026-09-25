@@ -64,7 +64,7 @@ export default function AdminHmMembershipsPage() {
 
   async function fetchCompanies() {
     try {
-      const res = await apiFetch("/api/companies");
+      const res = await apiFetch("/api/clients"); // T10: /api/companies never existed
       if (res.ok) {
         const data = await res.json();
         setCompanies(

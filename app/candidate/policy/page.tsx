@@ -25,8 +25,8 @@ export default function CandidatePolicyPage() {
   const [retention, setRetention] = useState<RetentionPolicy | null>(null);
 
   useEffect(() => {
-    // Try to fetch retention policy (may fail if candidate doesn't have admin access)
-    apiFetch("/api/admin/retention")
+    // T10: candidate-safe schedule (the admin endpoint was never reachable from here)
+    apiFetch("/api/candidate/retention-summary")
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => setRetention(data))
       .catch(() => setRetention(null));

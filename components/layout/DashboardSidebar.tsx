@@ -4,70 +4,12 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
-import {
-  LayoutDashboard,
-  Briefcase,
-  Users,
-  MessageSquare,
-  BarChart3,
-  UserSearch,
-  Settings,
-  Building2,
-  ChevronLeft,
-  ChevronRight,
-  Kanban,
-  Search,
-  UserPlus,
-  FolderOpen,
-  UsersRound,
-  Mail,
-} from "lucide-react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/layout/ThemeToggle";
 
-interface NavItem {
-  label: string;
-  href: string;
-  icon: React.ElementType;
-  roles?: string[];
-}
-
-const NAV_SECTIONS: { title?: string; items: NavItem[] }[] = [
-  {
-    items: [
-      { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-      { label: "Jobs", href: "/jobs", icon: Briefcase },
-      { label: "Pipeline", href: "/pipeline", icon: Kanban },
-      { label: "Candidates", href: "/candidates", icon: Users, roles: ["recruiter"] },
-      { label: "Search", href: "/search", icon: Search, roles: ["recruiter"] },
-      { label: "Source", href: "/source", icon: UserPlus, roles: ["recruiter"] },
-      { label: "Invitations", href: "/invitations", icon: Mail, roles: ["recruiter"] },
-      { label: "Interviews", href: "/interviews", icon: MessageSquare },
-      { label: "Clients", href: "/clients", icon: Building2, roles: ["recruiter"] },
-    ],
-  },
-  {
-    title: "Collaborate",
-    items: [
-      { label: "Messaging", href: "/messaging", icon: MessageSquare },
-      { label: "Team", href: "/team", icon: UsersRound, roles: ["recruiter"] },
-      { label: "Talent Pools", href: "/talent-pools", icon: FolderOpen, roles: ["recruiter"] },
-    ],
-  },
-  {
-    title: "Insights",
-    items: [
-      { label: "Analytics", href: "/analytics", icon: BarChart3 },
-      { label: "Passive Profiles", href: "/passive-profiles", icon: UserSearch, roles: ["recruiter"] },
-    ],
-  },
-  {
-    title: "Management",
-    items: [
-      { label: "Settings", href: "/settings", icon: Settings },
-    ],
-  },
-];
+import { RECRUITER_NAV_SECTIONS as NAV_SECTIONS } from "@/components/layout/nav-config";
+import { LogoMark } from "@/components/brand/LogoMark";
 
 interface DashboardSidebarProps {
   collapsed: boolean;
@@ -93,9 +35,7 @@ export function DashboardSidebar({ collapsed, onToggle }: DashboardSidebarProps)
       {/* Logo */}
       <div className={cn("flex items-center h-14 px-4 border-b border-border", collapsed && "justify-center")}>
         <Link href="/dashboard" className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
-            <span className="text-primary-foreground font-bold text-sm">P</span>
-          </div>
+          <LogoMark size={32} />
           {!collapsed && (
             <span className="text-lg font-semibold text-foreground">Think5</span>
           )}

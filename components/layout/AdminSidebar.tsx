@@ -1,5 +1,6 @@
 "use client";
 
+import { LogoMark } from "@/components/brand/LogoMark";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
@@ -65,9 +66,7 @@ export function AdminSidebar({ collapsed, onToggle }: AdminSidebarProps) {
       {/* Logo */}
       <div className={cn("flex items-center h-14 px-4 border-b border-border", collapsed && "justify-center")}>
         <Link href="/admin" className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-lg bg-red-600 flex items-center justify-center">
-            <span className="text-white font-bold text-sm">A</span>
-          </div>
+          <LogoMark size={32} />
           {!collapsed && (
             <span className="text-lg font-semibold text-foreground">Admin</span>
           )}

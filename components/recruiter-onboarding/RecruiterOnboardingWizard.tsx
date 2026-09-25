@@ -1,5 +1,6 @@
 "use client";
 
+import { LogoMark } from "@/components/brand/LogoMark";
 import { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -132,9 +133,7 @@ export function RecruiterOnboardingWizard({
       <div className="max-w-3xl mx-auto px-4 py-8">
         {/* Header */}
         <div className="text-center mb-8">
-          <div className="w-10 h-10 rounded-lg bg-blue-600 flex items-center justify-center mx-auto mb-3">
-            <span className="text-white font-bold text-sm">T5</span>
-          </div>
+          <LogoMark size={40} className="mx-auto mb-3" />
           <h1 className="text-2xl font-bold text-foreground">Set Up Your Account</h1>
           <p className="text-muted-foreground mt-1">Step {currentStep + 1} of {STEPS.length}</p>
         </div>
