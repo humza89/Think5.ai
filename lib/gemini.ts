@@ -279,6 +279,11 @@ export async function generateInterviewReport(
   integrityEvents?: IntegrityEvent[] | null,
   options?: ReportGenerationOptions
 ): Promise<InterviewReportData> {
+  // T14 golden path: AI_PROVIDER_SCORING=mock (or AI_PROVIDER=mock) scores deterministically without a provider key.
+  const { isMockScoring, buildMockInterviewReport } = await import("@/lib/ai-providers/mock-interview");
+  if (isMockScoring()) {
+    return buildMockInterviewReport(Array.isArray(transcript) ? transcript : [], candidateProfile);
+  }
   if (!process.env.GEMINI_API_KEY && !process.env.OPENAI_API_KEY) {
     throw new Error("No LLM provider configured — set GEMINI_API_KEY or OPENAI_API_KEY");
   }

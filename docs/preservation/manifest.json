@@ -4874,6 +4874,14 @@
           {
             "name": "createdAt",
             "type": "DateTime"
+          },
+          {
+            "name": "sessionConfidence",
+            "type": "String?"
+          },
+          {
+            "name": "sessionStabilityMetadata",
+            "type": "Json?"
           }
         ],
         "indexes": [

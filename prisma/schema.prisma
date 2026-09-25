@@ -1134,6 +1134,11 @@ model InterviewReport {
 
   createdAt       DateTime  @default(now())
 
+  // Phase 0 T14 (additive): session-stability facts written by interview/report.generate
+  // (the step used these fields before the columns existed and threw on every run).
+  sessionConfidence        String?
+  sessionStabilityMetadata Json?
+
   @@index([reviewStatus, createdAt])
   @@index([deletedAt])
 }

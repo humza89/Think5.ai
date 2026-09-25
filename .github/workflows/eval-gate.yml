@@ -88,8 +88,19 @@ jobs:
 
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
+      - name: Start Inngest dev server (durable report pipeline for the golden path)
+        run: |
+          nohup npx --yes inngest-cli@latest dev -u http://localhost:3000/api/inngest --no-discovery --no-poll > inngest-dev.log 2>&1 &
+          for i in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:8288/ > /dev/null; then echo "inngest dev up"; break; fi
+            sleep 1
+          done
       - name: Golden E2E (public + authenticated)
         env:
+          # T14 golden path: deterministic interviewer + scorer, real Inngest pipeline.
+          AI_PROVIDER: "mock"
+          INNGEST_DEV: "1"
+          INNGEST_BASE_URL: "http://127.0.0.1:8288"
           # lib/email/resend.ts constructs the SDK at import time and the
           # recruiter onboarding API (called by DashboardLayout, fail-closed)
           # imports it. No email is sent during the golden run; the value only
@@ -110,6 +121,7 @@ jobs:
             playwright-report
             test-results
             e2e/golden/**/*-snapshots
+            inngest-dev.log
           if-no-files-found: ignore
           retention-days: 7
       - name: Verify committed manifest baseline

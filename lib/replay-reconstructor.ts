@@ -119,7 +119,8 @@ export async function reconstructReplay(interviewId: string): Promise<ReplayRepo
     }),
     prisma.interviewFact.findMany({
       where: { interviewId },
-      orderBy: { createdAt: "asc" },
+      // T14: InterviewFact has extractedAt, not createdAt (the old select threw on every replay).
+      orderBy: { extractedAt: "asc" },
       select: {
         id: true,
         factType: true,
@@ -127,7 +128,7 @@ export async function reconstructReplay(interviewId: string): Promise<ReplayRepo
         confidence: true,
         turnId: true,
         extractedBy: true,
-        createdAt: true,
+        extractedAt: true,
       },
     }),
     // N11: Load state snapshots for modelInputManifest + stateDiff
@@ -206,7 +207,7 @@ export async function reconstructReplay(interviewId: string): Promise<ReplayRepo
       frame.modelInputManifest = {
         memoryPacketHash: snapshot?.stateHash || "",
         contextTurnCount: row.turnIndex + 1,
-        factCount: factRows.filter((f: { createdAt: Date }) => f.createdAt <= row.timestamp).length,
+        factCount: factRows.filter((f: { extractedAt: Date }) => f.extractedAt <= row.timestamp).length,
         confidenceScore: eventConfidence ?? (snapshot ? 1.0 : 0.0),
         memoryIntegrityChecksum: row.memoryChecksum || null,
         sourceTurnIds,
@@ -298,7 +299,7 @@ export async function reconstructReplay(interviewId: string): Promise<ReplayRepo
   // Add facts as frames
   for (const fact of factRows) {
     frames.push({
-      timestamp: fact.createdAt,
+      timestamp: fact.extractedAt,
       type: "fact_extracted",
       data: {
         factId: fact.id,

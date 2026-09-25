@@ -13,6 +13,7 @@ type NotificationType =
   | "APPLICATION_UPDATE"
   | "MATCH_ALERT"
   | "SYSTEM"
+  | "FEEDBACK_READY"
   | "REPORT_READY"
   | "INTERVIEW_COMPLETED";
 
@@ -64,7 +65,8 @@ export async function notifyReportReady(interviewId: string): Promise<void> {
     if (interview.recruiter.supabaseUserId) {
       await createNotification({
         userId: interview.recruiter.supabaseUserId,
-        type: "REPORT_READY" as any,
+        // T14: "REPORT_READY" is not a NotificationType; the enum's report notification is FEEDBACK_READY.
+        type: "FEEDBACK_READY",
         title: "Interview Report Ready",
         message: `The interview report for ${interview.candidate.fullName} is now available.`,
         data: { interviewId: interview.id },

@@ -29,7 +29,8 @@ export const reportGenerate = inngest.createFunction(
       const { prisma } = await import("@/lib/prisma");
       const interview = await prisma.interview.findUnique({
         where: { id: interviewId },
-        select: { id: true, transcript: true, report: true, status: true, recruiterId: true },
+        // T14: Interview has no recruiterId column; scheduledBy is the recruiter. The old select threw on every run.
+        select: { id: true, transcript: true, report: true, status: true, scheduledBy: true },
       });
 
       if (!interview) {
@@ -50,11 +51,11 @@ export const reportGenerate = inngest.createFunction(
           data: { reportStatus: "failed" },
         });
         // Create notification for recruiter
-        if (interview.recruiterId) {
+        if (interview.scheduledBy) {
           await prisma.notification.create({
             data: {
-              userId: interview.recruiterId,
-              type: "REPORT_FAILED",
+              userId: interview.scheduledBy,
+              type: "SYSTEM", // T14: "REPORT_FAILED" is not a NotificationType
               title: "Report generation failed",
               message: `Report for interview ${interviewId} could not be generated — incomplete interview data (no transcript).`,
               interviewId,

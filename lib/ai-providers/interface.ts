@@ -98,6 +98,11 @@ export async function createProviderForStage(stage: ProviderStage): Promise<AIPr
   const providerName = getProviderForStage(stage);
 
   switch (providerName) {
+    case "mock": {
+      // Deterministic provider for evals and the golden E2E path (never a production default).
+      const { MockProvider } = await import("./mock");
+      return new MockProvider();
+    }
     case "claude": {
       const { ClaudeProvider } = await import("./claude");
       // Use different models per stage
