@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { signedResumeUrl } from "@/lib/storage-urls";
 import ResumeUpload from "./ResumeUpload";
 
 export const dynamic = "force-dynamic";
@@ -27,7 +28,8 @@ export default async function ResumeTab({ params }: { params: Promise<{ id: stri
     }
   }
 
-  const resumeUrl = sanitizeResumeUrl(rawResumeUrl);
+  // T5: the resumes bucket is private; sign the stored object URL at read time.
+  const resumeUrl = sanitizeResumeUrl(await signedResumeUrl(rawResumeUrl));
 
   return (
     <div className="-m-6 h-full">

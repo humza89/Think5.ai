@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireRole, handleAuthError } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 /**
@@ -10,6 +11,13 @@ import { prisma } from "@/lib/prisma";
  * SECURITY: Admin-only endpoint. Requires admin authentication.
  */
 export async function GET() {
+  // T5: admin-only. Returns 403 for every other role.
+  try {
+    await requireRole(["admin"]);
+  } catch (error) {
+    const { error: message, status } = handleAuthError(error);
+    return NextResponse.json({ error: message }, { status });
+  }
   try {
     const now = new Date();
     const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);

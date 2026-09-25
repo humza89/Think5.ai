@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requireRole, handleAuthError } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 /**
@@ -6,6 +7,13 @@ import { prisma } from "@/lib/prisma";
  * Returns proctoring events with severity filtering and interview search.
  */
 export async function GET(req: NextRequest) {
+  // T5: admin-only. Returns 403 for every other role.
+  try {
+    await requireRole(["admin"]);
+  } catch (error) {
+    const { error: message, status } = handleAuthError(error);
+    return NextResponse.json({ error: message }, { status });
+  }
   const { searchParams } = new URL(req.url);
   const severity = searchParams.get("severity");
   const interviewId = searchParams.get("interviewId");
