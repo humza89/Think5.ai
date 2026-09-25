@@ -1,0 +1,30 @@
+# Legacy PR audit (pre-Phase 0 branches #1–#11)
+
+Audited 2026-09-25 against `main` at 654046a (T0 + T0.5 merged). All nine open branches fork from 85be140 (2026-04-06), are 46 commits behind `main`, and conflict with it (redesign, proxy merge, T0 gates, T0.5 contracts). None can be merged as-is. Two are stacked (#2 on #1, #6 on #4). None of them may dictate the Phase 0 architecture: anything salvaged is reimplemented through the T0.5 contracts (`lib/contracts`) under the Phase 0 task that owns the area, with the preservation gates and conformance harness applied.
+
+Legend: **close** = nothing to carry; **salvage** = specific fixes/ideas re-implemented under a Phase 0 task; **reimplement** = the problem is real but the solution must be rebuilt on the contracts.
+
+| PR | Title | Already on `main` | Still relevant | Obsolete / conflicting | Phase 0 owner | Classification |
+| --- | --- | --- | --- | --- | --- | --- |
+| #1 | fix(voice): Phase 1 reliability hardening | 1.1 relay idle timeout 20 min (`IDLE_TIMEOUT_MS`), 1.2 reconnect budget 10 on both sides (`MAX_RECOVERY_ATTEMPTS`, e0a762d), 1.4 Fly `/health` + `soft_limit` 400 (Track 6) | 1.3 adaptive client heartbeat (45→90→150 s), 1.5 `relay.backpressure` control frame instead of silent drop | Touches `hooks/useVoiceInterview.ts` and `relay/server.ts` that T2/T11 will restructure; branch is Humza's interrupted local rebase | **T11** (relay safe-to-fail) | **salvage** 1.3 + 1.5 into T11, then close |
+| #2 | feat(voice): SessionService lifecycle state machine (`lib/session-service.ts`, `relay/lifecycle-client.ts`) | nothing | The 6-state lifecycle table and the diagnosis (state split across client refs, relay locals, session-store) | Introduces a parallel authoritative-state abstraction; `relay/lifecycle-client.ts` would let the relay own lifecycle. Superseded by `InterviewSessionStore` (checkpoints + leases, Postgres authoritative, Redis a downgrade) and the control/media plane boundary | **T11** + `InterviewSessionStore` | **reimplement** through contracts; use the transition table as T11 design input; close |
+| #3 | spike: LiveKit WebRTC transport (draft) | nothing | The evaluation doc's go/no-go criteria | Feature-flagged token endpoint stub under `app/api/interviews/[id]`; WebRTC/multi-region transport is Phase 4 per PRD v2.1, not Phase 0 | Phase 4 | **close** (keep the doc as reference; do not merge the stub) |
+| #4 | fix: Track 1 correctness bombs | `lib/media-storage.ts` exists but still has the first-chunk fallback | `RecordingMergeFailedError` instead of serving a partial chunk; retention gated on report completion; broken-COMPLETED detector; tenant-leak fixes in `lib/auth.ts`; shared-report scoping | Base is stale; `vercel.json` cron edits conflict with T0 manifest | **T4** (real results), **T5** (security guards), **T6** (retention/soft delete) | **salvage** each fix with its tests under T4/T5/T6 |
+| #5 | feat: Track 2 atomic finalization (`FinalizationManifest`, `FINALIZING`, reconciler, preflight) | `InterviewStatus.FINALIZING` enum value | Non-atomic COMPLETED is real; manifest + reconciler idea | Removes `IN_PROGRESS → COMPLETED` (behaviour change without flag); adds 2 models + migration on the stale base; reconciler cron duplicates what T7's Inngest durable jobs should own | **T7** (durable jobs) with **T11** | **reimplement**: additive migration, `FF_P0_*` flag, Inngest-driven reconciliation, state-machine change reviewed against the manifest |
+| #6 | security: tenant-scope sweep (7 report/share/evidence routes) | nothing (9 `requireInterviewAccess` call sites remain in `app/api`) | The route list is the T5 checklist; 25 assertions reusable | Stacked on #4; route files changed since | **T5** | **salvage** route list + tests into T5 |
+| #7 | feat: Track 4 recording health model (`recordingHealth` + backfill cron) | nothing | Orthogonal "trustworthy for playback" state | New enum + column + cron on stale base; overlaps #5's manifest | **T4** (only if the fake-results audit needs it), else Phase 1 | **reimplement** or defer; decide inside T4 |
+| #8 | security: Track 5 hardening (token rate limit + device binding, HMAC share cookie, transcript encryption) | nothing | Rate limit on `/validate`; device-binding behind a flag; HMAC share cookie; encryption at rest | Directly overlaps T2's credential resolver (must be one strategy, not two); encryption adds a column on the stale base | **T2** (validate rate limit + optional binding), **T5** (share cookie), **T5/T6** (encryption) | **reimplement** through `lib/interview-credential.ts`; salvage tests |
+| #11 | feat: Track 7 reliability (flow-control levels + provider circuit breaker) | nothing | `relay.flow` levels normal/slow/pause; Gemini circuit breaker | `relay/circuit-breaker.ts` fine for the media plane (no Prisma); `useVoiceInterview.ts` changes conflict with T2 | **T11** | **salvage** into T11 (client throttling via the hook after T2) |
+
+## Overlap with T0.5 contracts
+
+- `InterviewSessionStore` replaces the lifecycle/state ideas in #2 and the manifest's "who is authoritative" question in #5: checkpoints are immutable and ordered, leases fence writers, and every write reports durability. T11 implements the production adapter over `lib/session-store.ts` (Redis) and `InterviewerStateSnapshot` (Postgres) and must pass `runInterviewSessionStoreConformance`.
+- `Telemetry` replaces the ad-hoc logging in #1/#2/#11; T12 wires OpenTelemetry. Relay code stays on the media plane (lint-enforced, no Prisma).
+- Nothing in #4–#8 conflicts with `EntitlementService`, `UsageMeter`, `ATSAdapter`, `AvatarProvider` or `MessageProvider`.
+
+## Disposition
+
+1. Do not merge any of #1–#11. Do not rebase them.
+2. Each owning task PR cites the legacy PR it salvages from and links back here.
+3. After the owning task merges, close the legacy PR with a comment naming the merged replacement. #3 can be closed now (Phase 4 scope).
+4. `#1` is Humza's interrupted local rebase in the main working copy; it stays untouched until he finishes or abandons it.
