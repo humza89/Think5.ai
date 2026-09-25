@@ -42,6 +42,43 @@ export default [
     },
   },
   {
+    // T0.5 plane boundary (lib/contracts/planes.ts): media-plane code (the
+    // voice relay and any avatar integration) never touches the database
+    // directly; it acts under a lease granted by the control plane.
+    files: ["relay/**/*.ts", "lib/avatar/**/*.ts", "lib/avatar-*/**/*.ts"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              group: ["@prisma/client", "@prisma/client/*", "@/lib/prisma", "**/lib/prisma", "**/lib/prisma.js"],
+              message:
+                "Media-plane code must not import Prisma. Obtain state through the control plane (see lib/contracts/planes.ts).",
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    // T0.5 contracts stay vendor-neutral: they receive a Telemetry instance.
+    files: ["lib/contracts/**/*.ts"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              group: ["@/lib/logger", "**/lib/logger", "@sentry/*", "@opentelemetry/*", "pino", "winston", "@prisma/client", "@/lib/prisma", "**/lib/prisma"],
+              message: "Contracts must not import logging, tracing or database vendors; depend on lib/contracts/telemetry.",
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
     files: ["load-tests/**/*.js"],
     languageOptions: {
       globals: {
