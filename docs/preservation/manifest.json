@@ -1193,6 +1193,13 @@
       ]
     },
     {
+      "route": "/api/admin/usage",
+      "file": "app/api/admin/usage/route.ts",
+      "methods": [
+        "GET"
+      ]
+    },
+    {
       "route": "/api/admin/users",
       "file": "app/api/admin/users/route.ts",
       "methods": [
@@ -6157,6 +6164,51 @@
         ]
       },
       {
+        "name": "TenantQuota",
+        "fields": [
+          {
+            "name": "id",
+            "type": "String"
+          },
+          {
+            "name": "tenantId",
+            "type": "String"
+          },
+          {
+            "name": "feature",
+            "type": "String"
+          },
+          {
+            "name": "metric",
+            "type": "String"
+          },
+          {
+            "name": "limit",
+            "type": "Decimal"
+          },
+          {
+            "name": "window",
+            "type": "String"
+          },
+          {
+            "name": "action",
+            "type": "String"
+          },
+          {
+            "name": "createdAt",
+            "type": "DateTime"
+          },
+          {
+            "name": "updatedAt",
+            "type": "DateTime"
+          }
+        ],
+        "indexes": [
+          "unique([tenantId, feature])",
+          "index([tenantId])"
+        ]
+      },
+      {
         "name": "TurnFragment",
         "fields": [
           {
@@ -6203,6 +6255,101 @@
         "indexes": [
           "unique([interviewId, chunkId])",
           "index([interviewId, status])"
+        ]
+      },
+      {
+        "name": "UsageAggregate",
+        "fields": [
+          {
+            "name": "id",
+            "type": "String"
+          },
+          {
+            "name": "tenantId",
+            "type": "String"
+          },
+          {
+            "name": "kind",
+            "type": "String"
+          },
+          {
+            "name": "period",
+            "type": "String"
+          },
+          {
+            "name": "periodStart",
+            "type": "DateTime"
+          },
+          {
+            "name": "quantity",
+            "type": "Decimal"
+          },
+          {
+            "name": "eventCount",
+            "type": "Int"
+          },
+          {
+            "name": "updatedAt",
+            "type": "DateTime"
+          }
+        ],
+        "indexes": [
+          "unique([tenantId, kind, period, periodStart])",
+          "index([tenantId, period, periodStart])"
+        ]
+      },
+      {
+        "name": "UsageEvent",
+        "fields": [
+          {
+            "name": "id",
+            "type": "String"
+          },
+          {
+            "name": "tenantId",
+            "type": "String"
+          },
+          {
+            "name": "kind",
+            "type": "String"
+          },
+          {
+            "name": "quantity",
+            "type": "Decimal"
+          },
+          {
+            "name": "unit",
+            "type": "String"
+          },
+          {
+            "name": "occurredAt",
+            "type": "DateTime"
+          },
+          {
+            "name": "subjectType",
+            "type": "String"
+          },
+          {
+            "name": "subjectId",
+            "type": "String"
+          },
+          {
+            "name": "source",
+            "type": "String"
+          },
+          {
+            "name": "metadata",
+            "type": "Json?"
+          },
+          {
+            "name": "recordedAt",
+            "type": "DateTime"
+          }
+        ],
+        "indexes": [
+          "index([tenantId, kind, occurredAt])",
+          "index([subjectType, subjectId])",
+          "index([recordedAt])"
         ]
       },
       {
@@ -6583,6 +6730,10 @@
       "registered": true
     },
     {
+      "name": "usageAggregate",
+      "registered": true
+    },
+    {
       "name": "webhookRetry",
       "registered": true
     }
@@ -6675,6 +6826,11 @@
     {
       "name": "P0_SINGLE_INTERVIEW_ROOM",
       "env": "FF_P0_SINGLE_INTERVIEW_ROOM",
+      "default": true
+    },
+    {
+      "name": "P0_USAGE_METERING",
+      "env": "FF_P0_USAGE_METERING",
       "default": true
     },
     {

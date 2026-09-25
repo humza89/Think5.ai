@@ -7,6 +7,7 @@
  * Auth: Access token validated per request. Rate limited per interview.
  */
 
+import { recordUsage } from "@/lib/usage/meter";
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { createHash } from "crypto";
@@ -140,6 +141,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           } catch (publishError) {
             console.warn("[recording] could not publish interview/recording.ready:", publishError instanceof Error ? publishError.message : publishError);
           }
+          // T16: storage usage for the finalized recording (idempotent per interview).
+          const owner = await prisma.interview.findUnique({ where: { id }, select: { companyId: true } });
+          await recordUsage({ id: `recording:${id}:finalize`, tenantId: owner?.companyId, kind: "storage.bytes", quantity: metadata.sizeBytes, subjectId: id, source: "api:recording", metadata: { format } });
 
           return Response.json({
             success: true,

@@ -9,6 +9,7 @@
  * This endpoint only handles persistence to the database.
  */
 
+import { recordUsage } from "@/lib/usage/meter";
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { generateReportInBackground } from "@/lib/report-generator";
@@ -982,6 +983,15 @@ export async function POST(
           transcript: denormalizedTranscript,
           skillModuleScores: validateModuleScores(moduleScores),
         },
+      });
+      // T16: one immutable usage event per completion (idempotent under retries/reconnects).
+      await recordUsage({
+        id: `interview:${id}:completed`,
+        tenantId: interview.companyId,
+        kind: "interview.completed",
+        subjectId: id,
+        source: "api:voice",
+        metadata: { durationSeconds: interview.startedAt ? Math.round((Date.now() - new Date(interview.startedAt).getTime()) / 1000) : null },
       });
 
       // C3: Persist structured proctoring events BEFORE report trigger

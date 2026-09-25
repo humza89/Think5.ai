@@ -78,6 +78,9 @@ export const FeatureFlags = {
 
   /** Phase 0 T2: interview routes accept the HttpOnly interview-session cookie as a credential source. */
   P0_COOKIE_INTERVIEW_AUTH: envBool("FF_P0_COOKIE_INTERVIEW_AUTH", true),
+  /** Phase 0 T16: emit immutable usage events (interview.started/completed, ai.tokens, storage.bytes, message.sent). */
+  P0_USAGE_METERING: envBool("FF_P0_USAGE_METERING", true),
+
   /** Phase 0 T4: /candidate/interview/[id] redirects to the single interview room at /interview/[id]. */
   P0_SINGLE_INTERVIEW_ROOM: envBool("FF_P0_SINGLE_INTERVIEW_ROOM", true),
 } as const;

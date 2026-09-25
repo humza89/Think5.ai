@@ -410,6 +410,57 @@ model Client {
 // Explicit membership linking hiring managers to companies
 // Replaces fragile email-domain matching with explicit, auditable access grants
 // AI model usage tracking for cost governance and analytics
+/// Phase 0 T16: immutable usage ledger. `id` is the idempotency key.
+model UsageEvent {
+  id          String   @id
+  tenantId    String
+  kind        String
+  quantity    Decimal  @db.Decimal(20, 6)
+  unit        String
+  occurredAt  DateTime
+  subjectType String
+  subjectId   String
+  source      String
+  metadata    Json?
+  recordedAt  DateTime @default(now())
+
+  @@index([tenantId, kind, occurredAt])
+  @@index([subjectType, subjectId])
+  @@index([recordedAt])
+}
+
+/// Phase 0 T16: rolled-up usage per tenant, kind and period (day | month).
+model UsageAggregate {
+  id          String   @id @default(uuid())
+  tenantId    String
+  kind        String
+  period      String
+  periodStart DateTime
+  quantity    Decimal  @db.Decimal(20, 6)
+  eventCount  Int      @default(0)
+  updatedAt   DateTime @updatedAt
+
+  @@unique([tenantId, kind, period, periodStart])
+  @@index([tenantId, period, periodStart])
+}
+
+/// Phase 0 T16: quota primitive read by the EntitlementService.
+/// metric is a usage kind (e.g. "interview.created") or "ai_cost_usd".
+model TenantQuota {
+  id        String   @id @default(uuid())
+  tenantId  String
+  feature   String
+  metric    String
+  limit     Decimal  @db.Decimal(20, 6)
+  window    String
+  action    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, feature])
+  @@index([tenantId])
+}
+
 model AIUsageLog {
   id            String   @id @default(uuid())
   interviewId   String?

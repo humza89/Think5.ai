@@ -6,6 +6,7 @@
  * This endpoint is stateless — no WebSocket is created server-side.
  */
 
+import { recordUsage } from "@/lib/usage/meter";
 import { createHash } from "crypto";
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
@@ -374,6 +375,8 @@ export async function POST(
           voiceProvider: "gemini-live",
         },
       });
+      // T16: one immutable usage event per interview start (idempotent key).
+      await recordUsage({ id: `interview:${id}:started`, tenantId: interview.companyId, kind: "interview.started", subjectId: id, source: "api:voice-init" });
     }
 
     // Audit log
