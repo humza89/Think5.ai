@@ -78,9 +78,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         if (isNaN(totalChunks) || totalChunks < 0 || totalChunks > 50000) {
           return Response.json({ error: "Invalid totalChunks" }, { status: 400 });
         }
-        // For now, return empty gaps — R2 storage handles this via manifest
-        // Future: query R2 to find missing chunk indices
-        return Response.json({ missingChunks: [], totalChunks });
+        // T7: list the interview's chunk objects in R2 and report the missing
+        // indices so the client can re-upload before finalize.
+        try {
+          const { listMissingChunkIndices } = await import("@/lib/media-storage");
+          const missingChunks = await listMissingChunkIndices(id, totalChunks);
+          return Response.json({ missingChunks, totalChunks });
+        } catch (gapError) {
+          // R2 not configured (local/dev): keep the previous permissive answer.
+          console.warn("[recording] check_gaps unavailable:", gapError instanceof Error ? gapError.message : gapError);
+          return Response.json({ missingChunks: [], totalChunks, gapCheck: "unavailable" });
+        }
       }
 
       if (body.action === "finalize") {
@@ -120,6 +128,18 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           });
 
           await recordSLOEvent("recording.upload.success_rate", true);
+
+          // T7: the recordingProcess job had no producer; publish the event
+          // so post-processing runs durably. Non-fatal if Inngest is down.
+          try {
+            const { inngest } = await import("@/inngest/client");
+            await inngest.send({
+              name: "interview/recording.ready",
+              data: { interviewId: id, totalChunks, format, sizeBytes: metadata.sizeBytes },
+            });
+          } catch (publishError) {
+            console.warn("[recording] could not publish interview/recording.ready:", publishError instanceof Error ? publishError.message : publishError);
+          }
 
           return Response.json({
             success: true,

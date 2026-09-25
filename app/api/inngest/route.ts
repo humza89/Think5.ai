@@ -16,9 +16,22 @@ import {
   dataDeletionExecute,
   recordingFinalizeRetry,
   interviewAnomalyAlert,
+  updateAriaMemoryGraph,
+  webhookRetry,
 } from "@/inngest/functions";
 
 export const { GET, POST, PUT } = serve({
   client: inngest,
-  functions: [reportGenerate, recordingProcess, retentionCleanup, sloCheck, dataDeletionExecute, recordingFinalizeRetry, interviewAnomalyAlert],
+  // T7: every exported function is registered; the preservation manifest asserts registered:true for all.
+  functions: [
+    reportGenerate,
+    recordingProcess,
+    retentionCleanup,
+    sloCheck,
+    dataDeletionExecute,
+    recordingFinalizeRetry,
+    interviewAnomalyAlert,
+    updateAriaMemoryGraph,
+    webhookRetry,
+  ],
 });

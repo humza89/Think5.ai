@@ -21,10 +21,6 @@
   },
   "crons": [
     {
-      "path": "/api/cron/retention",
-      "schedule": "0 3 * * *"
-    },
-    {
       "path": "/api/cron/report-retry",
       "schedule": "*/15 * * * *"
     },

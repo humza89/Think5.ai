@@ -17,10 +17,12 @@ const MAX_RETRIES = 3;
 const RETRY_DELAYS_MS = [60000, 300000, 1800000]; // 1min, 5min, 30min
 
 /**
- * Schedule a durable webhook retry via Inngest.
- * Falls back to setTimeout if Inngest is unavailable.
+ * Schedule a durable webhook retry via Inngest (inngest/functions/webhook-retry.ts).
+ * T7: no in-process fallback. If the event cannot be enqueued the failure is
+ * recorded on the delivery so the admin replay tooling can pick it up; a
+ * setTimeout would silently vanish on the next deploy.
  */
-async function scheduleRetry(
+export async function scheduleRetry(
   endpointId: string,
   url: string,
   secret: string,
@@ -36,11 +38,26 @@ async function scheduleRetry(
       data: { endpointId, url, secret, payload, attempt },
       ts: new Date(Date.now() + delay).getTime(),
     });
-  } catch {
-    // Fallback: setTimeout (non-durable, lost on restart — last resort)
-    setTimeout(() => {
-      attemptDelivery(endpointId, url, secret, payload, attempt).catch(() => {});
-    }, delay);
+  } catch (error) {
+    console.error("[webhook-delivery] could not enqueue durable retry", {
+      endpointId,
+      attempt,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    try {
+      const { prisma } = await import("@/lib/prisma");
+      await prisma.webhookDelivery.create({
+        data: {
+          endpointId,
+          event: "webhook.retry_enqueue_failed",
+          payload: { attempt, url },
+          attempts: attempt,
+          lastError: "durable retry could not be enqueued",
+        },
+      });
+    } catch {
+      // best effort
+    }
   }
 }
 
@@ -90,7 +107,7 @@ export async function deliverWebhookEvent(
   }
 }
 
-async function attemptDelivery(
+export async function attemptDelivery(
   endpointId: string,
   url: string,
   secret: string,
@@ -119,7 +136,6 @@ async function attemptDelivery(
         event: JSON.parse(payload).event,
         payload: JSON.parse(payload),
         statusCode: response.status,
-        status: response.ok ? "delivered" : "failed",
         attempt: attempt + 1,
         responseBody: await response.text().catch(() => null),
       },
@@ -136,7 +152,6 @@ async function attemptDelivery(
         endpointId,
         event: JSON.parse(payload).event,
         payload: JSON.parse(payload),
-        status: "failed",
         attempt: attempt + 1,
         responseBody: error instanceof Error ? error.message : "Unknown error",
       },
