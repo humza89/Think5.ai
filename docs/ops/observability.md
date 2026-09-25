@@ -52,9 +52,9 @@ Nothing above requires code changes to the application; the app depends only on 
 
 Panels that depend on a later task say so in their description so nobody reads an empty graph as "zero".
 
-## Relay OpenTelemetry SDK (deferred, tracked)
+## Relay OpenTelemetry SDK (shipped in T13)
 
-The plan asks the relay to run the Node OTel SDK with `serviceName: "think5-relay"`. `relay/node_modules` is currently committed to the repository (T13 removes it). Adding `@opentelemetry/sdk-node` + OTLP exporters before T13 would commit several megabytes of vendored dependencies. The relay change is therefore split: correlation (this task) now; SDK registration in the T13 hygiene PR, with the same env vars and `OTEL_SERVICE_NAME=think5-relay` set on Fly (`fly secrets set`). The `relay.json` dashboard is already written against the metric names that SDK will emit.
+`relay/otel.ts` registers `@opentelemetry/sdk-node` with OTLP/HTTP trace and metric exporters when `OTEL_EXPORTER_OTLP_ENDPOINT` is set (same rule as the web tier) and exposes the `relay_*` instruments the `relay.json` dashboard reads (`relay_active_connections`, `relay_connections_total{has_request_id}`, `relay_gemini_reconnects_total`, `relay_gemini_reconnect_failures_total`, `relay_buffer_overflows_total`, `relay_messages_total`, `relay_bytes_total`, `relay_drain_started_total`, `relay_drain_force_terminated_total`, `relay_gemini_connect_timeouts_total`, `relay_gemini_setup_timeouts_total`). Resource attributes: `service.name=think5-relay`, `deployment.environment`, `fly.region`. Set on Fly with `fly secrets set OTEL_EXPORTER_OTLP_ENDPOINT=… OTEL_EXPORTER_OTLP_HEADERS=… OTEL_SERVICE_NAME=think5-relay`. `relay/node_modules` is no longer committed; the Dockerfile runs `npm ci`.
 
 ## Logs via OTLP
 
