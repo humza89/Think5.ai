@@ -1,5 +1,6 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import { FeatureFlags } from "@/lib/feature-flags";
 import CandidateInterviewClient from "./client-page";
 
 export default async function CandidateInterviewPage({ 
@@ -11,6 +12,13 @@ export default async function CandidateInterviewPage({
 }) {
   const { id } = await params;
   const token = (await searchParams).token;
+
+  // T4: one interview room. The legacy candidate room stays in the tree
+  // (preservation contract) but traffic goes to /interview/[id], which
+  // resolves the credential from the URL token or the accept cookie.
+  if (FeatureFlags.P0_SINGLE_INTERVIEW_ROOM) {
+    redirect(`/interview/${id}${token ? `?token=${encodeURIComponent(token)}` : ""}`);
+  }
 
   if (!token) return notFound();
 

@@ -15,10 +15,22 @@ export async function GET(
 
     const { id } = await params;
 
+    // T4: ownership is the Candidate record linked to this user (by email,
+    // the same link requireCandidateRole uses), not the invitation email.
+    // invitedEmail stays as a compatibility fallback for older interviews.
+    const candidate = await prisma.candidate.findFirst({
+      where: { email: { equals: profile.email, mode: "insensitive" } },
+      select: { id: true },
+    });
+    const ownership: Array<Record<string, unknown>> = [
+      { invitedEmail: { equals: profile.email, mode: "insensitive" } },
+    ];
+    if (candidate) ownership.unshift({ candidateId: candidate.id });
+
     const interview = await prisma.interview.findFirst({
       where: {
         id,
-        invitedEmail: { equals: profile.email, mode: "insensitive" },
+        OR: ownership,
       },
       select: {
         id: true,
