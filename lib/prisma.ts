@@ -1,5 +1,6 @@
 import { PrismaClient } from "@prisma/client";
 import { mockPrisma, useMockDb } from "./mock-db";
+import { withSoftDelete } from "./soft-delete";
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
@@ -56,4 +57,14 @@ if (useMockDb) {
   }
 }
 
-export const prisma = prismaInstance;
+/**
+ * T6: the raw client, without soft-delete rewriting. Only for legal hard
+ * deletes after the retention window (retention purge, DSAR execution).
+ */
+export const prismaRaw = prismaInstance;
+
+/**
+ * Application client. Candidate, Interview and InterviewReport reads exclude
+ * soft-deleted rows and deletes set deletedAt (see lib/soft-delete.ts).
+ */
+export const prisma = withSoftDelete(prismaInstance);
