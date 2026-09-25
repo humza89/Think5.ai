@@ -1,80 +1,75 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
-import { getAuthenticatedUser, handleAuthError } from '@/lib/auth';
+import { NextRequest, NextResponse } from "next/server";
+import { createConversationSchema, listMessagesQuerySchema, sendMessageSchema } from "@/lib/messaging/contract";
+import { getOrCreateConversation, listConversations, listMessages, sendMessage } from "@/lib/messaging/service";
+import { messagingActor, messagingDeps } from "@/lib/messaging/server";
+import { messagingErrorResponse } from "../messaging/_handlers";
 
-export async function GET() {
+/**
+ * @deprecated Legacy messaging route (Phase 0 T8). Adapter over the canonical
+ * contract in lib/messaging; use /api/messaging/conversations instead.
+ * Keeps the pre-T8 response shapes for existing callers and adds the new
+ * fields alongside them.
+ */
+const SUNSET = "Sat, 31 Oct 2026 00:00:00 GMT";
+
+function deprecated(response: NextResponse): NextResponse {
+  response.headers.set("Deprecation", "true");
+  response.headers.set("Sunset", SUNSET);
+  response.headers.set("Link", '</api/messaging/conversations>; rel="successor-version"');
+  return response;
+}
+
+export async function GET(request: NextRequest) {
   try {
-    const { user } = await getAuthenticatedUser();
-
-    // Get all conversations for this user (as sender or recipient)
-    const messages = await prisma.message.findMany({
-      where: {
-        OR: [
-          { senderId: user.id },
-          { recipientId: user.id },
-        ],
-      },
-      orderBy: { createdAt: 'desc' },
-    });
-
-    // Group by conversationId and get latest message per conversation
-    const conversationMap = new Map<string, typeof messages[0]>();
-    for (const msg of messages) {
-      if (!conversationMap.has(msg.conversationId)) {
-        conversationMap.set(msg.conversationId, msg);
-      }
+    const actor = await messagingActor();
+    const deps = messagingDeps();
+    const conversationId = request.nextUrl.searchParams.get("conversationId");
+    if (conversationId) {
+      const query = listMessagesQuerySchema.parse({ limit: 100 });
+      const page = await listMessages(actor, conversationId, query, deps);
+      return deprecated(NextResponse.json({ messages: page.messages, nextCursor: page.nextCursor, currentUserId: actor.id }));
     }
-
-    const conversations = Array.from(conversationMap.values()).map((msg) => ({
-      conversationId: msg.conversationId,
-      lastMessage: msg.content,
-      lastMessageAt: msg.createdAt,
-      isRead: msg.recipientId === user.id ? msg.read : true,
-      participantId: msg.senderId === user.id ? msg.recipientId : msg.senderId,
-      participantRole: msg.senderId === user.id ? msg.recipientRole : msg.senderRole,
-    }));
-
-    return NextResponse.json({ conversations });
+    const conversations = await listConversations(actor, deps);
+    return deprecated(
+      NextResponse.json({
+        currentUserId: actor.id,
+        conversations: conversations.map((c) => ({
+          // legacy fields
+          conversationId: c.id,
+          lastMessage: c.lastMessage,
+          lastMessageAt: c.lastMessageAt,
+          isRead: c.unreadCount === 0,
+          participantId: c.participant.id,
+          participantRole: c.participant.role,
+          // canonical fields
+          id: c.id,
+          participantName: c.participant.name,
+          unreadCount: c.unreadCount,
+          participant: c.participant,
+        })),
+      }),
+    );
   } catch (error) {
-    const { error: message, status } = handleAuthError(error);
-    return NextResponse.json({ error: message }, { status });
+    return deprecated(messagingErrorResponse(error));
   }
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const { user, profile } = await getAuthenticatedUser();
-
-    const body = await request.json();
-    const { recipientId, content, conversationId } = body;
-
-    if (!recipientId || !content) {
-      return NextResponse.json(
-        { error: 'Recipient and content are required' },
-        { status: 400 }
-      );
+    const actor = await messagingActor();
+    const deps = messagingDeps();
+    const body = (await request.json().catch(() => ({}))) as { recipientId?: string; content?: string; conversationId?: string };
+    let conversationId = body.conversationId;
+    if (!conversationId) {
+      const parsed = createConversationSchema.safeParse({ participantId: body.recipientId });
+      if (!parsed.success) return deprecated(NextResponse.json({ error: "Recipient and content are required" }, { status: 400 }));
+      conversationId = (await getOrCreateConversation(actor, parsed.data, deps)).id;
     }
-
-    const senderRole = profile?.role === 'candidate' ? 'CANDIDATE' : 'RECRUITER';
-    const recipientRole = senderRole === 'CANDIDATE' ? 'RECRUITER' : 'CANDIDATE';
-
-    // Generate or use existing conversation ID
-    const convId = conversationId || `${[user.id, recipientId].sort().join('-')}`;
-
-    const message = await prisma.message.create({
-      data: {
-        conversationId: convId,
-        senderId: user.id,
-        senderRole,
-        recipientId,
-        recipientRole,
-        content,
-      },
-    });
-
-    return NextResponse.json({ message }, { status: 201 });
+    const parsedMessage = sendMessageSchema.safeParse({ content: body.content });
+    if (!parsedMessage.success) return deprecated(NextResponse.json({ error: "Recipient and content are required" }, { status: 400 }));
+    const message = await sendMessage(actor, conversationId, parsedMessage.data, deps);
+    return deprecated(NextResponse.json({ message }, { status: 201 }));
   } catch (error) {
-    const { error: message, status } = handleAuthError(error);
-    return NextResponse.json({ error: message }, { status });
+    return deprecated(messagingErrorResponse(error));
   }
 }

@@ -1448,6 +1448,28 @@ enum MessageSenderRole {
   SYSTEM
 }
 
+/// Phase 0 T8: canonical conversation record. `id` equals the legacy
+/// Message.conversationId key (sorted participant ids joined by "-") so the
+/// existing column needs no rewrite; the FK is deferred until the backfill
+/// (scripts/backfill-conversations.ts) has run everywhere.
+model Conversation {
+  id               String            @id
+  participantAId   String
+  participantARole MessageSenderRole
+  participantBId   String
+  participantBRole MessageSenderRole
+  tenantId         String?
+  lastMessageAt    DateTime?
+  lastMessage      String?           @db.Text
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  @@unique([participantAId, participantBId])
+  @@index([participantAId, lastMessageAt])
+  @@index([participantBId, lastMessageAt])
+  @@index([tenantId])
+}
+
 model Message {
   id              String            @id @default(uuid())
   conversationId  String
@@ -1458,6 +1480,8 @@ model Message {
   content         String            @db.Text
   read            Boolean           @default(false)
   readAt          DateTime?
+  /// Phase 0 T8: set when the recipient's client first fetched the message.
+  deliveredAt     DateTime?
   attachmentUrl   String?
   attachmentName  String?
 

@@ -125,11 +125,23 @@ export default function MessagingPage() {
   const fetchConversations = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await apiFetch("/api/messages");
+      // T8: canonical contract (lib/messaging/contract.ts)
+      const res = await apiFetch("/api/messaging/conversations");
       if (!res.ok) throw new Error(`Failed to fetch messages (${res.status})`);
-      const data = await res.json();
-      const list = Array.isArray(data) ? data : data.conversations ?? [];
-      setConversations(list);
+      const data = (await res.json()) as {
+        conversations: Array<{ id: string; participant: { name: string; role: string }; lastMessage: string | null; lastMessageAt: string | null; unreadCount: number }>;
+      };
+      setConversations((prev) =>
+        data.conversations.map((c) => ({
+          id: c.id,
+          participantName: c.participant.name,
+          participantTitle: c.participant.role === "CANDIDATE" ? "Candidate" : "Recruiter",
+          lastMessage: c.lastMessage ?? undefined,
+          lastMessageAt: c.lastMessageAt ?? undefined,
+          unreadCount: c.unreadCount,
+          messages: prev.find((p) => p.id === c.id)?.messages ?? [],
+        })),
+      );
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to load messages";
       toast.error(message);
@@ -141,6 +153,47 @@ export default function MessagingPage() {
   useEffect(() => {
     fetchConversations();
   }, [fetchConversations]);
+
+  // T8: load the thread for the selected conversation and record the read receipt.
+  const loadThread = useCallback(async (conversationId: string) => {
+    const res = await apiFetch(`/api/messaging/conversations/${conversationId}/messages`);
+    if (!res.ok) return;
+    const data = (await res.json()) as { messages: Array<{ id: string; content: string; senderId: string; createdAt: string; isOwn: boolean }> };
+    setConversations((prev) =>
+      prev.map((conv) =>
+        conv.id === conversationId
+          ? {
+              ...conv,
+              unreadCount: 0,
+              messages: data.messages.map((m) => ({
+                id: m.id,
+                content: m.content,
+                senderId: m.senderId,
+                senderName: m.isOwn ? "You" : conv.participantName,
+                createdAt: m.createdAt,
+                isOwn: m.isOwn,
+              })),
+            }
+          : conv,
+      ),
+    );
+    apiFetch(`/api/messaging/conversations/${conversationId}/read`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (selectedId) loadThread(selectedId);
+  }, [selectedId, loadThread]);
+
+  // T8: live updates without polling; the stream reconnects itself.
+  useEffect(() => {
+    if (typeof EventSource === "undefined") return;
+    const source = new EventSource("/api/messaging/stream");
+    source.addEventListener("message", () => {
+      fetchConversations();
+      if (selectedId) loadThread(selectedId);
+    });
+    return () => source.close();
+  }, [fetchConversations, loadThread, selectedId]);
 
   // Scroll to bottom of messages when conversation changes
   useEffect(() => {
@@ -158,35 +211,24 @@ export default function MessagingPage() {
 
     setSending(true);
     try {
-      const res = await apiFetch("/api/messages", {
+      const res = await apiFetch(`/api/messaging/conversations/${selectedId}/messages`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          conversationId: selectedId,
-          content: newMessage.trim(),
-        }),
+        body: JSON.stringify({ content: newMessage.trim() }),
       });
       if (!res.ok) throw new Error(`Failed to send message (${res.status})`);
+      const { message } = (await res.json()) as { message: { id: string; content: string; senderId: string; createdAt: string } };
 
-      // Optimistic update
-      const now = new Date().toISOString();
       setConversations((prev) =>
         prev.map((conv) =>
           conv.id === selectedId
             ? {
                 ...conv,
-                lastMessage: newMessage.trim(),
-                lastMessageAt: now,
+                lastMessage: message.content,
+                lastMessageAt: message.createdAt,
                 messages: [
                   ...conv.messages,
-                  {
-                    id: `temp-${Date.now()}`,
-                    content: newMessage.trim(),
-                    senderId: "me",
-                    senderName: "You",
-                    createdAt: now,
-                    isOwn: true,
-                  },
+                  { id: message.id, content: message.content, senderId: message.senderId, senderName: "You", createdAt: message.createdAt, isOwn: true },
                 ],
               }
             : conv

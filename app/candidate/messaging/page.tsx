@@ -49,10 +49,24 @@ export default function MessagingPage() {
   const fetchConversations = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await apiFetch("/api/messages");
+      // T8: canonical contract (lib/messaging/contract.ts)
+      const res = await apiFetch("/api/messaging/conversations");
       if (res.ok) {
-        const data = await res.json();
-        setConversations(data.conversations || []);
+        const data = (await res.json()) as {
+          currentUserId: string;
+          conversations: Array<{ id: string; participant: { id: string; name: string; role: string }; lastMessage: string | null; lastMessageAt: string | null; unreadCount: number }>;
+        };
+        setConversations(
+          data.conversations.map((c) => ({
+            id: c.id,
+            participantId: c.participant.id,
+            participantName: c.participant.name,
+            participantRole: c.participant.role === "RECRUITER" ? "Recruiter" : "Candidate",
+            lastMessage: c.lastMessage ?? "",
+            lastMessageAt: c.lastMessageAt ?? "",
+            unreadCount: c.unreadCount,
+          })),
+        );
         if (data.currentUserId) {
           setCurrentUserId(data.currentUserId);
         }
@@ -71,10 +85,13 @@ export default function MessagingPage() {
   const fetchMessages = useCallback(async (conversationId: string) => {
     setLoadingMessages(true);
     try {
-      const res = await apiFetch(`/api/messages?conversationId=${conversationId}`);
+      const res = await apiFetch(`/api/messaging/conversations/${conversationId}/messages`);
       if (res.ok) {
-        const data = await res.json();
+        const data = (await res.json()) as { messages: Message[] };
         setMessages(data.messages || []);
+        // Read receipt for the sender; clears the unread badge locally.
+        apiFetch(`/api/messaging/conversations/${conversationId}/read`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }).catch(() => {});
+        setConversations((prev) => prev.map((c) => (c.id === conversationId ? { ...c, unreadCount: 0 } : c)));
       }
     } catch {
       toast.error("Failed to load messages");
@@ -93,17 +110,25 @@ export default function MessagingPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  // T8: live updates without polling; the stream reconnects itself.
+  useEffect(() => {
+    if (typeof EventSource === "undefined") return;
+    const source = new EventSource("/api/messaging/stream");
+    source.addEventListener("message", () => {
+      fetchConversations();
+      if (selectedConversation) fetchMessages(selectedConversation.id);
+    });
+    return () => source.close();
+  }, [fetchConversations, fetchMessages, selectedConversation]);
+
   const handleSendMessage = async () => {
     if (!newMessage.trim() || !selectedConversation) return;
     setSendingMessage(true);
     try {
-      const res = await apiFetch("/api/messages", {
+      const res = await apiFetch(`/api/messaging/conversations/${selectedConversation.id}/messages`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          conversationId: selectedConversation.id,
-          content: newMessage.trim(),
-        }),
+        body: JSON.stringify({ content: newMessage.trim() }),
       });
       if (res.ok) {
         const data = await res.json();
