@@ -59,7 +59,7 @@ export async function POST(
   const { id } = await params;
   try {
     const body = await request.json();
-    const { consentRecording, consentProctoring, consentPrivacy } = body;
+    const { consentRecording, consentProctoring, consentPrivacy, accommodations } = body;
 
     // T2: cookie, header, body or query
     const credential = resolveInterviewCredential(request, id, body);
@@ -136,6 +136,8 @@ export async function POST(
             ...(consentRecording !== undefined && { consentRecording }),
             ...(consentProctoring !== undefined && { consentProctoring }),
             ...(consentPrivacy !== undefined && { consentPrivacy }),
+            // T3: accommodations chosen on the welcome screen
+            ...(accommodations && typeof accommodations === "object" && { accommodations }),
             consentedAt: new Date(),
           },
         });

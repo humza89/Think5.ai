@@ -3,6 +3,18 @@ import { prisma } from "@/lib/prisma";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { z } from "zod";
 import { assertInterviewCredential, resolveInterviewCredential } from "@/lib/interview-credential";
+import { persistIntegrityBatch } from "@/lib/proctoring-normalizer";
+
+// T3: the room batches client integrity events (hooks/useProctoring.ts).
+const clientEventSchema = z.object({
+  type: z.string().min(1).max(64),
+  description: z.string().max(500).optional(),
+  timestamp: z.string().refine((v) => !Number.isNaN(Date.parse(v)), "timestamp must be ISO-8601"),
+});
+const batchSchema = z.object({
+  accessToken: z.string().min(1).optional(),
+  events: z.array(clientEventSchema).min(1).max(200),
+});
 
 const proctoringEventSchema = z.object({
   accessToken: z.string().min(1).optional(),
@@ -36,12 +48,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const parsed = proctoringEventSchema.safeParse(body);
+  const isBatch = !!body && typeof body === "object" && Array.isArray((body as { events?: unknown }).events);
+  const parsed = isBatch ? batchSchema.safeParse(body) : proctoringEventSchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json({ error: "Invalid payload", details: parsed.error.issues }, { status: 400 });
   }
-
-  const { eventType, severity } = parsed.data;
 
   const interview = await prisma.interview.findUnique({ where: { id } });
   if (!interview) {
@@ -49,6 +60,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   }
   const denied = assertInterviewCredential(interview, resolveInterviewCredential(req, id, parsed.data));
   if (denied) return denied;
+
+  if (isBatch) {
+    const { events } = parsed.data as z.infer<typeof batchSchema>;
+    const result = await persistIntegrityBatch(id, events);
+    return NextResponse.json({ success: true, ...result });
+  }
+
+  const { eventType, severity } = parsed.data as z.infer<typeof proctoringEventSchema>;
 
   await prisma.proctoringEvent.create({
     data: {

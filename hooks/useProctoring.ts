@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import { apiFetch } from "@/lib/api-client";
 
 export type ProctoringTier = "none" | "light" | "strict";
 export type PastePolicy = "allow" | "warn" | "block";
@@ -11,7 +12,11 @@ export interface ProctoringConfig {
   pastePolicy?: PastePolicy;
   copyPolicy?: CopyPolicy;
   maxPasteWarnings?: number;
+  /** T3: when set, integrity events are batched to /api/interviews/[id]/proctoring. */
+  interviewId?: string;
 }
+
+const FLUSH_INTERVAL_MS = 10_000;
 
 interface IntegrityEvent {
   type:
@@ -44,6 +49,8 @@ interface UseProctoringReturn {
   startMonitoring: () => void;
   requestFullscreen: () => Promise<void>;
   tier: ProctoringTier;
+  /** T3: send buffered integrity events now (fetch with keepalive, or sendBeacon on page hide). */
+  flushIntegrityEvents: (mode?: "fetch" | "beacon") => Promise<void>;
 }
 
 const DEFAULT_CONFIG: ProctoringConfig = {
@@ -56,7 +63,8 @@ const DEFAULT_CONFIG: ProctoringConfig = {
 export function useProctoring(
   config: ProctoringConfig = DEFAULT_CONFIG
 ): UseProctoringReturn {
-  const { tier, pastePolicy = "block", copyPolicy = "warn", maxPasteWarnings = 3 } = config;
+  const { tier, pastePolicy = "block", copyPolicy = "warn", maxPasteWarnings = 3, interviewId } = config;
+  const outboxRef = useRef<IntegrityEvent[]>([]);
 
   const [integrityEvents, setIntegrityEvents] = useState<IntegrityEvent[]>([]);
   const [webcamActive, setWebcamActive] = useState(false);
@@ -78,9 +86,54 @@ export function useProctoring(
         timestamp: new Date().toISOString(),
       };
       setIntegrityEvents((prev) => [...prev, event]);
+      outboxRef.current.push(event);
     },
     []
   );
+
+  // T3: persist events on the voice path too. The local state stays the
+  // source for the end-of-interview payload; the outbox is what has not yet
+  // reached the server. Failed sends are re-queued.
+  const flushIntegrityEvents = useCallback(async (mode: "fetch" | "beacon" = "fetch") => {
+    if (!interviewId || outboxRef.current.length === 0) return;
+    const events = outboxRef.current.splice(0, outboxRef.current.length);
+    const url = `/api/interviews/${interviewId}/proctoring`;
+    const payload = JSON.stringify({ events });
+    if (mode === "beacon" && typeof navigator !== "undefined" && navigator.sendBeacon) {
+      // Token-authenticated route (proxy exempts it from CSRF); the cookie rides along.
+      if (!navigator.sendBeacon(url, new Blob([payload], { type: "application/json" }))) {
+        outboxRef.current.unshift(...events);
+      }
+      return;
+    }
+    try {
+      const res = await apiFetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: payload,
+        keepalive: true,
+      });
+      if (!res.ok) outboxRef.current.unshift(...events);
+    } catch {
+      outboxRef.current.unshift(...events);
+    }
+  }, [interviewId]);
+
+  useEffect(() => {
+    if (!isMonitoring || !interviewId) return;
+    const timer = setInterval(() => {
+      void flushIntegrityEvents("fetch");
+    }, FLUSH_INTERVAL_MS);
+    const onPageHide = () => {
+      void flushIntegrityEvents("beacon");
+    };
+    window.addEventListener("pagehide", onPageHide);
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener("pagehide", onPageHide);
+      void flushIntegrityEvents("beacon");
+    };
+  }, [isMonitoring, interviewId, flushIntegrityEvents]);
 
   // Determine effective paste policy (escalate after max warnings)
   const getEffectivePastePolicy = useCallback((): PastePolicy => {
@@ -327,5 +380,6 @@ export function useProctoring(
     startMonitoring,
     requestFullscreen,
     tier,
+    flushIntegrityEvents,
   };
 }
