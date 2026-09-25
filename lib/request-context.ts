@@ -33,10 +33,7 @@ export function runWithRequestContext<T>(context: RequestContext, fn: () => Prom
 }
 
 /** Short, human-readable support id shown on error cards: `<interview8>-<request8>`. */
-export function supportId(interviewId: string | undefined, requestId: string | undefined): string | null {
-  if (!interviewId && !requestId) return null;
-  return [interviewId?.slice(0, 8), requestId?.slice(0, 8)].filter(Boolean).join("-");
-}
+export { supportId } from "@/lib/support-id";
 
 function stripUndefined(context: RequestContext): RequestContext {
   const out: RequestContext = {};

@@ -18,7 +18,7 @@ import { useMediaRecording } from "@/hooks/useMediaRecording";
 import { classifyError } from "@/lib/error-classification";
 import { csrfHeaders } from "@/lib/csrf-client";
 import { apiFetch } from "@/lib/api-client";
-import { supportId } from "@/lib/request-context";
+import { supportId } from "@/lib/support-id";
 
 type InterviewStage =
   | "LOADING"

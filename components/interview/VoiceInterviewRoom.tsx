@@ -37,7 +37,7 @@ import {
 import { DeviceSelector } from "@/components/interview/DeviceSelector";
 import { NetworkQualityIndicator } from "@/components/interview/NetworkQualityIndicator";
 import { useMediaRecording } from "@/hooks/useMediaRecording";
-import { supportId } from "@/lib/request-context";
+import { supportId } from "@/lib/support-id";
 
 // ── Props ──────────────────────────────────────────────────────────────
 
