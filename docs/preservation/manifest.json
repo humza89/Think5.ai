@@ -1716,6 +1716,13 @@
       ]
     },
     {
+      "route": "/api/interviews/[id]/session/refresh",
+      "file": "app/api/interviews/[id]/session/refresh/route.ts",
+      "methods": [
+        "POST"
+      ]
+    },
+    {
       "route": "/api/interviews/[id]/stream",
       "file": "app/api/interviews/[id]/stream/route.ts",
       "methods": [
@@ -6562,6 +6569,11 @@
     {
       "name": "OUTPUT_GATE_BLOCKING",
       "env": "FF_OUTPUT_GATE_BLOCKING",
+      "default": true
+    },
+    {
+      "name": "P0_COOKIE_INTERVIEW_AUTH",
+      "env": "FF_P0_COOKIE_INTERVIEW_AUTH",
       "default": true
     },
     {

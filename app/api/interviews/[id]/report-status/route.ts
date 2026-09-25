@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { assertInterviewCredential, resolveInterviewCredential } from "@/lib/interview-credential";
 
 export async function POST(
   request: NextRequest,
@@ -7,15 +8,8 @@ export async function POST(
 ) {
   try {
     const { id } = await params;
-    const body = await request.json();
-    const { accessToken } = body;
-
-    if (!accessToken) {
-      return NextResponse.json(
-        { error: "Access token is required" },
-        { status: 400 }
-      );
-    }
+    const body = await request.json().catch(() => ({}));
+    const credential = resolveInterviewCredential(request, id, body);
 
     const interview = await prisma.interview.findUnique({
       where: { id },
@@ -26,23 +20,11 @@ export async function POST(
       },
     });
 
-    if (!interview || interview.accessToken !== accessToken) {
-      return NextResponse.json(
-        { error: "Unauthorized" },
-        { status: 401 }
-      );
+    if (!interview) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-
-    // Check token expiry
-    if (
-      interview.accessTokenExpiresAt &&
-      new Date() > new Date(interview.accessTokenExpiresAt)
-    ) {
-      return NextResponse.json(
-        { error: "Access token has expired" },
-        { status: 401 }
-      );
-    }
+    const denied = assertInterviewCredential(interview, credential);
+    if (denied) return denied;
 
     return NextResponse.json({ ready: !!interview.report });
   } catch (error) {

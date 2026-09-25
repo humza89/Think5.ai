@@ -2,9 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { z } from "zod";
+import { assertInterviewCredential, resolveInterviewCredential } from "@/lib/interview-credential";
 
 const proctoringEventSchema = z.object({
-  accessToken: z.string().min(1),
+  accessToken: z.string().min(1).optional(),
   eventType: z.enum([
     "TAB_SWITCHED",
     "FULLSCREEN_EXITED",
@@ -40,12 +41,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: "Invalid payload", details: parsed.error.issues }, { status: 400 });
   }
 
-  const { accessToken, eventType, severity } = parsed.data;
+  const { eventType, severity } = parsed.data;
 
   const interview = await prisma.interview.findUnique({ where: { id } });
-  if (!interview || interview.accessToken !== accessToken) {
+  if (!interview) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  const denied = assertInterviewCredential(interview, resolveInterviewCredential(req, id, parsed.data));
+  if (denied) return denied;
 
   await prisma.proctoringEvent.create({
     data: {

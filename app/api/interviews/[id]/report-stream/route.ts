@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { checkInterviewCredential, resolveInterviewCredential } from "@/lib/interview-credential";
 
 /**
  * GET /api/interviews/[id]/report-stream?token=...
@@ -12,19 +13,15 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const token = req.nextUrl.searchParams.get("token");
+  // T2: ?token=, Authorization or the interview-session cookie
+  const credential = resolveInterviewCredential(req, id);
 
-  if (!token) {
-    return new Response("Missing token", { status: 401 });
-  }
-
-  // Validate access
   const interview = await prisma.interview.findUnique({
     where: { id },
-    select: { accessToken: true, reportStatus: true },
+    select: { accessToken: true, accessTokenExpiresAt: true, reportStatus: true },
   });
 
-  if (!interview || interview.accessToken !== token) {
+  if (!interview || checkInterviewCredential(interview, credential) !== null) {
     return new Response("Unauthorized", { status: 401 });
   }
 

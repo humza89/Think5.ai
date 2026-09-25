@@ -10,6 +10,7 @@ import { prisma } from "@/lib/prisma";
 import { getSessionState } from "@/lib/session-store";
 import { composeMemoryPacket, compute4FactorConfidence } from "@/lib/memory-orchestrator";
 import { isEnabled } from "@/lib/feature-flags";
+import { assertInterviewCredential, resolveInterviewCredential } from "@/lib/interview-credential";
 
 export async function GET(
   request: NextRequest,
@@ -18,15 +19,16 @@ export async function GET(
   const { id } = await params;
 
   // Auth check — accessToken via Authorization header (Bearer <token>)
-  const authHeader = request.headers.get("authorization");
-  const accessToken = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
+  // T2: cookie, header, body or query (header first).
   const interview = await prisma.interview.findUnique({
     where: { id },
-    select: { accessToken: true },
+    select: { accessToken: true, accessTokenExpiresAt: true },
   });
-  if (!interview || interview.accessToken !== accessToken) {
+  if (!interview) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
+  const denied = assertInterviewCredential(interview, resolveInterviewCredential(request, id));
+  if (denied) return denied;
 
   const session = await getSessionState(id);
   if (!session) {

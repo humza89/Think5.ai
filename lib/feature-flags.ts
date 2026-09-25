@@ -75,6 +75,9 @@ export const FeatureFlags = {
 
   /** Fix 8: Persona identity token — cryptographic persona lock verification (opt-in) */
   PERSONA_IDENTITY_TOKEN: envBool("FF_PERSONA_IDENTITY_TOKEN", false),
+
+  /** Phase 0 T2: interview routes accept the HttpOnly interview-session cookie as a credential source. */
+  P0_COOKIE_INTERVIEW_AUTH: envBool("FF_P0_COOKIE_INTERVIEW_AUTH", true),
 } as const;
 
 /**
