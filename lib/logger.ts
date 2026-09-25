@@ -6,13 +6,13 @@
  */
 
 import * as Sentry from "@sentry/nextjs";
-import { getRequestContext } from "@/lib/request-context";
+import { currentRequestContext } from "@/lib/request-context-provider";
 
 const isProduction = process.env.NODE_ENV === "production";
 
 /** T12: requestId / interviewId / tenantId from the ambient request context, merged under explicit extras. */
 function withCorrelation(extra?: Record<string, unknown>): Record<string, unknown> | undefined {
-  const ctx = getRequestContext();
+  const ctx = currentRequestContext();
   const ids: Record<string, unknown> = {};
   if (ctx.requestId) ids.requestId = ctx.requestId;
   if (ctx.interviewId) ids.interviewId = ctx.interviewId;

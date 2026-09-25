@@ -16,6 +16,8 @@ export async function register() {
     reportRedisConfiguration();
   }
   if (process.env.NEXT_RUNTIME === "nodejs") {
+    // Register the request-context provider for lib/logger.ts early.
+    await import("./lib/request-context");
     if (process.env.OTEL_EXPORTER_OTLP_ENDPOINT || process.env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT) {
       const { registerOTel } = await import("@vercel/otel");
       registerOTel({ serviceName: process.env.OTEL_SERVICE_NAME || "think5-web" });

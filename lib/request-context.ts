@@ -8,12 +8,10 @@
  * threading them through call signatures.
  */
 import { AsyncLocalStorage } from "node:async_hooks";
+import { setRequestContextProvider, type RequestContext } from "@/lib/request-context-provider";
 
-export interface RequestContext {
-  requestId?: string;
-  interviewId?: string;
-  tenantId?: string;
-}
+export type { RequestContext } from "@/lib/request-context-provider";
+
 
 export const REQUEST_ID_HEADER = "x-request-id";
 
@@ -22,6 +20,9 @@ const storage = new AsyncLocalStorage<RequestContext>();
 export function getRequestContext(): RequestContext {
   return storage.getStore() ?? {};
 }
+
+// Server modules that import this file make the ambient context visible to lib/logger.ts.
+setRequestContextProvider(getRequestContext);
 
 export function requestIdFrom(headers: { get(name: string): string | null }): string | undefined {
   return headers.get(REQUEST_ID_HEADER) ?? undefined;
