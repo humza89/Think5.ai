@@ -82,6 +82,9 @@ async function enforceCsrfAndRateLimit(request: NextRequest): Promise<NextRespon
 
   if (CSRF_EXEMPT_PATTERNS.some((p) => p.test(pathname))) return null;
   if (TOKEN_AUTH_PATTERNS.some((p) => p.test(pathname))) return null;
+  // T10: /api/v1/* accepts Bearer API keys (lib/api-key-auth.ts). Browsers never
+  // attach those automatically, so a Bearer request is not a CSRF vector.
+  if (pathname.startsWith('/api/v1/') && /^Bearer\s+t5_/i.test(request.headers.get('authorization') ?? '')) return null;
 
   const headerToken = request.headers.get(CSRF_HEADER_NAME);
   const cookieToken = request.cookies.get(CSRF_COOKIE_NAME)?.value;

@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -35,14 +35,26 @@ interface Role {
   salaryRange?: string;
   skillsRequired: string[];
   description?: string;
+  matches?: Array<{ id: string; status?: string; score?: number; candidate?: { id: string; fullName?: string; name?: string } | null; candidateName?: string }>;
 }
 
 export default function ClientDetailPage() {
+  return (
+    <Suspense fallback={null}>
+      <ClientDetailContent />
+    </Suspense>
+  );
+}
+
+function ClientDetailContent() {
   const params = useParams();
   const router = useRouter();
   const [client, setClient] = useState<Client | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<"overview" | "roles">("overview");
+  const searchParams = useSearchParams();
+  const [activeTab, setActiveTab] = useState<"overview" | "roles">(searchParams.get("tab") === "roles" ? "roles" : "overview");
+  // T10: "View Matches" expands the role's matches inline (no separate route exists yet)
+  const [openMatches, setOpenMatches] = useState<string | null>(searchParams.get("role"));
 
   useEffect(() => {
     if (params.id) {
@@ -205,7 +217,7 @@ export default function ClientDetailPage() {
                 </div>
               </div>
             </div>
-            <Button onClick={() => router.push(`/clients/${client.id}/roles/new`)}>
+            <Button onClick={() => router.push(`/clients?addRole=${client.id}`)}>
               <Plus className="mr-2 h-4 w-4" />
               Add Role
             </Button>
@@ -384,8 +396,26 @@ export default function ClientDetailPage() {
                               </div>
                             )}
                           </div>
-                          <Button variant="outline">View Matches</Button>
+                          <Button variant="outline" onClick={() => setOpenMatches((cur) => (cur === role.id ? null : role.id))} aria-expanded={openMatches === role.id}>
+                            {openMatches === role.id ? "Hide Matches" : "View Matches"}
+                          </Button>
                         </div>
+                        {openMatches === role.id && (
+                          <div className="mt-4 rounded-md border bg-gray-50 p-4" data-testid="role-matches">
+                            {role.matches && role.matches.length > 0 ? (
+                              <ul className="divide-y">
+                                {role.matches.map((m) => (
+                                  <li key={m.id} className="flex items-center justify-between py-2 text-sm">
+                                    <span>{m.candidate?.fullName ?? m.candidate?.name ?? m.candidateName ?? "Candidate"}</span>
+                                    <span className="text-gray-500">{m.status ?? ""}{typeof m.score === "number" ? ` · ${Math.round(m.score)}` : ""}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            ) : (
+                              <p className="text-sm text-gray-500">No matches recorded for this role yet.</p>
+                            )}
+                          </div>
+                        )}
                       </CardContent>
                     </Card>
                   ))
@@ -393,7 +423,7 @@ export default function ClientDetailPage() {
                   <div className="text-center py-12">
                     <Briefcase className="mx-auto h-12 w-12 text-gray-400 mb-4" />
                     <p className="text-gray-500 mb-4">No roles yet</p>
-                    <Button onClick={() => router.push(`/clients/${client.id}/roles/new`)}>
+                    <Button onClick={() => router.push(`/clients?addRole=${client.id}`)}>
                       <Plus className="mr-2 h-4 w-4" />
                       Add Your First Role
                     </Button>

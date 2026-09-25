@@ -9,55 +9,10 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import {
-  Home,
-  Search,
-  Send,
-  ClipboardList,
-  User,
-  Sparkles,
-  Wrench,
-  FileText,
-  MessageSquare,
-  Bell,
-  Settings,
-  ShieldCheck,
-} from "lucide-react";
 
-interface NavItem {
-  label: string;
-  href: string;
-  icon: React.ElementType;
-}
 
-const NAV_SECTIONS: { title?: string; items: NavItem[] }[] = [
-  {
-    items: [
-      { label: "Dashboard", href: "/candidate/dashboard", icon: Home },
-      { label: "Browse Jobs", href: "/candidate/jobs", icon: Search },
-      { label: "Applications", href: "/candidate/applications", icon: Send },
-      { label: "Interviews", href: "/candidate/interviews", icon: ClipboardList },
-      { label: "Profile", href: "/candidate/profile", icon: User },
-    ],
-  },
-  {
-    title: "Growth",
-    items: [
-      { label: "Skills", href: "/candidate/skills", icon: Sparkles },
-      { label: "Career Tools", href: "/candidate/career-tools", icon: Wrench },
-      { label: "Documents", href: "/candidate/documents", icon: FileText },
-    ],
-  },
-  {
-    title: "Connect",
-    items: [
-      { label: "Messages", href: "/candidate/messaging", icon: MessageSquare },
-      { label: "Notifications", href: "/candidate/notifications", icon: Bell },
-      { label: "Settings", href: "/candidate/settings", icon: Settings },
-      { label: "Policies", href: "/candidate/policy", icon: ShieldCheck },
-    ],
-  },
-];
+import { CANDIDATE_NAV_SECTIONS as NAV_SECTIONS } from "@/components/layout/nav-config";
+import { LogoMark } from "@/components/brand/LogoMark";
 
 interface CandidateMobileSidebarProps {
   open: boolean;
@@ -77,9 +32,7 @@ export function CandidateMobileSidebar({ open, onClose }: CandidateMobileSidebar
       <SheetContent side="left" className="w-72 p-0">
         <SheetHeader className="p-4 border-b border-border">
           <SheetTitle className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center">
-              <span className="text-white font-bold text-sm">T5</span>
-            </div>
+            <LogoMark size={32} />
             <span className="text-lg font-semibold">Think5</span>
           </SheetTitle>
         </SheetHeader>

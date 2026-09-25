@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -41,6 +42,14 @@ interface Role {
 }
 
 export default function ClientsPage() {
+  return (
+    <Suspense fallback={null}>
+      <ClientsPageContent />
+    </Suspense>
+  );
+}
+
+function ClientsPageContent() {
   const [clients, setClients] = useState<Client[]>([]);
   const [isClientDialogOpen, setIsClientDialogOpen] = useState(false);
   const [isRoleDialogOpen, setIsRoleDialogOpen] = useState(false);
@@ -70,6 +79,19 @@ export default function ClientsPage() {
     description: "",
     experienceYears: "",
   });
+
+  const searchParams = useSearchParams();
+  // T10: /clients?addRole=<clientId> opens the Add Role dialog (used by the client detail page)
+  useEffect(() => {
+    const addRole = searchParams.get("addRole");
+    if (!addRole || clients.length === 0) return;
+    const target = clients.find((c) => c.id === addRole);
+    if (target) {
+      setSelectedClient(target);
+      setIsRoleDialogOpen(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, clients.length]);
 
   useEffect(() => {
     fetchClients();
@@ -443,8 +465,8 @@ export default function ClientsPage() {
                               ))}
                             </div>
                           </div>
-                          <Button variant="outline" size="sm">
-                            View Matches
+                          <Button variant="outline" size="sm" asChild>
+                            <Link href={`/clients/${client.id}?tab=roles&role=${role.id}`}>View Matches</Link>
                           </Button>
                         </div>
                       ))}

@@ -191,7 +191,9 @@ export default function TalentPoolsPage() {
           {pools.map((pool) => (
             <Card
               key={pool.id}
-              className="group hover:shadow-md transition-shadow cursor-pointer"
+              className="group"
+              aria-disabled="true"
+              title="Detail view arrives with Talent CRM"
             >
               <CardHeader className="pb-3">
                 <CardTitle className="text-base font-semibold text-foreground truncate">

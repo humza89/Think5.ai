@@ -1,5 +1,6 @@
 "use client";
 
+import { LogoMark } from "@/components/brand/LogoMark";
 import { useState, useEffect } from "react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
@@ -55,9 +56,7 @@ function AdminMobileSidebar({ open, onClose }: { open: boolean; onClose: () => v
       <SheetContent side="left" className="w-72 p-0">
         <SheetHeader className="p-4 border-b border-border">
           <SheetTitle className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-red-600 flex items-center justify-center">
-              <span className="text-white font-bold text-sm">A</span>
-            </div>
+            <LogoMark size={32} />
             <span className="text-lg font-semibold">Admin</span>
           </SheetTitle>
         </SheetHeader>

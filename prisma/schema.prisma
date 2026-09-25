@@ -961,6 +961,25 @@ model AccountDeletionRequest {
   @@index([gracePeriodEndsAt])
 }
 
+// Phase 0 T10: API keys for /api/v1/* (hashed; plaintext shown once).
+model ApiKey {
+  id         String    @id @default(uuid())
+  userId     String
+  companyId  String?
+  name       String
+  prefix     String
+  keyHash    String    @unique
+  scopes     String[]  @default(["read"])
+  lastUsedAt DateTime?
+  revokedAt  DateTime?
+  expiresAt  DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@index([userId])
+  @@index([prefix])
+}
+
 // ============================================
 // Interview Event Timeline — Replay-grade observability
 // ============================================

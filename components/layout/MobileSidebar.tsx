@@ -10,34 +10,9 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import {
-  LayoutDashboard,
-  Briefcase,
-  Users,
-  MessageSquare,
-  BarChart3,
-  UserSearch,
-  Settings,
-  Building2,
-} from "lucide-react";
 
-interface NavItem {
-  label: string;
-  href: string;
-  icon: React.ElementType;
-  roles?: string[];
-}
-
-const NAV_ITEMS: NavItem[] = [
-  { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-  { label: "Jobs", href: "/jobs", icon: Briefcase },
-  { label: "Candidates", href: "/candidates", icon: Users, roles: ["recruiter"] },
-  { label: "Interviews", href: "/interviews", icon: MessageSquare },
-  { label: "Clients", href: "/clients", icon: Building2, roles: ["recruiter"] },
-  { label: "Analytics", href: "/analytics", icon: BarChart3 },
-  { label: "Passive Profiles", href: "/passive-profiles", icon: UserSearch, roles: ["recruiter"] },
-  { label: "Settings", href: "/settings", icon: Settings },
-];
+import { RECRUITER_NAV_SECTIONS, visibleSections } from "@/components/layout/nav-config";
+import { LogoMark } from "@/components/brand/LogoMark";
 
 interface MobileSidebarProps {
   open: boolean;
@@ -58,36 +33,41 @@ export function MobileSidebar({ open, onClose }: MobileSidebarProps) {
       <SheetContent side="left" className="w-72 p-0">
         <SheetHeader className="p-4 border-b border-border">
           <SheetTitle className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
-              <span className="text-primary-foreground font-bold text-sm">P</span>
-            </div>
+            <LogoMark size={32} />
             <span className="text-lg font-semibold">Think5</span>
           </SheetTitle>
         </SheetHeader>
-        <nav className="p-2 space-y-1" aria-label="Mobile navigation">
-          {NAV_ITEMS.filter(
-            (item) => !item.roles || (profile && item.roles.includes(profile.role))
-          ).map((item) => {
-            const Icon = item.icon;
-            const active = isActive(item.href);
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                onClick={onClose}
-                className={cn(
-                  "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
-                  active
-                    ? "bg-primary/10 text-primary"
-                    : "text-muted-foreground hover:bg-accent hover:text-foreground"
-                )}
-                aria-current={active ? "page" : undefined}
-              >
-                <Icon className="h-5 w-5 shrink-0" />
-                <span>{item.label}</span>
-              </Link>
-            );
-          })}
+        <nav className="p-2 space-y-4" aria-label="Mobile navigation">
+          {visibleSections(RECRUITER_NAV_SECTIONS, profile?.role).map((section, si) => (
+            <div key={section.title ?? si}>
+              {section.title && (
+                <p className="px-3 pb-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70">{section.title}</p>
+              )}
+              <div className="space-y-1">
+                {section.items.map((item) => {
+                  const Icon = item.icon;
+                  const active = isActive(item.href);
+                  return (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      onClick={onClose}
+                      className={cn(
+                        "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
+                        active
+                          ? "bg-primary/10 text-primary"
+                          : "text-muted-foreground hover:bg-accent hover:text-foreground"
+                      )}
+                      aria-current={active ? "page" : undefined}
+                    >
+                      <Icon className="h-5 w-5 shrink-0" />
+                      <span>{item.label}</span>
+                    </Link>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
         </nav>
       </SheetContent>
     </Sheet>

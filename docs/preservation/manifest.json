@@ -561,16 +561,6 @@
       "dynamic": true
     },
     {
-      "route": "/candidates/[id]/emails",
-      "file": "app/(dashboard)/candidates/[id]/emails/page.tsx",
-      "public": false,
-      "roles": [
-        "recruiter"
-      ],
-      "protectedRouteComponent": false,
-      "dynamic": true
-    },
-    {
       "route": "/candidates/[id]/interviews",
       "file": "app/(dashboard)/candidates/[id]/interviews/page.tsx",
       "public": false,
@@ -693,6 +683,17 @@
       ],
       "protectedRouteComponent": false,
       "dynamic": false
+    },
+    {
+      "route": "/interviews/[id]",
+      "file": "app/(dashboard)/interviews/[id]/page.tsx",
+      "public": false,
+      "roles": [
+        "hiring_manager",
+        "recruiter"
+      ],
+      "protectedRouteComponent": false,
+      "dynamic": true
     },
     {
       "route": "/interviews/[id]/report",
@@ -957,6 +958,18 @@
       "dynamic": false
     },
     {
+      "route": "/settings/profile",
+      "file": "app/(dashboard)/settings/profile/page.tsx",
+      "public": false,
+      "roles": [
+        "candidate",
+        "hiring_manager",
+        "recruiter"
+      ],
+      "protectedRouteComponent": true,
+      "dynamic": false
+    },
+    {
       "route": "/settings/security",
       "file": "app/(dashboard)/settings/security/page.tsx",
       "public": false,
@@ -1009,12 +1022,29 @@
   ],
   "apis": [
     {
+      "route": "/api/account/api-keys",
+      "file": "app/api/account/api-keys/route.ts",
+      "methods": [
+        "DELETE",
+        "GET",
+        "POST"
+      ]
+    },
+    {
       "route": "/api/account/delete",
       "file": "app/api/account/delete/route.ts",
       "methods": [
         "DELETE",
         "GET",
         "POST"
+      ]
+    },
+    {
+      "route": "/api/account/notification-preferences",
+      "file": "app/api/account/notification-preferences/route.ts",
+      "methods": [
+        "GET",
+        "PUT"
       ]
     },
     {
@@ -1509,6 +1539,13 @@
       ]
     },
     {
+      "route": "/api/candidate/retention-summary",
+      "file": "app/api/candidate/retention-summary/route.ts",
+      "methods": [
+        "GET"
+      ]
+    },
+    {
       "route": "/api/candidate/settings",
       "file": "app/api/candidate/settings/route.ts",
       "methods": [
@@ -1541,6 +1578,13 @@
         "DELETE",
         "GET",
         "PATCH"
+      ]
+    },
+    {
+      "route": "/api/candidates/[id]/activity",
+      "file": "app/api/candidates/[id]/activity/route.ts",
+      "methods": [
+        "GET"
       ]
     },
     {
@@ -2119,6 +2163,14 @@
       ]
     },
     {
+      "route": "/api/recruiter/profile",
+      "file": "app/api/recruiter/profile/route.ts",
+      "methods": [
+        "GET",
+        "PUT"
+      ]
+    },
+    {
       "route": "/api/reports/shared/[token]/data",
       "file": "app/api/reports/shared/[token]/data/route.ts",
       "methods": [
@@ -2223,6 +2275,13 @@
       "file": "app/api/v1/interviews/upload-recording/route.ts",
       "methods": [
         "POST"
+      ]
+    },
+    {
+      "route": "/api/v1/me",
+      "file": "app/api/v1/me/route.ts",
+      "methods": [
+        "GET"
       ]
     }
   ],
@@ -2412,6 +2471,63 @@
           "index([companyId])",
           "index([createdAt])",
           "index([operation])"
+        ]
+      },
+      {
+        "name": "ApiKey",
+        "fields": [
+          {
+            "name": "id",
+            "type": "String"
+          },
+          {
+            "name": "userId",
+            "type": "String"
+          },
+          {
+            "name": "companyId",
+            "type": "String?"
+          },
+          {
+            "name": "name",
+            "type": "String"
+          },
+          {
+            "name": "prefix",
+            "type": "String"
+          },
+          {
+            "name": "keyHash",
+            "type": "String"
+          },
+          {
+            "name": "scopes",
+            "type": "String[]"
+          },
+          {
+            "name": "lastUsedAt",
+            "type": "DateTime?"
+          },
+          {
+            "name": "revokedAt",
+            "type": "DateTime?"
+          },
+          {
+            "name": "expiresAt",
+            "type": "DateTime?"
+          },
+          {
+            "name": "createdAt",
+            "type": "DateTime"
+          },
+          {
+            "name": "updatedAt",
+            "type": "DateTime"
+          }
+        ],
+        "indexes": [
+          "index([userId])",
+          "index([prefix])"
         ]
       },
       {

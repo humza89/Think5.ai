@@ -36,36 +36,6 @@ const tools: ToolCard[] = [
     bgColor: "bg-blue-500/10",
     borderColor: "border-blue-500/20",
   },
-  {
-    title: "Interview Prep",
-    description: "Practice common interview questions with AI-powered feedback and coaching.",
-    icon: MessageSquare,
-    href: null,
-    comingSoon: true,
-    color: "text-green-400",
-    bgColor: "bg-green-500/10",
-    borderColor: "border-green-500/20",
-  },
-  {
-    title: "Skill Gap Analysis",
-    description: "Compare your skills with job requirements to identify areas for improvement.",
-    icon: BarChart3,
-    href: null,
-    comingSoon: true,
-    color: "text-purple-400",
-    bgColor: "bg-purple-500/10",
-    borderColor: "border-purple-500/20",
-  },
-  {
-    title: "Career Resources",
-    description: "Guides, tips, and industry insights to help you advance your career.",
-    icon: BookOpen,
-    href: null,
-    comingSoon: true,
-    color: "text-amber-400",
-    bgColor: "bg-amber-500/10",
-    borderColor: "border-amber-500/20",
-  },
 ];
 
 export default function CareerToolsPage() {

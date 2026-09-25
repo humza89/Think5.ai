@@ -24,7 +24,7 @@ export default function SettingsPage() {
       title: "Profile",
       description: "Manage your personal information",
       icon: User,
-      href: "/candidate/profile",
+      href: "/settings/profile",
       color: "text-blue-600 bg-blue-50",
     },
     {

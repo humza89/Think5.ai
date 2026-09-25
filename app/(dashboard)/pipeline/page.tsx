@@ -15,7 +15,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import {
   KanbanSquare,
-  GripVertical,
   User,
   Briefcase,
   TrendingUp,
@@ -184,8 +183,11 @@ export default function PipelinePage() {
             Pipeline
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Visual candidate pipeline management
+            Read-only overview across every role. Drag candidates on a role&apos;s own pipeline.
           </p>
+          <span className="mt-2 inline-flex items-center rounded-full border border-amber-300 bg-amber-50 px-2.5 py-0.5 text-xs font-medium text-amber-800" data-testid="pipeline-readonly-badge">
+            Read-only overview — drag on a role&apos;s pipeline
+          </span>
         </div>
         <Button variant="outline" size="sm" onClick={fetchCandidates} disabled={loading}>
           <RefreshCw className={cn("h-4 w-4 mr-2", loading && "animate-spin")} />
@@ -251,12 +253,10 @@ export default function PipelinePage() {
                   {items.map((candidate) => (
                     <Card
                       key={candidate.id}
-                      className="group cursor-pointer hover:shadow-md transition-shadow"
+                      className="group"
                     >
                       <CardContent className="p-3">
-                        {/* Drag indicator */}
                         <div className="flex items-start gap-2">
-                          <GripVertical className="h-4 w-4 text-muted-foreground/40 mt-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2">
                               <div className="w-7 h-7 rounded-full bg-muted flex items-center justify-center shrink-0">
