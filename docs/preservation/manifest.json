@@ -6495,7 +6495,11 @@
     },
     {
       "name": "updateAriaMemoryGraph",
-      "registered": false
+      "registered": true
+    },
+    {
+      "name": "webhookRetry",
+      "registered": true
     }
   ],
   "crons": [
@@ -6506,10 +6510,6 @@
     {
       "path": "/api/cron/report-retry",
       "schedule": "*/15 * * * *"
-    },
-    {
-      "path": "/api/cron/retention",
-      "schedule": "0 3 * * *"
     },
     {
       "path": "/api/cron/retention-purge",

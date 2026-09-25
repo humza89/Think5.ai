@@ -439,3 +439,28 @@ function getExtension(mimeType: string): string {
   };
   return map[mimeType] || "webm";
 }
+
+/**
+ * T7: indices in [0, totalChunks) with no object under
+ * recordings/{interviewId}/chunks/. Paginates ListObjectsV2.
+ */
+export async function listMissingChunkIndices(interviewId: string, totalChunks: number): Promise<number[]> {
+  if (totalChunks <= 0) return [];
+  const client = getR2Client();
+  const prefix = `recordings/${interviewId}/chunks/`;
+  const present = new Set<number>();
+  let continuationToken: string | undefined;
+  do {
+    const page = await client.send(
+      new ListObjectsV2Command({ Bucket: R2_BUCKET_NAME, Prefix: prefix, ContinuationToken: continuationToken })
+    );
+    for (const object of page.Contents ?? []) {
+      const index = Number.parseInt((object.Key ?? "").slice(prefix.length), 10);
+      if (Number.isInteger(index)) present.add(index);
+    }
+    continuationToken = page.IsTruncated ? page.NextContinuationToken : undefined;
+  } while (continuationToken);
+  const missing: number[] = [];
+  for (let i = 0; i < totalChunks; i++) if (!present.has(i)) missing.push(i);
+  return missing;
+}
