@@ -96,7 +96,10 @@ export async function POST(
       );
     }
 
-    if (!process.env.GEMINI_API_KEY) {
+    // T14 golden path: AI_PROVIDER_INTERVIEWING=mock runs a deterministic interviewer without a key.
+    const { isMockInterviewing, mockInterviewerReply } = await import("@/lib/ai-providers/mock-interview");
+    const mockInterviewing = isMockInterviewing();
+    if (!process.env.GEMINI_API_KEY && !mockInterviewing) {
       return new Response(
         JSON.stringify({ error: "GEMINI_API_KEY not configured" }),
         { status: 503, headers: { "Content-Type": "application/json" } }
@@ -219,8 +222,19 @@ export async function POST(
       }).catch(() => {});
     }
 
+    // Determine the message to send
+    const userMessage =
+      action === "start"
+        ? "Please begin the interview."
+        : message;
+
+    let result: { stream: AsyncIterable<{ text(): string }> };
+    if (mockInterviewing) {
+      const reply = mockInterviewerReply(existingTranscript, userMessage ?? "");
+      result = { stream: (async function* () { yield { text: () => reply }; })() };
+    } else {
     // Build Gemini chat
-    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY ?? "");
     const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
 
     let systemPrompt = buildAriaSystemPrompt({
@@ -252,14 +266,9 @@ export async function POST(
       systemInstruction: systemPrompt,
     });
 
-    // Determine the message to send
-    const userMessage =
-      action === "start"
-        ? "Please begin the interview."
-        : message;
-
     // Stream the response
-    const result = await chat.sendMessageStream(userMessage);
+    result = await chat.sendMessageStream(userMessage ?? "");
+    }
 
     const encoder = new TextEncoder();
     const stream = new ReadableStream({

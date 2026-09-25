@@ -19,6 +19,8 @@ const ids = {
   invitation: "e2e-invitation-welcome",
   interviewWelcome: "e2e-interview-welcome",
   interviewCompleted: "e2e-interview-completed",
+  /** T14: reserved for writes-invite-to-report (moves PENDING → REPORT_READY during the run). */
+  interviewGolden: "e2e-interview-golden",
 } as const;
 
 export const E2E_FIXTURES = {
@@ -54,11 +56,13 @@ export const E2E_FIXTURES = {
     invitation: "e2e-invitation-token-0001",
     interviewAccess: "e2e-interview-access-0001",
     completedAccess: "e2e-interview-access-0002",
+    goldenAccess: "e2e-interview-access-0003",
   },
   routes: {
     jobDetail: `/jobs/${ids.job}`,
     candidateDetail: `/candidates/${ids.candidate}`,
     interviewWelcome: `/interview/${ids.interviewWelcome}`,
+    interviewGolden: `/interview/${ids.interviewGolden}`,
     acceptInvitation: `/interview/accept?token=e2e-invitation-token-0001`,
   },
 } as const;

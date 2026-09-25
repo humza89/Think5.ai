@@ -12,7 +12,7 @@
  * Safety: refuses to touch a non-local Supabase host unless
  * E2E_SEED_ALLOW_REMOTE=true is set explicitly for a dedicated test project.
  */
-import { PrismaClient } from "@prisma/client";
+import { Prisma, PrismaClient } from "@prisma/client";
 import { createClient } from "@supabase/supabase-js";
 import { E2E_FIXTURES } from "../e2e/fixtures/e2e-fixtures";
 
@@ -334,6 +334,34 @@ async function seedPrisma(recruiterUserId: string): Promise<void> {
     where: { id: ids.interviewCompleted },
     create: { id: ids.interviewCompleted, ...completedInterview },
     update: completedInterview,
+  });
+
+  // T14: golden-path interview. Reset to PENDING on every seed so the
+  // invite → interview → report spec always starts from the same state.
+  const goldenInterview = {
+    candidateId: ids.candidate,
+    scheduledBy: ids.recruiter,
+    jobId: ids.job,
+    companyId: ids.company,
+    type: "TECHNICAL" as const,
+    mode: "GENERAL_PROFILE" as const,
+    status: "PENDING" as const,
+    voiceProvider: "gemini-live",
+    accessToken: tokens.goldenAccess,
+    accessTokenExpiresAt: neverExpires,
+    invitedEmail: candidate.email,
+    readinessVerified: false,
+    transcript: Prisma.DbNull,
+    startedAt: null,
+    completedAt: null,
+    reportStatus: null,
+    createdAt: seededAt,
+  };
+  await prisma.interviewReport.deleteMany({ where: { interviewId: ids.interviewGolden } });
+  await prisma.interview.upsert({
+    where: { id: ids.interviewGolden },
+    create: { id: ids.interviewGolden, ...goldenInterview },
+    update: goldenInterview,
   });
 }
 

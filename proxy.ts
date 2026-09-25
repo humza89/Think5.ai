@@ -31,6 +31,11 @@ const CSRF_EXEMPT_PATTERNS = [
   /^\/api\/integrations\/[^/]+\/webhook$/,
   /^\/api\/v1\/health/, // Health checks
   /^\/api\/cron\//, // Server-to-server cron
+  // T14: Inngest invokes registered functions with POST /api/inngest (and
+  // registers with PUT). Those calls carry no session or CSRF cookie; the
+  // serve handler verifies Inngest's request signature (INNGEST_SIGNING_KEY)
+  // in production. Without this exemption no durable function could ever run.
+  /^\/api\/inngest$/,
   /^\/api\/csp-report/, // CSP violation reports
   /^\/_next\//, // Next.js internals
   /^\/api\/auth\/callback/, // OAuth callbacks
@@ -140,6 +145,7 @@ const publicRoutes = [
   '/auth/reset-password',
   '/auth/error', // T9: SSO / verification failure landing page
   '/api/integrations/greenhouse/webhook', // T15: HMAC-verified receiver, no session
+  '/api/inngest', // T14: Inngest register/invoke (request-signature verified by the serve handler)
 ];
 const publicPrefixes = ['/api/auth/', '/api/health', '/_next/', '/uploads/', '/Logos/', '/favicon', '/interview', '/reports/shared'];
 
