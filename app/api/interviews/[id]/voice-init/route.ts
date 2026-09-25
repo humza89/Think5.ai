@@ -16,7 +16,8 @@ import { getInterviewTools } from "@/lib/gemini-live";
 import { checkCandidateEligibility } from "@/lib/interview-eligibility";
 import { logInterviewActivity, getClientIp } from "@/lib/interview-audit";
 import { isValidTransition } from "@/lib/interview-state-machine";
-import { acquireSessionLock, swapSessionLock, releaseSessionLock, saveSessionState, getSessionState, generateReconnectToken, assertDurableStore } from "@/lib/session-store";
+import { acquireSessionLock, swapSessionLock, releaseSessionLock, saveSessionState, getSessionState, generateReconnectToken, assertDurableStore, checkDurableStore, type DurableStoreStatus } from "@/lib/session-store";
+import { noteRedisDegraded, redisSafeToFailEnabled } from "@/lib/redis-degradation";
 import { recordSLOEvent } from "@/lib/slo-monitor";
 import { classifyError } from "@/lib/error-classification";
 import { acquireSessionSlot, releaseSessionSlot } from "@/lib/concurrent-session-limiter";
@@ -50,7 +51,14 @@ export async function POST(
     try {
       const { shouldBlockVoiceMode } = await import("@/lib/continuity-slo-monitor");
       const sloGate = await shouldBlockVoiceMode();
-      if (sloGate.blocked) {
+      // T11: the continuity monitor keeps its counters in Redis. When the check
+      // itself is unavailable (not a measured breach) and FF_P0_REDIS_SAFE_TO_FAIL
+      // is on, proceed and count the degradation; a monitor outage is not an SLO
+      // breach. With the flag off the legacy fail-closed answer is kept.
+      const monitorUnavailable = sloGate.blocked && (sloGate.reason ?? "").startsWith("SLO_CHECK_UNAVAILABLE");
+      if (monitorUnavailable && redisSafeToFailEnabled()) {
+        noteRedisDegraded("slo-monitor", sloGate.reason);
+      } else if (sloGate.blocked) {
         recordEvent(id, "continuity_slo_breach_enforcement", { reason: sloGate.reason }).catch(() => {});
         return Response.json({ error: "Voice mode paused due to SLO breach", reason: sloGate.reason }, { status: 503 });
       }
@@ -64,9 +72,16 @@ export async function POST(
   console.log(`[voice-init] Called for interview=${id}, VOICE_RELAY_URL=${process.env.VOICE_RELAY_URL ? "SET" : "MISSING"}, RELAY_JWT_SECRET=${process.env.RELAY_JWT_SECRET ? "SET" : "MISSING"}`);
 
   let lockOwnerToken = "";
+  let durabilityStatus: DurableStoreStatus = { durable: true, durability: "postgres+redis" };
   try {
-    // Fail-fast: ensure durable store is available in production
+    // T11: Redis loss is a durability downgrade, not a failure. With
+    // FF_P0_REDIS_SAFE_TO_FAIL=false the legacy assertion still fails fast.
     await assertDurableStore();
+    durabilityStatus = await checkDurableStore();
+    if (!durabilityStatus.durable) {
+      logger.warn(`[${id}] voice-init proceeding with durability=postgres (${durabilityStatus.reason ?? "redis unavailable"})`);
+      recordEvent(id, "durability_downgrade", { durability: durabilityStatus.durability, reason: durabilityStatus.reason }).catch(() => {});
+    }
 
     const body = await request.json();
     const { reconnect, reconnectContext } = body;
@@ -515,6 +530,9 @@ export async function POST(
       model: "models/gemini-2.5-flash-native-audio-latest",
       reconnectToken,
       lockOwnerToken,
+      // T11: "postgres+redis" normally; "postgres" while Redis is unavailable
+      // (the room shows a non-blocking reduced-resilience banner).
+      durability: durabilityStatus.durability,
       ...(enterpriseMemory ? { enterpriseMemory } : {}),
       ...(partialFragments ? { partialFragments } : {}),
       ...(turnCommitEnabled ? { turnCommitEnabled: true, contextChecksum } : {}),

@@ -67,7 +67,9 @@ primary_region = 'iad'
   cpus = 1
   memory_mb = 512
   # Track 6 Task 25: ensure Fly sends SIGTERM (not SIGINT) so the relay's
-  # graceful-drain handler at relay/server.ts:344 fires. kill_timeout must
-  # be > GRACEFUL_DRAIN_MS (10s) in the relay code to avoid premature SIGKILL.
+  # graceful-drain handler in relay/server.ts fires. kill_timeout must be
+  # comfortably above GRACEFUL_DRAIN_MS (10s) plus the 500ms notice delay and
+  # Sentry flush (2s). Phase 0 T11 raised it 15s → 25s so no session is cut
+  # mid-drain when a machine is slow to checkpoint.
   kill_signal = 'SIGTERM'
-  kill_timeout = '15s'
+  kill_timeout = '25s'

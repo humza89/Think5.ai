@@ -42,6 +42,8 @@ vi.mock("@/lib/session-store", () => ({
   refreshSessionTTL: vi.fn().mockResolvedValue(undefined),
   recordHeartbeat: vi.fn().mockResolvedValue(undefined),
   assertDurableStore: vi.fn().mockResolvedValue(undefined),
+  // T11: voice-init reports the store's durability instead of asserting it.
+  checkDurableStore: vi.fn().mockResolvedValue({ durable: true, durability: "postgres+redis" }),
 }));
 
 // Mock interviewer state

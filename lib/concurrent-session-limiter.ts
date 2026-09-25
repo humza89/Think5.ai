@@ -6,9 +6,24 @@
  */
 
 import { logger } from "@/lib/logger";
+import { noteRedisDegraded, redisSafeToFailEnabled } from "@/lib/redis-degradation";
 
 const DEFAULT_MAX_CONCURRENT = parseInt(process.env.MAX_CONCURRENT_INTERVIEWS || "500", 10);
 const SESSION_TTL_MS = 60 * 60 * 1000; // 1 hour — sessions auto-expire
+
+// T11 in-memory fallback: per-instance slot tracking used when Redis is
+// unavailable and FF_P0_REDIS_SAFE_TO_FAIL is on. Weaker than the shared
+// sorted set (each serverless instance counts only its own sessions) but it
+// keeps interviews starting during a Redis outage instead of refusing all of
+// them; the downgrade is counted in redis_degraded_total{component="session-limiter"}.
+const memorySlots = new Map<string, number>();
+function acquireSlotInMemory(interviewId: string, now = Date.now()): boolean {
+  for (const [id, startedAt] of memorySlots) if (now - startedAt > SESSION_TTL_MS) memorySlots.delete(id);
+  if (memorySlots.has(interviewId)) return true;
+  if (memorySlots.size >= DEFAULT_MAX_CONCURRENT) return false;
+  memorySlots.set(interviewId, now);
+  return true;
+}
 
 let _redis: any = null;
 async function getRedis() {
@@ -31,10 +46,13 @@ async function getRedis() {
 export async function acquireSessionSlot(interviewId: string): Promise<boolean> {
   const redis = await getRedis();
   if (!redis) {
-    // Fail-closed in production: reject if Redis is unavailable
     if (process.env.NODE_ENV === "production") {
-      logger.error("[session-limiter] Redis unavailable in production — rejecting session for safety");
-      return false;
+      if (!redisSafeToFailEnabled()) {
+        logger.error("[session-limiter] Redis unavailable in production — rejecting session (FF_P0_REDIS_SAFE_TO_FAIL=false)");
+        return false;
+      }
+      noteRedisDegraded("session-limiter", "not configured");
+      return acquireSlotInMemory(interviewId);
     }
     return true; // No Redis = allow (local dev only)
   }
@@ -57,12 +75,13 @@ export async function acquireSessionSlot(interviewId: string): Promise<boolean> 
     await redis.zadd(key, { score: now, member: interviewId });
     return true;
   } catch (err) {
-    logger.error("[session-limiter] Redis error during session acquisition", err as Record<string, unknown>);
-    // Fail-closed in production to prevent over-admission under incident conditions
-    if (process.env.NODE_ENV === "production") {
+    if (process.env.NODE_ENV === "production" && !redisSafeToFailEnabled()) {
+      logger.error("[session-limiter] Redis error during session acquisition — fail-closed (FF_P0_REDIS_SAFE_TO_FAIL=false)", err as Record<string, unknown>);
       return false;
     }
-    return true; // Fail-open in dev only
+    // T11: degrade to the per-instance limiter rather than refusing every interview.
+    noteRedisDegraded("session-limiter", err);
+    return acquireSlotInMemory(interviewId);
   }
 }
 
@@ -70,6 +89,7 @@ export async function acquireSessionSlot(interviewId: string): Promise<boolean> 
  * Release a session slot when an interview ends.
  */
 export async function releaseSessionSlot(interviewId: string): Promise<void> {
+  memorySlots.delete(interviewId);
   const redis = await getRedis();
   if (!redis) return;
 
@@ -94,4 +114,10 @@ export async function getActiveSessionCount(): Promise<number> {
   } catch {
     return 0;
   }
+}
+
+/** Test hook (T11). */
+export function resetSessionLimiterForTests(): void {
+  memorySlots.clear();
+  _redis = null;
 }

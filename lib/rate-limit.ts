@@ -6,6 +6,7 @@
  */
 
 import { logger } from "@/lib/logger";
+import { noteRedisDegraded, redisSafeToFailEnabled } from "@/lib/redis-degradation";
 
 export interface RateLimitConfig {
   maxRequests: number;
@@ -121,11 +122,15 @@ export async function checkRateLimit(
         resetAt,
       };
     } catch (error) {
-      logger.error("Redis rate limit error", { error });
-      // In production, fail-closed if Redis is down to prevent bypass
-      if (process.env.NODE_ENV === "production") {
+      // T11: Redis is not authoritative. Under FF_P0_REDIS_SAFE_TO_FAIL (default
+      // on) a Redis error degrades to the per-instance in-memory limiter and is
+      // counted in redis_degraded_total; with the flag off production keeps the
+      // legacy fail-closed answer.
+      if (process.env.NODE_ENV === "production" && !redisSafeToFailEnabled()) {
+        logger.error("Redis rate limit error — fail-closed (FF_P0_REDIS_SAFE_TO_FAIL=false)", { error });
         return { allowed: false, remaining: 0, resetAt: Date.now() + config.windowMs };
       }
+      noteRedisDegraded("rate-limit", error);
       return checkRateLimitInMemory(key, config);
     }
   }

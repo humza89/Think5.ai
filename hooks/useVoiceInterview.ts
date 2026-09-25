@@ -41,6 +41,8 @@ import {
   shouldRateLimit,
 } from "@/lib/reconnect-state-machine";
 import type { ReconnectState, ReconnectPhase } from "@/lib/reconnect-state-machine";
+import { drainingUntil, isRelayDrainingFrame, planReconnect } from "@/lib/relay-drain";
+import type { Durability } from "@/lib/contracts/interview-session-store";
 import { apiFetch } from "@/lib/api-client";
 
 // ── Types ──────────────────────────────────────────────────────────────
@@ -98,6 +100,8 @@ export interface UseVoiceInterviewReturn {
   isPaused: boolean;
   fallbackToText: boolean;
   reconnectPhase: "checking" | "restoring" | "verifying" | "recovering" | "re-synced" | "resume-failed" | "recovery-failed" | "recovery-rate-limited" | null;
+  /** T11: "postgres+redis" normally; "postgres" while the live session cache is unavailable (reduced resilience, not data loss). */
+  durability: Durability | null;
   reconnectAttempt: number;
   reconnectMax: number;
   micIsSilent: boolean;
@@ -118,6 +122,18 @@ export interface UseVoiceInterviewReturn {
 const CHECKPOINT_INTERVAL_MS = 30_000; // Save transcript every 30s
 
 // ── Hook ───────────────────────────────────────────────────────────────
+
+/** T11: best-effort read of the public health endpoint's voice status. */
+async function fetchVoiceStatus(): Promise<"ok" | "degraded" | "down" | "unknown"> {
+  try {
+    const res = await apiFetch("/api/health", { cache: "no-store" });
+    const data = await res.json().catch(() => null);
+    const voice = data?.checks?.voice;
+    return voice === "ok" || voice === "degraded" || voice === "down" ? voice : "unknown";
+  } catch {
+    return "unknown";
+  }
+}
 
 export function useVoiceInterview(
   config: VoiceInterviewConfig
@@ -152,6 +168,9 @@ export function useVoiceInterview(
   const [isPaused, setIsPaused] = useState(false);
   const [fallbackToText, setFallbackToText] = useState(false);
   const [reconnectPhase, setReconnectPhase] = useState<ReconnectPhase>(null);
+  const [durability, setDurability] = useState<Durability | null>(null);
+  // T11: set when the relay announces a deploy drain; a close inside this window is a planned restart.
+  const relayDrainingUntilRef = useRef<number>(0);
   const [micIsSilent, setMicIsSilent] = useState(false);
 
   // Mirror aiState in a ref so audio processor callback can read it
@@ -395,6 +414,15 @@ export function useVoiceInterview(
         return; // Skip unknown data types
       }
       const data = JSON.parse(text);
+
+      // T11: relay deploy drain — the socket will close with 1001 shortly.
+      // Remember the window so onclose reconnects immediately without
+      // counting the cycle toward the rapid-reconnect rate limit.
+      if (isRelayDrainingFrame(data)) {
+        relayDrainingUntilRef.current = drainingUntil(data);
+        console.log(`[Voice] Relay draining (${data.reason ?? "deploy"}) — will reconnect as soon as the socket closes`);
+        return;
+      }
 
       // Setup complete
       if (data.setupComplete) {
@@ -1132,12 +1160,22 @@ export function useVoiceInterview(
           consecutiveSetupFailuresRef.current = 3; // Don't retry during maintenance
           throw new Error(err.message || "System is temporarily under maintenance. Please try again in a few minutes.");
         }
+        // T11: when voice-init fails because the voice path itself is down
+        // (relay/provider), offer text mode instead of a hard error.
+        if (initRes.status >= 500) {
+          const voiceStatus = await fetchVoiceStatus();
+          if (voiceStatus === "down") {
+            setFallbackToText(true);
+            throw new Error("Voice is unavailable right now. You can continue the interview in text mode below.");
+          }
+        }
         throw new Error(err.error || `Init error: ${initRes.status}`);
       }
 
       const initData = await initRes.json();
       const { relayUrl, sessionToken, systemPrompt, tools, voiceName, candidateName, model, reconnectToken: initReconnectToken, lockOwnerToken: initLockOwnerToken, enterpriseMemory } = initData;
       candidateNameRef.current = candidateName;
+      setDurability(initData.durability === "postgres" ? "postgres" : "postgres+redis");
       if (initReconnectToken) reconnectTokenRef.current = initReconnectToken;
       if (initLockOwnerToken) lockOwnerTokenRef.current = initLockOwnerToken;
 
@@ -1396,9 +1434,14 @@ export function useVoiceInterview(
           return;
         }
 
+        // T11: a close that follows a relay.draining notice is a planned
+        // deploy restart — reconnect right away and do not count it as churn.
+        const plan = planReconnect({ closeCode: event.code, drainingUntil: relayDrainingUntilRef.current, attempt: reconnectAttemptsRef.current });
+        if (plan.kind === "deploy_restart") relayDrainingUntilRef.current = 0;
+
         // CF4: Rapid-reconnect rate-limit — block if 3+ reconnects in 60s
-        reconnectTimestampsRef.current.push(Date.now());
-        if (shouldRateLimit(reconnectTimestampsRef.current)) {
+        if (plan.countsTowardRateLimit) reconnectTimestampsRef.current.push(Date.now());
+        if (plan.countsTowardRateLimit && shouldRateLimit(reconnectTimestampsRef.current)) {
           try {
             if (reconnectStateRef.current === "LIVE" || reconnectStateRef.current === "SOCKET_OPEN") {
               reconnectStateRef.current = transitionReconnectState(reconnectStateRef.current as "LIVE", "DISCONNECTED");
@@ -1418,11 +1461,8 @@ export function useVoiceInterview(
         }
 
         const attempt = reconnectAttemptsRef.current;
-        const base = 1000;
-        const exp = Math.pow(2, attempt);
-        const jitter = Math.random() * base;
-        const delay = Math.min(base * exp + jitter, 10000);
-        console.log(`[Voice] Unexpected closure (code ${event.code}) — recovering in ${Math.round(delay)}ms (attempt ${attempt + 1}/${MAX_RECOVERY_ATTEMPTS})`);
+        const delay = plan.delayMs;
+        console.log(`[Voice] ${plan.kind === "deploy_restart" ? "Relay restart" : "Unexpected closure"} (code ${event.code}) — recovering in ${Math.round(delay)}ms (attempt ${attempt + 1}/${MAX_RECOVERY_ATTEMPTS})`);
         reconnectAttemptsRef.current += 1;
         setIsReconnecting(true);
         setConnectionQuality("fair");
@@ -2487,6 +2527,7 @@ export function useVoiceInterview(
     isPaused,
     fallbackToText,
     reconnectPhase,
+    durability,
     reconnectAttempt: reconnectAttemptsRef.current,
     reconnectMax: getMaxReconnectAttempts(lastCloseCodeRef.current),
     micIsSilent,

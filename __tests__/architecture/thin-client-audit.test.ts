@@ -112,6 +112,8 @@ describe("REM-2: Thin I/O Terminal — Return type is I/O only", () => {
     "reconnectPhase",
     "reconnectAttempt",
     "reconnectMax",
+    // T11: durability posture reported by voice-init ("postgres+redis" | "postgres"); display-only.
+    "durability",
     // Data fields
     "transcript",
     "questionCount",

@@ -68,6 +68,16 @@ Sentry.init({
 
 // ── Configuration ─────────────────────────────────────────────────────
 
+/** True when a client→Gemini frame is a Live API setup message. */
+function isSetupFrame(data: Buffer | string): boolean {
+  try {
+    const text = typeof data === "string" ? data : data.toString("utf8", 0, Math.min(data.byteLength, 64));
+    return text.includes('"setup"');
+  } catch {
+    return false;
+  }
+}
+
 const PORT = parseInt(process.env.PORT || "8080", 10);
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const RELAY_JWT_SECRET = process.env.RELAY_JWT_SECRET;
@@ -82,6 +92,15 @@ const MAX_GEMINI_RECONNECTS = 10;
 // so N clients reconnecting simultaneously don't stampede Gemini at the same moment.
 const RECONNECT_BACKOFF = [500, 1000, 2000, 4000, 8000, 12000, 16000, 20000, 25000, 30000];
 const MESSAGE_BUFFER_LIMIT = 100;
+// T11 (Step 5): explicit provider timeouts. A Gemini socket that has not
+// opened within GEMINI_CONNECT_TIMEOUT_MS, or that has not answered the
+// setup message with setupComplete within GEMINI_SETUP_TIMEOUT_MS, is
+// terminated so the normal reconnect/backoff path runs instead of the
+// session hanging until the 20-minute idle timer.
+const GEMINI_CONNECT_TIMEOUT_MS = parseInt(process.env.GEMINI_CONNECT_TIMEOUT_MS || "10000", 10);
+const GEMINI_SETUP_TIMEOUT_MS = parseInt(process.env.GEMINI_SETUP_TIMEOUT_MS || "15000", 10);
+// Health: consecutive Gemini connect failures before /health reports degraded.
+const GEMINI_UNREACHABLE_THRESHOLD = 3;
 const PING_INTERVAL_MS = 30_000;
 // Phase 1.1: raised from 5min → 20min. The previous 5min hard-kill was dropping sessions
 // whenever a candidate went quiet (thinking, reading a problem statement) or whenever the
@@ -120,6 +139,13 @@ interface RelayMetrics {
   geminiReconnects: number;
   geminiReconnectFailures: number;
   bufferOverflows: number;
+  // T11 health signals
+  bufferedMessages: number;
+  geminiConnectTimeouts: number;
+  geminiSetupTimeouts: number;
+  geminiConsecutiveConnectFailures: number;
+  geminiLastConnectedAt: number | null;
+  draining: boolean;
 }
 
 const metrics: RelayMetrics = {
@@ -130,7 +156,31 @@ const metrics: RelayMetrics = {
   geminiReconnects: 0,
   geminiReconnectFailures: 0,
   bufferOverflows: 0,
+  bufferedMessages: 0,
+  geminiConnectTimeouts: 0,
+  geminiSetupTimeouts: 0,
+  geminiConsecutiveConnectFailures: 0,
+  geminiLastConnectedAt: null,
+  draining: false,
 };
+
+/**
+ * T11: health verdict. "degraded" when Gemini looks unreachable (consecutive
+ * connect failures at/over the threshold), when buffers are under pressure
+ * (more than half of the aggregate buffer capacity in use), or while draining.
+ * Fly keeps routing to a "degraded" machine (HTTP 200); the web tier surfaces
+ * it as voice: degraded so the room can prefer text mode over a hard error.
+ */
+function relayHealth(): { status: "healthy" | "degraded"; reasons: string[]; bufferPressure: number; geminiReachable: boolean } {
+  const reasons: string[] = [];
+  const capacity = Math.max(1, metrics.activeConnections) * MESSAGE_BUFFER_LIMIT;
+  const bufferPressure = Math.min(1, metrics.bufferedMessages / capacity);
+  const geminiReachable = metrics.geminiConsecutiveConnectFailures < GEMINI_UNREACHABLE_THRESHOLD;
+  if (!geminiReachable) reasons.push(`gemini_unreachable(${metrics.geminiConsecutiveConnectFailures} consecutive connect failures)`);
+  if (bufferPressure > 0.5) reasons.push(`buffer_pressure(${Math.round(bufferPressure * 100)}%)`);
+  if (metrics.draining) reasons.push("draining");
+  return { status: reasons.length ? "degraded" : "healthy", reasons, bufferPressure, geminiReachable };
+}
 
 // ── HTTP Server (health check) ────────────────────────────────────────
 
@@ -148,9 +198,21 @@ const httpServer = createServer(
         // Track 6 Task 26: region header for curl diagnostics.
         "fly-region": FLY_REGION,
       });
+      const health = relayHealth();
       res.end(
         JSON.stringify({
-          status: "healthy",
+          status: health.status,
+          reasons: health.reasons,
+          gemini: {
+            reachable: health.geminiReachable,
+            consecutiveConnectFailures: metrics.geminiConsecutiveConnectFailures,
+            lastConnectedAt: metrics.geminiLastConnectedAt ? new Date(metrics.geminiLastConnectedAt).toISOString() : null,
+            connectTimeouts: metrics.geminiConnectTimeouts,
+            setupTimeouts: metrics.geminiSetupTimeouts,
+          },
+          bufferPressure: health.bufferPressure,
+          bufferedMessages: metrics.bufferedMessages,
+          draining: metrics.draining,
           region: FLY_REGION,
           timestamp: new Date().toISOString(),
           activeConnections: metrics.activeConnections,
@@ -238,11 +300,42 @@ wss.on("connection", (clientWs: WebSocket, req: IncomingMessage) => {
   clientWs.on("pong", () => resetIdle());
 
   // ── Connect to Gemini ──
+  // T11: setup-response watchdog (armed when a setup message goes upstream).
+  let setupTimer: ReturnType<typeof setTimeout> | null = null;
+  function armSetupWatchdog(ws: WebSocket) {
+    if (setupTimer) clearTimeout(setupTimer);
+    setupTimer = setTimeout(() => {
+      setupTimer = null;
+      if (cleanedUp || ws.readyState !== WebSocket.OPEN) return;
+      metrics.geminiSetupTimeouts++;
+      console.warn(`[Relay] Gemini setup timeout (${GEMINI_SETUP_TIMEOUT_MS}ms) for interview=${interviewId} — terminating upstream to trigger reconnect`);
+      Sentry.captureMessage("Gemini setup timeout", { level: "warning", tags: { component: "gemini_setup", interviewId }, extra: { timeoutMs: GEMINI_SETUP_TIMEOUT_MS } });
+      try { ws.terminate(); } catch { /* already gone */ }
+    }, GEMINI_SETUP_TIMEOUT_MS);
+  }
+  function disarmSetupWatchdog() {
+    if (setupTimer) { clearTimeout(setupTimer); setupTimer = null; }
+  }
+
   function connectToGemini(): WebSocket {
     const geminiUrl = `${GEMINI_WS_BASE}?key=${GEMINI_API_KEY}`;
     const ws = new WebSocket(geminiUrl);
 
+    // T11: connect timeout — terminate a socket that never opens so the
+    // reconnect path (with backoff) runs instead of waiting on the idle timer.
+    const connectTimer = setTimeout(() => {
+      if (ws.readyState === WebSocket.CONNECTING) {
+        metrics.geminiConnectTimeouts++;
+        metrics.geminiConsecutiveConnectFailures++;
+        console.warn(`[Relay] Gemini connect timeout (${GEMINI_CONNECT_TIMEOUT_MS}ms) for interview=${interviewId}`);
+        try { ws.terminate(); } catch { /* ignore */ }
+      }
+    }, GEMINI_CONNECT_TIMEOUT_MS);
+
     ws.on("open", () => {
+      clearTimeout(connectTimer);
+      metrics.geminiConsecutiveConnectFailures = 0;
+      metrics.geminiLastConnectedAt = Date.now();
       geminiAlive = true;
       console.log(`[Relay] Gemini connected for interview=${interviewId}`);
 
@@ -250,12 +343,14 @@ wss.on("connection", (clientWs: WebSocket, req: IncomingMessage) => {
       if (isReconnecting && setupMessage) {
         console.log(`[Relay] Resending setup message for interview=${interviewId}`);
         ws.send(setupMessage);
+        armSetupWatchdog(ws);
       }
       // Always drain buffered messages (handles initial connect race + reconnect)
       if (messageBuffer.length > 0) {
         console.log(`[Relay] Draining ${messageBuffer.length} buffered message(s) for interview=${interviewId}`);
         while (messageBuffer.length > 0) {
           const msg = messageBuffer.shift()!;
+          metrics.bufferedMessages = Math.max(0, metrics.bufferedMessages - 1);
           ws.send(msg);
         }
       }
@@ -263,6 +358,13 @@ wss.on("connection", (clientWs: WebSocket, req: IncomingMessage) => {
     });
 
     ws.on("message", (data: Buffer | string) => {
+      // T11: the first upstream frame after a setup message is setupComplete.
+      if (setupTimer) {
+        try {
+          const text = typeof data === "string" ? data : data.toString("utf8");
+          if (text.includes("setupComplete")) disarmSetupWatchdog();
+        } catch { /* binary frame */ }
+      }
       if (clientAlive) {
         metrics.totalMessages++;
         const size = typeof data === "string" ? data.length : data.byteLength;
@@ -273,6 +375,8 @@ wss.on("connection", (clientWs: WebSocket, req: IncomingMessage) => {
     });
 
     ws.on("error", (err) => {
+      clearTimeout(connectTimer);
+      if (!geminiAlive) metrics.geminiConsecutiveConnectFailures++;
       console.error(
         `[Relay] Gemini WS error for interview=${interviewId}:`,
         err.message
@@ -285,6 +389,8 @@ wss.on("connection", (clientWs: WebSocket, req: IncomingMessage) => {
     });
 
     ws.on("close", (code) => {
+      clearTimeout(connectTimer);
+      disarmSetupWatchdog();
       geminiAlive = false;
 
       // Don't reconnect if cleanup was intentional or client already disconnected
@@ -313,6 +419,7 @@ wss.on("connection", (clientWs: WebSocket, req: IncomingMessage) => {
     if (reconnectAttempts >= MAX_GEMINI_RECONNECTS) {
       console.error(`[Relay] Gemini reconnect exhausted (${MAX_GEMINI_RECONNECTS} attempts) for interview=${interviewId}`);
       metrics.geminiReconnectFailures++;
+      metrics.bufferedMessages = Math.max(0, metrics.bufferedMessages - messageBuffer.length);
       messageBuffer.length = 0;
       // Task 32: this is the terminal provider failure — the interview
       // will fall back to text mode or end. Capture as a Sentry error
@@ -380,10 +487,12 @@ wss.on("connection", (clientWs: WebSocket, req: IncomingMessage) => {
 
     if (geminiAlive && !isReconnecting) {
       geminiWs.send(data);
+      if (isSetupFrame(data)) armSetupWatchdog(geminiWs);
     } else {
       // Buffer during initial connect OR reconnect (cap at limit)
       if (messageBuffer.length < MESSAGE_BUFFER_LIMIT) {
         messageBuffer.push(data);
+        metrics.bufferedMessages++;
       } else {
         console.warn(`[Relay] Buffer overflow (${MESSAGE_BUFFER_LIMIT} msgs) for interview=${interviewId}, dropping message`);
         metrics.bufferOverflows++;
@@ -425,6 +534,8 @@ wss.on("connection", (clientWs: WebSocket, req: IncomingMessage) => {
 
     clearTimeout(idleTimer);
     clearInterval(pingInterval);
+    disarmSetupWatchdog();
+    metrics.bufferedMessages = Math.max(0, metrics.bufferedMessages - messageBuffer.length);
     messageBuffer.length = 0;
 
     if (clientAlive) {
@@ -453,10 +564,11 @@ httpServer.listen(PORT, () => {
 const GRACEFUL_DRAIN_MS = 10_000; // 10s max wait for sessions to checkpoint
 
 process.on("SIGTERM", () => {
+  metrics.draining = true; // T11: /health reports degraded while draining
   const activeCount = wss.clients.size;
   console.log(
     `[Relay] SIGTERM received, draining ${activeCount} active session(s)...` +
-    ` (drain window: ${GRACEFUL_DRAIN_MS}ms, kill_timeout: 15s)`
+    ` (drain window: ${GRACEFUL_DRAIN_MS}ms, kill_timeout: 25s)`
   );
 
   // Stop accepting new connections
