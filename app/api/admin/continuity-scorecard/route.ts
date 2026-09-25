@@ -7,9 +7,18 @@
  * for operational monitoring and audit compliance.
  */
 
+import { requireRole, handleAuthError } from "@/lib/auth";
+import { NextResponse } from "next/server";
 import { getCurrentSLOStatus } from "@/lib/continuity-slo-monitor";
 
 export async function GET() {
+  // T5: admin-only. Returns 403 for every other role.
+  try {
+    await requireRole(["admin"]);
+  } catch (error) {
+    const { error: message, status } = handleAuthError(error);
+    return NextResponse.json({ error: message }, { status });
+  }
   try {
     const status = await getCurrentSLOStatus();
 

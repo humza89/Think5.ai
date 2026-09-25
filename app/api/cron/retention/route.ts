@@ -1,15 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requireCronSecret } from "@/lib/cron-auth";
 import { applyRetentionPolicies } from "@/lib/data-retention";
 import { retryFailedReports } from "@/lib/report-generator";
 
 export async function GET(request: NextRequest) {
   // Verify cron secret to prevent unauthorized execution
-  const authHeader = request.headers.get("authorization");
-  const cronSecret = process.env.CRON_SECRET;
-
-  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const denied = requireCronSecret(request);
+  if (denied) return denied;
 
   try {
     const results: Record<string, unknown> = {};

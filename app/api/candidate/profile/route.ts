@@ -1,5 +1,6 @@
 export const dynamic = 'force-dynamic';
 
+import { signedResumeUrl } from "@/lib/storage-urls";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import {
@@ -61,7 +62,7 @@ export async function GET() {
       skills: candidate?.skills || [],
       experienceYears: candidate?.experienceYears || null,
       industries: candidate?.industries || [],
-      resumeUrl: candidate?.resumeUrl || null,
+      resumeUrl: await signedResumeUrl(candidate?.resumeUrl || null),
       linkedinUrl: candidate?.linkedinUrl || null,
       location: candidate?.location || null,
       headline: candidate?.headline || null,

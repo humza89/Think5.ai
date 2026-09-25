@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { logActivity } from "@/lib/activity-log";
 import { requireRole, handleAuthError } from "@/lib/auth";
 import { createSupabaseAdminClient } from "@/lib/supabase-server";
 import type { UserRole } from "@/types/supabase";
@@ -84,6 +85,25 @@ export async function PATCH(
     if (updateError) {
       console.error("Error updating user:", updateError);
       return NextResponse.json({ error: "Failed to update user" }, { status: 500 });
+    }
+
+    // T5: durable audit record with before/after (console lines kept for ops grep)
+    const changed = Object.keys(updateData).filter((k) => (existing as Record<string, unknown>)[k] !== updateData[k]);
+    if (changed.length > 0) {
+      logActivity({
+        userId: adminUser.id,
+        userRole: "admin",
+        action: "admin.user_updated",
+        entityType: "User",
+        entityId: id,
+        metadata: {
+          targetEmail: existing.email,
+          changed,
+          before: Object.fromEntries(changed.map((k) => [k, (existing as Record<string, unknown>)[k]])),
+          after: Object.fromEntries(changed.map((k) => [k, updateData[k]])),
+          reason: reason || null,
+        },
+      }).catch((e) => console.error("[admin.user_updated] audit write failed:", e));
     }
 
     // Audit log for account status changes

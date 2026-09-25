@@ -310,6 +310,9 @@ model Candidate {
   legalHold             Boolean          @default(false)
   legalHoldReason       String?
 
+  /** Phase 0 T5: set by the retention purge once PII fields were anonymised. */
+  piiPurgedAt           DateTime?
+
   // New relations
   applications          Application[]
   invitations           InterviewInvitation[]
@@ -341,6 +344,7 @@ model Candidate {
   @@index([email])
   @@index([onboardingStatus])
   @@index([deletedAt])
+  @@index([piiPurgedAt])
   @@unique([email, recruiterId])
 }
 

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { signedResumeUrl, DEFAULT_SIGNED_URL_TTL_SECONDS } from "@/lib/storage-urls";
 import { prisma } from "@/lib/prisma";
 import { parseResumeFile, extractCandidateData } from "@/lib/resume-parser";
 import { requireCandidateAccess, handleAuthError } from "@/lib/auth";
@@ -160,5 +161,24 @@ export async function POST(
       { error: errMsg },
       { status }
     );
+  }
+}
+
+/**
+ * GET /api/candidates/[id]/resume (Phase 0 T5): short-lived signed URL for
+ * the candidate's resume, for recruiters/admins who may access the candidate.
+ */
+export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    const { id } = await params;
+    await requireCandidateAccess(id);
+    const candidate = await prisma.candidate.findUnique({ where: { id }, select: { resumeUrl: true } });
+    if (!candidate) return NextResponse.json({ error: "Candidate not found" }, { status: 404 });
+    if (!candidate.resumeUrl) return NextResponse.json({ error: "No resume on file" }, { status: 404 });
+    const url = await signedResumeUrl(candidate.resumeUrl);
+    return NextResponse.json({ url, expiresIn: DEFAULT_SIGNED_URL_TTL_SECONDS });
+  } catch (error) {
+    const { error: message, status } = handleAuthError(error);
+    return NextResponse.json({ error: message }, { status });
   }
 }

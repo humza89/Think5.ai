@@ -34,7 +34,6 @@ export async function storeRemoteImageToCdn(opts: {
         Key: key,
         Body: buf,
         ContentType: res.headers.get("content-type") || "image/jpeg",
-        ACL: "public-read" as any,
       });
 
       await s3Client.send(command);

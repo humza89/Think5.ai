@@ -1,4 +1,5 @@
-import { NextResponse } from "next/server";
+import { NextResponse, NextRequest } from "next/server";
+import { requireCronSecret } from "@/lib/cron-auth";
 import { prisma } from "@/lib/prisma";
 import * as Sentry from "@sentry/nextjs";
 
@@ -9,7 +10,9 @@ import * as Sentry from "@sentry/nextjs";
  *
  * Schedule: Every 6 hours
  */
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const denied = requireCronSecret(request);
+  if (denied) return denied;
   try {
     const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000); // 24 hours ago
 
