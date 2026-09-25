@@ -1,8 +1,10 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
+import { apiFetch } from "@/lib/api-client";
+import { authErrorMessage, roleHomePath, safeRedirectPath } from "@/lib/auth-errors";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/contexts/AuthContext";
@@ -11,13 +13,75 @@ import { Eye, EyeOff } from "lucide-react";
 import { AuthShell, AuthError, Spinner, authField, authButton, authButtonGhost } from "@/components/marketing/AuthShell";
 
 export default function SignInPage() {
+  return (
+    <Suspense fallback={null}>
+      <SignInContent />
+    </Suspense>
+  );
+}
+
+function SignInContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { signIn } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [ssoLoading, setSsoLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // T9: honour ?redirectTo (same-origin only), explain ?reason=, surface ?error= codes.
+  const redirectTo = safeRedirectPath(searchParams.get("redirectTo"), "");
+  const reason = searchParams.get("reason");
+  const urlError = searchParams.get("error");
+  const notice = reason ? authErrorMessage(reason) : urlError ? authErrorMessage(urlError) : null;
+
+  const continueWithSso = async () => {
+    setError(null);
+    if (!email.includes("@")) {
+      setError("Enter your work email first, then continue with SSO.");
+      return;
+    }
+    setSsoLoading(true);
+    try {
+      const check = await apiFetch(`/api/auth/sso?email=${encodeURIComponent(email)}&action=check`);
+      const checkData = await check.json();
+      if (!check.ok || !checkData.ssoEnabled) {
+        setError("Single sign-on is not set up for this email domain. Sign in with your password or ask your administrator.");
+        return;
+      }
+      const login = await apiFetch(`/api/auth/sso?email=${encodeURIComponent(email)}&action=login${redirectTo ? `&redirectTo=${encodeURIComponent(redirectTo)}` : ""}`);
+      const loginData = await login.json();
+      if (!login.ok) {
+        setError(loginData.error || "Could not start single sign-on.");
+        return;
+      }
+      if (loginData.redirectUrl) {
+        window.location.assign(loginData.redirectUrl);
+        return;
+      }
+      if (loginData.samlRequest && loginData.ssoUrl) {
+        const form = document.createElement("form");
+        form.method = "POST";
+        form.action = loginData.ssoUrl;
+        for (const [name, value] of [["SAMLRequest", loginData.samlRequest], ["RelayState", loginData.relayState]] as const) {
+          const input = document.createElement("input");
+          input.type = "hidden";
+          input.name = name;
+          input.value = value;
+          form.appendChild(input);
+        }
+        document.body.appendChild(form);
+        form.submit();
+        return;
+      }
+      setError("Could not start single sign-on.");
+    } catch {
+      setError("Could not start single sign-on.");
+    } finally {
+      setSsoLoading(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -32,25 +96,25 @@ export default function SignInPage() {
       return;
     }
 
-    // Fetch profile to determine role-based redirect
-    let redirectTo = "/dashboard";
-    if (supabase) {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        const { data: profile } = await supabase
-          .from("profiles")
-          .select("role")
-          .eq("id", user.id)
-          .single();
-        if (profile?.role === "candidate") {
-          redirectTo = "/candidate/dashboard";
-        } else if (profile?.role === "admin") {
-          redirectTo = "/admin";
+    // Fetch profile to determine role-based redirect (unless a safe redirectTo was requested)
+    let destination = redirectTo;
+    if (!destination) {
+      let role: string | null = null;
+      if (supabase) {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          const { data: profile } = await supabase
+            .from("profiles")
+            .select("role")
+            .eq("id", user.id)
+            .single();
+          role = profile?.role ?? null;
         }
       }
+      destination = roleHomePath(role);
     }
 
-    router.push(redirectTo);
+    router.push(destination);
   };
 
   return (
@@ -58,6 +122,12 @@ export default function SignInPage() {
       title={<>Welcome <span className="italic text-graphite">back</span>.</>}
       subtitle="Sign in to access your dashboard."
     >
+      {notice && (
+        <div className="mb-5 rounded-xl border border-stone bg-paper-2 px-4 py-3" role="status" data-testid="signin-notice">
+          <p className="text-[14px] font-medium text-ink">{notice.title}</p>
+          <p className="mt-1 text-[13px] text-graphite">{notice.description}</p>
+        </div>
+      )}
       {error && <AuthError>{error}</AuthError>}
 
       <form onSubmit={handleSubmit} className="space-y-5">
@@ -116,7 +186,11 @@ export default function SignInPage() {
         </div>
       </div>
 
-      <button type="button" className={authButtonGhost} disabled>
+      <button type="button" className={authButtonGhost} onClick={continueWithSso} disabled={ssoLoading || isLoading} data-testid="continue-with-sso">
+        {ssoLoading ? <Spinner label="Checking single sign-on…" /> : "Continue with SSO"}
+      </button>
+
+      <button type="button" className={`${authButtonGhost} mt-3`} disabled>
         <svg className="h-4 w-4" viewBox="0 0 24 24" aria-hidden="true">
           <path fill="currentColor" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
           <path fill="currentColor" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />

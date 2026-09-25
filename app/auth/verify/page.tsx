@@ -1,17 +1,57 @@
 "use client";
 
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { Check, XCircle, Clock, Mail } from "lucide-react";
-import { useState, Suspense } from "react";
+import { Check, XCircle, Clock, Mail, Loader2 } from "lucide-react";
+import { useEffect, useState, Suspense } from "react";
+import { supabase } from "@/lib/supabase";
+import { roleHomePath, safeRedirectPath } from "@/lib/auth-errors";
 import { AuthShell, AuthNotice, authField, authButton, authButtonGhost } from "@/components/marketing/AuthShell";
 import { cn } from "@/lib/utils";
 import { apiFetch } from "@/lib/api-client";
 
 function VerifyContent() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const success = searchParams.get("success");
   const error = searchParams.get("error");
+  // T9: SSO and magic links land here with a token hash; exchange it for a
+  // session in the browser (so the auth cookies are set) and route by role.
+  const tokenHash = searchParams.get("token_hash");
+  const otpType = searchParams.get("type") || "magiclink";
+  const redirectTo = safeRedirectPath(searchParams.get("redirectTo"), "");
+  const [exchanging] = useState(Boolean(tokenHash));
+
+  useEffect(() => {
+    if (!tokenHash) return;
+    let cancelled = false;
+    (async () => {
+      if (!supabase) {
+        router.replace("/auth/error?code=verify_failed");
+        return;
+      }
+      const { data, error: otpError } = await supabase.auth.verifyOtp({
+        token_hash: tokenHash,
+        type: otpType as "magiclink" | "email" | "signup" | "recovery" | "invite" | "email_change",
+      });
+      if (cancelled) return;
+      if (otpError || !data.session) {
+        router.replace("/auth/error?code=verify_failed");
+        return;
+      }
+      let role: string | null = null;
+      try {
+        const { data: profile } = await supabase.from("profiles").select("role").eq("id", data.session.user.id).single();
+        role = profile?.role ?? null;
+      } catch {
+        role = null;
+      }
+      router.replace(redirectTo || roleHomePath(role));
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [tokenHash, otpType, redirectTo, router]);
   const [email, setEmail] = useState("");
   const [isResending, setIsResending] = useState(false);
   const [resendSuccess, setResendSuccess] = useState(false);
@@ -81,6 +121,14 @@ function VerifyContent() {
       <p className="text-[14px] text-ink">A new verification email has been sent. Please check your inbox.</p>
     </div>
   );
+
+  if (exchanging) {
+    return (
+      <AuthNotice icon={<Loader2 className="h-6 w-6 animate-spin" />} title="Signing you in">
+        <p className="mt-3 text-[15px] leading-relaxed text-graphite">Completing your sign-in…</p>
+      </AuthNotice>
+    );
+  }
 
   if (success) {
     return (

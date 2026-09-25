@@ -7,8 +7,7 @@
  * Uses proper XML DOM parsing for SAML response handling instead of regex.
  */
 
-import { createHash, createVerify, randomBytes } from "crypto";
-import { DOMParser } from "@xmldom/xmldom";
+import { createHash, randomBytes } from "crypto";
 
 export interface SAMLConfig {
   entityId: string;
@@ -28,13 +27,6 @@ export interface SAMLAssertion {
   attributes: Record<string, string>;
 }
 
-// SAML XML namespaces
-const NS = {
-  saml: "urn:oasis:names:tc:SAML:2.0:assertion",
-  saml2: "urn:oasis:names:tc:SAML:2.0:assertion",
-  samlp: "urn:oasis:names:tc:SAML:2.0:protocol",
-  ds: "http://www.w3.org/2000/09/xmldsig#",
-};
 
 // ── SP Metadata ────────────────────────────────────────────────────────
 
@@ -93,184 +85,116 @@ export function buildAuthnRequest(
   return { requestId, samlRequest, relayState };
 }
 
-// ── XML DOM Helpers ───────────────────────────────────────────────────
+// ── Response validation (Phase 0 T9: @node-saml/node-saml) ─────────────
+//
+// The previous hand-written parser checked the XML signature only. node-saml
+// validates signature and digest (assertion must be signed), Conditions
+// (NotBefore / NotOnOrAfter with a small clock skew), AudienceRestriction
+// (our SP entity id), Destination (the ACS URL) and InResponseTo against the
+// request id we stored when the flow started.
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function getElementsByTagNameNS(doc: any, ns: string, localName: string): any[] {
-  const nodeList = doc.getElementsByTagNameNS(ns, localName);
-  const elements: any[] = [];
-  for (let i = 0; i < nodeList.length; i++) {
-    elements.push(nodeList.item(i));
-  }
-  return elements;
+import { SAML, ValidateInResponseTo, type CacheProvider, type Profile } from "@node-saml/node-saml";
+
+export interface ValidateSAMLInput {
+  samlResponse: string;
+  certificate: string;
+  spEntityId: string;
+  callbackUrl: string;
+  /** The AuthnRequest id stored at flow start; the response's InResponseTo must equal it. */
+  expectedRequestId: string;
+  acceptedClockSkewMs?: number;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function getElementTextContent(doc: any, ns: string, localName: string): string | null {
-  const elements = getElementsByTagNameNS(doc, ns, localName);
-  return elements.length > 0 ? (elements[0].textContent?.trim() || null) : null;
+/** A cache holding exactly the one request id this response may answer. */
+export function singleRequestCache(requestId: string): CacheProvider {
+  const store = new Map<string, string>([[requestId, new Date().toISOString()]]);
+  return {
+    async saveAsync(key, value) {
+      store.set(key, value);
+      return { createdAt: Date.now(), value };
+    },
+    async getAsync(key) {
+      return key ? store.get(key) ?? null : null;
+    },
+    async removeAsync(key) {
+      if (!key) return null;
+      const had = store.has(key);
+      store.delete(key);
+      return had ? key : null;
+    },
+  };
 }
 
-// ── Response Parsing ───────────────────────────────────────────────────
+const EMAIL_CLAIMS = [
+  "email",
+  "mail",
+  "emailAddress",
+  "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress",
+  "urn:oid:0.9.2342.19200300.100.1.3",
+];
+const FIRST_NAME_CLAIMS = ["firstName", "givenName", "given_name", "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/givenname", "urn:oid:2.5.4.42"];
+const LAST_NAME_CLAIMS = ["lastName", "surname", "sn", "family_name", "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/surname", "urn:oid:2.5.4.4"];
 
-/**
- * Verify the XML signature on a SAML response using the IdP's X.509 certificate.
- * Uses proper XML DOM parsing to extract signature elements.
- */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function verifySAMLSignature(doc: any, xml: string, certificate: string): boolean {
-  // Find SignatureValue element using DOM
-  const sigValueElements = getElementsByTagNameNS(doc, NS.ds, "SignatureValue");
-  if (sigValueElements.length === 0) {
-    throw new Error("SAML response missing XML signature — cannot verify authenticity");
+function firstClaim(profile: Profile, names: string[]): string | undefined {
+  for (const name of names) {
+    const value = (profile as Record<string, unknown>)[name];
+    if (typeof value === "string" && value.trim()) return value.trim();
+    if (Array.isArray(value) && typeof value[0] === "string" && value[0].trim()) return value[0].trim();
   }
-  const signatureValue = (sigValueElements[0].textContent || "").replace(/\s+/g, "");
-
-  // Find SignedInfo element using DOM
-  const signedInfoElements = getElementsByTagNameNS(doc, NS.ds, "SignedInfo");
-  if (signedInfoElements.length === 0) {
-    throw new Error("SAML response missing SignedInfo element");
-  }
-
-  // Determine signature algorithm from DOM
-  const sigMethodElements = getElementsByTagNameNS(doc, NS.ds, "SignatureMethod");
-  const algorithm = sigMethodElements.length > 0
-    ? (sigMethodElements[0].getAttribute("Algorithm") || "")
-    : "";
-
-  let nodeAlgorithm: string;
-  if (algorithm.includes("rsa-sha256")) {
-    nodeAlgorithm = "RSA-SHA256";
-  } else if (algorithm.includes("rsa-sha1")) {
-    nodeAlgorithm = "RSA-SHA1";
-  } else if (algorithm.includes("rsa-sha512")) {
-    nodeAlgorithm = "RSA-SHA512";
-  } else {
-    throw new Error(`Unsupported SAML signature algorithm: ${algorithm}`);
-  }
-
-  // Serialize SignedInfo with namespace for verification
-  // Use exclusive XML canonicalization-compatible approach
-  const signedInfoNode = signedInfoElements[0];
-  const signedInfoOuter = signedInfoNode.toString();
-  // Ensure the ds namespace is declared on SignedInfo for canonical form
-  const signedInfoXml = signedInfoOuter.includes("xmlns:ds=")
-    ? signedInfoOuter
-    : signedInfoOuter.replace(
-        /^<ds:SignedInfo/,
-        '<ds:SignedInfo xmlns:ds="http://www.w3.org/2000/09/xmldsig#"'
-      );
-
-  // Normalize the certificate (ensure PEM format)
-  const pemCert = certificate.includes("-----BEGIN")
-    ? certificate
-    : `-----BEGIN CERTIFICATE-----\n${certificate.replace(/\s+/g, "\n")}\n-----END CERTIFICATE-----`;
-
-  const verifier = createVerify(nodeAlgorithm);
-  verifier.update(signedInfoXml);
-
-  return verifier.verify(pemCert, signatureValue, "base64");
+  return undefined;
 }
 
-/**
- * Parse a SAML response and extract the assertion.
- * Uses proper XML DOM parsing for reliable attribute extraction.
- * Verifies the XML signature against the IdP's X.509 certificate.
- */
-export function parseSAMLResponse(
-  samlResponseB64: string,
-  certificate: string
-): SAMLAssertion {
-  const xml = Buffer.from(samlResponseB64, "base64").toString("utf-8");
-
-  // Parse XML using proper DOM parser
-  const parser = new DOMParser();
-  const doc = parser.parseFromString(xml, "text/xml");
-
-  // Check for parse errors
-  const parseErrors = getElementsByTagNameNS(doc, "http://www.mozilla.org/newlayout/xml/parsererror.xml", "parsererror");
-  if (parseErrors.length > 0) {
-    throw new Error("SAML response contains invalid XML");
+export class SAMLValidationError extends Error {
+  constructor(message: string, readonly cause?: unknown) {
+    super(message);
+    this.name = "SAMLValidationError";
   }
+}
 
-  // Verify XML signature against IdP certificate using DOM
-  if (!verifySAMLSignature(doc, xml, certificate)) {
-    throw new Error("SAML response signature verification failed — possible tampering");
+export async function validateSAMLResponse(input: ValidateSAMLInput): Promise<SAMLAssertion> {
+  if (!input.expectedRequestId) throw new SAMLValidationError("Missing stored SAML request id");
+  const saml = new SAML({
+    idpCert: input.certificate,
+    issuer: input.spEntityId,
+    callbackUrl: input.callbackUrl,
+    audience: input.spEntityId,
+    wantAssertionsSigned: true,
+    wantAuthnResponseSigned: false,
+    validateInResponseTo: ValidateInResponseTo.always,
+    cacheProvider: singleRequestCache(input.expectedRequestId),
+    acceptedClockSkewMs: input.acceptedClockSkewMs ?? 5_000,
+  });
+  let profile: Profile | null | undefined;
+  try {
+    const result = await saml.validatePostResponseAsync({ SAMLResponse: input.samlResponse });
+    profile = result.profile;
+    if (result.loggedOut) throw new SAMLValidationError("Received a logout response instead of an authentication response");
+  } catch (err) {
+    if (err instanceof SAMLValidationError) throw err;
+    throw new SAMLValidationError(err instanceof Error ? err.message : "SAML response rejected", err);
   }
-
-  // Extract NameID using DOM (try both saml: and saml2: namespaces)
-  let nameId: string | null = getElementTextContent(doc, NS.saml, "NameID");
-  if (!nameId) {
-    nameId = getElementTextContent(doc, NS.saml2, "NameID");
-  }
-  if (!nameId) {
-    throw new Error("SAML response missing NameID");
-  }
-
-  // Extract attributes using DOM
+  if (!profile) throw new SAMLValidationError("SAML response carried no subject");
+  const nameId = profile.nameID ?? "";
+  const email =
+    firstClaim(profile, EMAIL_CLAIMS) ??
+    (profile.nameIDFormat?.endsWith("emailAddress") && nameId.includes("@") ? nameId : undefined) ??
+    "";
   const attributes: Record<string, string> = {};
-  const attrElements = [
-    ...getElementsByTagNameNS(doc, NS.saml, "Attribute"),
-    ...getElementsByTagNameNS(doc, NS.saml2, "Attribute"),
-  ];
-
-  for (const attr of attrElements) {
-    const attrName = attr.getAttribute("Name");
-    if (!attrName) continue;
-
-    // Get first AttributeValue child
-    const valueElements = attr.getElementsByTagNameNS(NS.saml, "AttributeValue");
-    const value2Elements = attr.getElementsByTagNameNS(NS.saml2, "AttributeValue");
-    const valueEl = valueElements.length > 0 ? valueElements.item(0) : value2Elements.item(0);
-    if (valueEl?.textContent) {
-      attributes[attrName] = valueEl.textContent.trim();
-    }
+  for (const [key, value] of Object.entries(profile)) {
+    if (typeof value === "string") attributes[key] = value;
+    else if (Array.isArray(value) && typeof value[0] === "string") attributes[key] = value[0];
   }
-
-  // Extract SessionIndex from AuthnStatement using DOM
-  const authnStatements = [
-    ...getElementsByTagNameNS(doc, NS.saml, "AuthnStatement"),
-    ...getElementsByTagNameNS(doc, NS.saml2, "AuthnStatement"),
-  ];
-  const sessionIndex = authnStatements.length > 0
-    ? authnStatements[0].getAttribute("SessionIndex") || undefined
-    : undefined;
-
-  // Map common attribute names
-  const email = attributes["email"] ||
-    attributes["http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress"] ||
-    nameId;
-
-  const firstName = attributes["firstName"] ||
-    attributes["http://schemas.xmlsoap.org/ws/2005/05/identity/claims/givenname"] ||
-    attributes["givenName"];
-
-  const lastName = attributes["lastName"] ||
-    attributes["http://schemas.xmlsoap.org/ws/2005/05/identity/claims/surname"] ||
-    attributes["sn"];
-
-  // Validate status using DOM
-  const statusCodes = getElementsByTagNameNS(doc, NS.samlp, "StatusCode");
-  if (statusCodes.length > 0) {
-    const statusValue = statusCodes[0].getAttribute("Value") || "";
-    if (statusValue && !statusValue.endsWith(":Success")) {
-      throw new Error(`SAML authentication failed: ${statusValue}`);
-    }
-  }
-
   return {
     nameId,
-    email,
-    firstName,
-    lastName,
-    sessionIndex,
+    email: email.toLowerCase(),
+    firstName: firstClaim(profile, FIRST_NAME_CLAIMS),
+    lastName: firstClaim(profile, LAST_NAME_CLAIMS),
+    sessionIndex: profile.sessionIndex,
     attributes,
   };
 }
 
-/**
- * Generate a hash of the SAML response for audit logging.
- */
+/** Short fingerprint of a raw response for audit logs (never the content). */
 export function hashSAMLResponse(samlResponseB64: string): string {
   return createHash("sha256").update(samlResponseB64).digest("hex").slice(0, 16);
 }

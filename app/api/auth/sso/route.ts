@@ -13,6 +13,7 @@ import {
   type SAMLConfig,
 } from "@/lib/sso/saml-provider";
 import { cookies } from "next/headers";
+import { safeRedirectPath } from "@/lib/auth-errors";
 
 const SSO_STATE_COOKIE = "sso-state";
 const SSO_VERIFIER_COOKIE = "sso-code-verifier";
@@ -70,6 +71,11 @@ export async function GET(request: NextRequest) {
     }
 
     const cookieStore = await cookies();
+    // T9: post-sign-in destination (same-origin paths only), consumed by the callback.
+    const redirectTo = safeRedirectPath(searchParams.get("redirectTo"), "");
+    if (redirectTo) {
+      cookieStore.set("sso-redirect", redirectTo, { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax", path: "/", maxAge: 600 });
+    }
 
     if (ssoConfig.provider === "oidc") {
       if (!ssoConfig.clientId || !ssoConfig.clientSecret || !ssoConfig.issuerUrl) {

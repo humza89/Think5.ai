@@ -227,6 +227,8 @@ model Recruiter {
   // Onboarding tracking
   onboardingStep        Int                        @default(0)
   onboardingCompleted   Boolean                    @default(false)
+  // Phase 0 T9: tenant owner/admin (first recruiter of a company). MFA mandatory when set.
+  isTenantAdmin         Boolean                    @default(false)
   onboardingStatus      RecruiterOnboardingStatus  @default(NOT_STARTED)
   linkedinUrl           String?
   profileImage          String?
@@ -921,6 +923,42 @@ model InterviewLease {
   updatedAt   DateTime @updatedAt
 
   @@index([expiresAt])
+}
+
+// Phase 0 T9: identity additions (additive).
+// Hashed one-time recovery codes for Supabase native TOTP MFA. A used code
+// resets the user's factors so they can re-enrol (Supabase has no native
+// recovery-code concept).
+model MfaRecoveryCode {
+  id        String    @id @default(uuid())
+  userId    String
+  codeHash  String
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@unique([userId, codeHash])
+  @@index([userId])
+}
+
+// Account deletion requests for non-candidate users (recruiters, hiring
+// managers, admins). Candidates keep DataDeletionRequest.
+model AccountDeletionRequest {
+  id                String    @id @default(uuid())
+  userId            String
+  email             String
+  role              String
+  status            String    @default("PENDING") // PENDING, PROCESSING, COMPLETED, CANCELLED
+  reason            String?
+  requestedAt       DateTime  @default(now())
+  gracePeriodEndsAt DateTime
+  processedAt       DateTime?
+  cancelledAt       DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([userId])
+  @@index([status])
+  @@index([gracePeriodEndsAt])
 }
 
 // ============================================
@@ -1831,6 +1869,8 @@ model GovernancePolicy {
   modelABTestEnabled  Boolean  @default(false) // Whether A/B testing between model versions is active
   modelABTestSplit    Float    @default(0.0)   // Fraction of traffic routed to challenger model (0.0-1.0)
   enforced            Boolean  @default(true)
+  // Phase 0 T9: tenant-configurable MFA for recruiters and hiring managers (admins/owners are always required).
+  requireMfa          Boolean  @default(false)
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 }

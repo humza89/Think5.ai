@@ -52,6 +52,15 @@ interface Identity {
   profileOnboardingStatus: string;
 }
 
+// T9: dedicated account for the identity spec (password rotation, MFA factors).
+const identityAccount: Identity = {
+  email: E2E_FIXTURES.identity.email,
+  firstName: E2E_FIXTURES.identity.firstName,
+  lastName: E2E_FIXTURES.identity.lastName,
+  role: "recruiter",
+  profileOnboardingStatus: "completed",
+};
+
 const identities: Record<Role, Identity> = {
   recruiter: {
     email: E2E_FIXTURES.recruiter.email,
@@ -335,12 +344,32 @@ async function main(): Promise<void> {
   await ensureProfile(candidateUserId, identities.candidate);
   await seedPrisma(recruiterUserId);
 
+  const identityUserId = await ensureAuthUser(identityAccount);
+  await ensureProfile(identityUserId, identityAccount);
+  const identityRow = {
+    supabaseUserId: identityUserId,
+    name: E2E_FIXTURES.identity.name,
+    email: identityAccount.email,
+    title: "Talent Partner",
+    companyId: E2E_FIXTURES.ids.company,
+    onboardingStep: 5,
+    onboardingCompleted: true,
+    onboardingStatus: "APPROVED" as const,
+    createdAt: new Date(E2E_FIXTURES.seededAt),
+  };
+  await prisma.recruiter.upsert({
+    where: { id: "e2e-recruiter-sam" },
+    create: { id: "e2e-recruiter-sam", ...identityRow },
+    update: identityRow,
+  });
+
   console.log(
     [
       "E2E seed complete",
       `  supabase: ${supabaseUrl}`,
       `  recruiter: ${identities.recruiter.email} (${recruiterUserId})`,
       `  candidate: ${identities.candidate.email} (${candidateUserId})`,
+      `  identity: ${identityAccount.email} (${identityUserId})`,
       `  job: ${E2E_FIXTURES.routes.jobDetail}`,
       `  interview (welcome): ${E2E_FIXTURES.routes.interviewWelcome}`,
     ].join("\n"),
