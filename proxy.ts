@@ -234,7 +234,9 @@ async function authorize(request: NextRequest): Promise<NextResponse> {
   // For API routes, return 401 if not authenticated
   // Exception: interview stream/validate routes use accessToken auth instead
   if (pathname.startsWith('/api/')) {
-    const interviewPublicPattern = /^\/api\/interviews\/(accept|[^/]+\/(stream|validate|report-status|consent|pause|recording|voice|voice-init))$/;
+    // T2: every candidate token-authenticated interview route. Each one
+    // validates the interview credential itself (lib/interview-credential).
+    const interviewPublicPattern = /^\/api\/interviews\/(accept|[^/]+\/(stream|validate|report-status|report-stream|consent|pause|recording|proctoring|screen-capture|memory-status|replay|voice|voice-init|voice\/(turn-commit|fragment|recover|context|context-capsule)|session\/refresh))$/;
     if (interviewPublicPattern.test(pathname)) {
       return supabaseResponse;
     }

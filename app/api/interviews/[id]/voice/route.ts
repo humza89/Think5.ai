@@ -40,6 +40,7 @@ import { verifyGrounding, checkFollowUpGrounding } from "@/lib/grounding-gate";
 import { transitionState, deserializeState, serializeState, hashQuestion, createInitialState } from "@/lib/interviewer-state";
 import { checkOutputGateWithAction } from "@/lib/output-gate";
 import * as Sentry from "@sentry/nextjs";
+import { checkInterviewCredential, resolveInterviewCredential, type InterviewCredential } from "@/lib/interview-credential";
 
 // C7: Per-interview checkpoint rate limiter (max 1 per 2 seconds)
 const checkpointTimestamps = new Map<string, number>();
@@ -68,7 +69,7 @@ function validateModuleScores(scores: unknown): Array<{ module: string; score: n
 
 // ── Validate Access ────────────────────────────────────────────────────
 
-async function validateAccess(interviewId: string, accessToken: string | null) {
+async function validateAccess(interviewId: string, credential: InterviewCredential | null) {
   const interview = await prisma.interview.findUnique({
     where: { id: interviewId },
     include: {
@@ -84,15 +85,8 @@ async function validateAccess(interviewId: string, accessToken: string | null) {
   });
 
   if (!interview) return null;
-
-  if (accessToken && interview.accessToken === accessToken) {
-    if (interview.accessTokenExpiresAt && new Date() > new Date(interview.accessTokenExpiresAt)) {
-      return null;
-    }
-    return interview;
-  }
-
-  return null;
+  if (checkInterviewCredential(interview, credential) !== null) return null;
+  return interview;
 }
 
 // ── POST: Handle voice interview actions ─────────────────────────────
@@ -111,11 +105,11 @@ export async function POST(
 
   try {
     const body = await request.json();
-    const { action, accessToken, transcript, moduleScores, questionCount,
+    const { action, transcript, moduleScores, questionCount,
       currentDifficultyLevel, flaggedFollowUps, currentModule, candidateProfile, askedQuestions } = body;
 
-    // Validate access
-    const interview = await validateAccess(id, accessToken);
+    // Validate access (T2: cookie, header, body or query)
+    const interview = await validateAccess(id, resolveInterviewCredential(request, id, body));
     if (!interview) {
       return Response.json({ error: "Unauthorized" }, { status: 401 });
     }

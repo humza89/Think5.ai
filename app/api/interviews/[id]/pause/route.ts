@@ -11,6 +11,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { isValidTransition } from "@/lib/interview-state-machine";
+import { assertInterviewCredential, resolveInterviewCredential } from "@/lib/interview-credential";
 
 const MAX_PAUSE_DURATION_MS = 10 * 60 * 1000; // 10 minutes
 
@@ -20,11 +21,13 @@ export async function POST(
 ) {
   try {
     const { id } = await params;
-    const { action, accessToken } = await req.json();
+    const body = await req.json();
+    const { action } = body;
+    const credential = resolveInterviewCredential(req, id, body);
 
-    if (!action || !accessToken) {
+    if (!action) {
       return NextResponse.json(
-        { error: "Missing action or accessToken" },
+        { error: "Missing action" },
         { status: 400 }
       );
     }
@@ -43,6 +46,7 @@ export async function POST(
         id: true,
         status: true,
         accessToken: true,
+        accessTokenExpiresAt: true,
         pausedAt: true,
         totalPauseDurationMs: true,
       },
@@ -55,12 +59,8 @@ export async function POST(
       );
     }
 
-    if (interview.accessToken !== accessToken) {
-      return NextResponse.json(
-        { error: "Invalid access token" },
-        { status: 403 }
-      );
-    }
+    const denied = assertInterviewCredential(interview, credential);
+    if (denied) return denied;
 
     if (action === "pause") {
       if (!isValidTransition(interview.status, "PAUSED")) {

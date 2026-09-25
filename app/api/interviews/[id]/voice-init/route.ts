@@ -25,6 +25,7 @@ import { recordEvent } from "@/lib/interview-timeline";
 import { isEnabled } from "@/lib/feature-flags";
 import { createInitialState, serializeState, deserializeState } from "@/lib/interviewer-state";
 import * as Sentry from "@sentry/nextjs";
+import { assertInterviewCredential, resolveInterviewCredential } from "@/lib/interview-credential";
 
 export async function POST(
   request: NextRequest,
@@ -67,11 +68,9 @@ export async function POST(
     await assertDurableStore();
 
     const body = await request.json();
-    const { accessToken, reconnect, reconnectContext } = body;
-
-    if (!accessToken) {
-      return Response.json({ error: "Access token required" }, { status: 400 });
-    }
+    const { reconnect, reconnectContext } = body;
+    // T2: cookie, header, body or query; the room in cookie mode sends no token.
+    const credential = resolveInterviewCredential(request, id, body);
 
     // Validate access
     const interview = await prisma.interview.findUnique({
@@ -93,15 +92,11 @@ export async function POST(
       },
     });
 
-    if (!interview || interview.accessToken !== accessToken) {
+    if (!interview) {
       return Response.json({ error: "Unauthorized" }, { status: 401 });
     }
-
-    console.log(`[voice-init] Auth check: interview found=${!!interview}, token match=${interview?.accessToken === accessToken}`);
-
-    if (interview.accessTokenExpiresAt && new Date() > new Date(interview.accessTokenExpiresAt)) {
-      return Response.json({ error: "Access token expired" }, { status: 401 });
-    }
+    const denied = assertInterviewCredential(interview, credential);
+    if (denied) return denied;
 
     // Check eligibility
     const eligibility = checkCandidateEligibility(interview);

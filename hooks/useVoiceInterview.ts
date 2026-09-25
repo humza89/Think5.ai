@@ -124,6 +124,22 @@ export function useVoiceInterview(
 ): UseVoiceInterviewReturn {
   const { interviewId, accessToken, onStateChange, onTranscriptUpdate, onError, onInterviewEnd } = config;
 
+  // T2: in cookie mode (no token in the URL) the HttpOnly interview-session
+  // cookie expires after 2h; re-issue it every 30 minutes while mounted so a
+  // long interview never loses its credential mid-session.
+  useEffect(() => {
+    if (accessToken) return;
+    const refresh = () => {
+      apiFetch(`/api/interviews/${interviewId}/session/refresh`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "{}",
+      }).catch(() => {});
+    };
+    const timer = setInterval(refresh, 30 * 60 * 1000);
+    return () => clearInterval(timer);
+  }, [interviewId, accessToken]);
+
   // State
   const [interviewState, setInterviewState] = useState<InterviewState>("IDLE");
   const [aiState, setAiState] = useState<AISpeakingState>("idle");

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { logInterviewActivity, getClientIp } from "@/lib/interview-audit";
+import { assertInterviewCredential, resolveInterviewCredential } from "@/lib/interview-credential";
 
 /**
  * DELETE /api/interviews/[id]/consent — Revoke interview consent
@@ -17,11 +18,7 @@ export async function DELETE(
 
   try {
     const body = await request.json().catch(() => ({}));
-    const { accessToken } = body as { accessToken?: string };
-
-    if (!accessToken) {
-      return NextResponse.json({ error: "Access token required" }, { status: 401 });
-    }
+    const credential = resolveInterviewCredential(request, id, body);
 
     // Validate access
     const interview = await prisma.interview.findUnique({
@@ -37,13 +34,11 @@ export async function DELETE(
       },
     });
 
-    if (!interview || interview.accessToken !== accessToken) {
+    if (!interview) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-
-    if (interview.accessTokenExpiresAt && new Date() > new Date(interview.accessTokenExpiresAt)) {
-      return NextResponse.json({ error: "Access token expired" }, { status: 401 });
-    }
+    const denied = assertInterviewCredential(interview, credential);
+    if (denied) return denied;
 
     // Revoke all consent flags
     await prisma.interview.update({

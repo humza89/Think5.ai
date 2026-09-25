@@ -10,6 +10,7 @@ import { generateReportInBackground } from "@/lib/report-generator";
 import { inngest } from "@/inngest/client";
 import { checkCandidateEligibility } from "@/lib/interview-eligibility";
 import { logInterviewActivity, getClientIp } from "@/lib/interview-audit";
+import { checkInterviewCredential, resolveInterviewCredential, type InterviewCredential } from "@/lib/interview-credential";
 
 interface TranscriptEntry {
   role: "interviewer" | "candidate";
@@ -20,7 +21,7 @@ interface TranscriptEntry {
 
 async function validateAccess(
   interviewId: string,
-  accessToken: string | null
+  credential: InterviewCredential | null
 ) {
   const interview = await prisma.interview.findUnique({
     where: { id: interviewId },
@@ -49,23 +50,9 @@ async function validateAccess(
   });
 
   if (!interview) return null;
-
-  // Validate via access token (candidate access)
-  if (accessToken && interview.accessToken === accessToken) {
-    // Check token expiry
-    if (
-      interview.accessTokenExpiresAt &&
-      new Date() > new Date(interview.accessTokenExpiresAt)
-    ) {
-      return null;
-    }
-    return interview;
-  }
-
-  // If no valid access method, reject
-  if (!accessToken) return null;
-
-  return null;
+  // T2: cookie, header, body or query
+  if (checkInterviewCredential(interview, credential) !== null) return null;
+  return interview;
 }
 
 export async function POST(
@@ -79,12 +66,11 @@ export async function POST(
     const {
       message = "",
       action = "respond",
-      accessToken = null,
       integrityEvents = null,
     } = body;
 
     // Validate access
-    const interview = await validateAccess(id, accessToken);
+    const interview = await validateAccess(id, resolveInterviewCredential(request, id, body));
     if (!interview) {
       return new Response(
         JSON.stringify({ error: "Unauthorized or interview not found" }),

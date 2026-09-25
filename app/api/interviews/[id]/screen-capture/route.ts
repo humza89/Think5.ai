@@ -9,6 +9,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireInterviewAccess, handleAuthError } from "@/lib/auth";
+import { assertInterviewCredential, resolveInterviewCredential } from "@/lib/interview-credential";
 
 // POST — Start screen capture session
 export async function POST(
@@ -42,9 +43,15 @@ export async function POST(
       },
     });
 
-    if (!interview || (accessToken && interview.accessToken !== accessToken)) {
-      // Allow fallback if requireInterviewAccess passes (for recruiters debugging)
-      if (!accessToken) await requireInterviewAccess(interviewId);
+    // T2: a candidate credential (cookie, header, body or query) must match;
+    // without any credential, fall back to the recruiter session check.
+    const credential = resolveInterviewCredential(request, interviewId, { accessToken });
+    if (credential) {
+      if (!interview) return NextResponse.json({ error: "Interview not found" }, { status: 404 });
+      const denied = assertInterviewCredential(interview, credential);
+      if (denied) return denied;
+    } else {
+      await requireInterviewAccess(interviewId);
     }
 
     if (!interview) {
@@ -96,8 +103,15 @@ export async function PATCH(
     };
 
     const interview = await prisma.interview.findUnique({ where: { id: interviewId } });
-    if (!interview || (accessToken && interview.accessToken !== accessToken)) {
-      if (!accessToken) await requireInterviewAccess(interviewId);
+    // T2: a candidate credential (cookie, header, body or query) must match;
+    // without any credential, fall back to the recruiter session check.
+    const credential = resolveInterviewCredential(request, interviewId, { accessToken });
+    if (credential) {
+      if (!interview) return NextResponse.json({ error: "Interview not found" }, { status: 404 });
+      const denied = assertInterviewCredential(interview, credential);
+      if (denied) return denied;
+    } else {
+      await requireInterviewAccess(interviewId);
     }
 
     if (!sessionId) {
@@ -150,11 +164,18 @@ export async function DELETE(
 
     const { searchParams } = new URL(request.url);
     const sessionId = searchParams.get("sessionId");
-    const accessToken = searchParams.get("accessToken");
+    const accessToken = searchParams.get("accessToken") ?? undefined;
 
     const interview = await prisma.interview.findUnique({ where: { id: interviewId } });
-    if (!interview || (accessToken && interview.accessToken !== accessToken)) {
-      if (!accessToken) await requireInterviewAccess(interviewId);
+    // T2: a candidate credential (cookie, header, body or query) must match;
+    // without any credential, fall back to the recruiter session check.
+    const credential = resolveInterviewCredential(request, interviewId, { accessToken });
+    if (credential) {
+      if (!interview) return NextResponse.json({ error: "Interview not found" }, { status: 404 });
+      const denied = assertInterviewCredential(interview, credential);
+      if (denied) return denied;
+    } else {
+      await requireInterviewAccess(interviewId);
     }
 
     if (!sessionId) {

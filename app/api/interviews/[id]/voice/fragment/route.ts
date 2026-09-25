@@ -10,6 +10,7 @@
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { persistFragment } from "@/lib/turn-fragment-store";
+import { assertInterviewCredential, resolveInterviewCredential } from "@/lib/interview-credential";
 
 export async function POST(
   request: NextRequest,
@@ -18,15 +19,16 @@ export async function POST(
   const { id } = await params;
 
   // Auth check
-  const authHeader = request.headers.get("authorization");
-  const accessToken = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
+  // T2: cookie, header, body or query (header first).
   const interview = await prisma.interview.findUnique({
     where: { id },
-    select: { accessToken: true },
+    select: { accessToken: true, accessTokenExpiresAt: true },
   });
-  if (!interview || interview.accessToken !== accessToken) {
+  if (!interview) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
+  const denied = assertInterviewCredential(interview, resolveInterviewCredential(request, id));
+  if (denied) return denied;
 
   let body: { chunkId: string; role: string; content: string; status?: string };
   try {

@@ -17,6 +17,7 @@ import {
   getSignedPlaybackUrl,
 } from "@/lib/media-storage";
 import * as Sentry from "@sentry/nextjs";
+import { checkInterviewCredential, resolveInterviewCredential, type InterviewCredential } from "@/lib/interview-credential";
 
 // ── Rate Limiting (in-memory per-instance) ──────────────────────────
 // NOTE: This is per-process. In multi-instance deployments, each instance
@@ -46,18 +47,14 @@ function checkRateLimit(interviewId: string): boolean {
 
 async function authenticateRequest(
   interviewId: string,
-  accessToken: string | null
+  credential: InterviewCredential | null
 ): Promise<boolean> {
-  if (!accessToken) return false;
   const interview = await prisma.interview.findUnique({
     where: { id: interviewId },
     select: { accessToken: true, accessTokenExpiresAt: true },
   });
-  if (!interview || interview.accessToken !== accessToken) return false;
-  if (interview.accessTokenExpiresAt && new Date() > new Date(interview.accessTokenExpiresAt)) {
-    return false;
-  }
-  return true;
+  if (!interview) return false;
+  return checkInterviewCredential(interview, credential) === null;
 }
 
 // ── POST Handler ────────────────────────────────────────────────────
@@ -71,9 +68,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     // ── JSON actions: finalize, check_gaps ──
     if (contentType.includes("application/json")) {
       const body = await req.json();
-      const accessToken = body.accessToken || req.headers.get("authorization")?.replace("Bearer ", "");
-
-      if (!(await authenticateRequest(id, accessToken))) {
+      // T2: cookie, header, body or query
+      if (!(await authenticateRequest(id, resolveInterviewCredential(req, id, body)))) {
         return Response.json({ error: "Unauthorized" }, { status: 401 });
       }
 
@@ -164,12 +160,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
     const formData = await req.formData();
 
-    // Auth: prefer Authorization header, fall back to form field
-    const accessToken =
-      req.headers.get("authorization")?.replace("Bearer ", "") ||
-      (formData.get("accessToken") as string | null);
-
-    if (!(await authenticateRequest(id, accessToken))) {
+    // Auth (T2): header, form field, query or cookie
+    const formCredential = { accessToken: formData.get("accessToken") as string | null };
+    if (!(await authenticateRequest(id, resolveInterviewCredential(req, id, formCredential)))) {
       return Response.json({ error: "Unauthorized" }, { status: 401 });
     }
 

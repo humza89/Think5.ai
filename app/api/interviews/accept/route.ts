@@ -80,7 +80,7 @@ export async function POST(request: NextRequest) {
       res.cookies.set(SESSION_COOKIE_NAME, `${invitation.interview.id}:${existingToken}`, {
         httpOnly: true,
         secure: process.env.NODE_ENV === "production",
-        sameSite: "strict",
+        sameSite: "lax", // T2: the accept page is reached from an email link
         path: "/",
         maxAge: SESSION_MAX_AGE,
       });
@@ -126,7 +126,7 @@ export async function POST(request: NextRequest) {
     res.cookies.set(SESSION_COOKIE_NAME, `${interview.id}:${interview.accessToken}`, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
-      sameSite: "strict",
+      sameSite: "lax", // T2: the accept page is reached from an email link
       path: "/",
       maxAge: SESSION_MAX_AGE,
     });

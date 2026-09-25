@@ -19,6 +19,7 @@ import { recordEvent } from "@/lib/interview-timeline";
 import { recordSLOEvent } from "@/lib/slo-monitor";
 import { isEnabled } from "@/lib/feature-flags";
 import { markFragmentComplete, cleanupCompletedFragments } from "@/lib/turn-fragment-store";
+import { assertInterviewCredential, resolveInterviewCredential } from "@/lib/interview-credential";
 
 export async function POST(
   request: NextRequest,
@@ -36,15 +37,16 @@ export async function POST(
   }
 
   // Auth check
-  const authHeader = request.headers.get("authorization");
-  const accessToken = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
+  // T2: cookie, header, body or query (header first).
   const interview = await prisma.interview.findUnique({
     where: { id },
-    select: { accessToken: true },
+    select: { accessToken: true, accessTokenExpiresAt: true },
   });
-  if (!interview || interview.accessToken !== accessToken) {
+  if (!interview) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
+  const denied = assertInterviewCredential(interview, resolveInterviewCredential(request, id));
+  if (denied) return denied;
 
   // Parse request body
   let body: {

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { checkCandidateEligibility } from "@/lib/interview-eligibility";
 import { logInterviewActivity, getClientIp } from "@/lib/interview-audit";
+import { assertInterviewCredential, resolveInterviewCredential } from "@/lib/interview-credential";
 
 /**
  * PATCH: Persist device readiness verification result.
@@ -14,24 +15,18 @@ export async function PATCH(
   try {
     const { id } = await params;
     const body = await request.json();
-    const { accessToken, action } = body;
-
-    if (!accessToken) {
-      return NextResponse.json({ error: "Access token is required" }, { status: 400 });
-    }
+    const { action } = body;
 
     const interview = await prisma.interview.findUnique({
       where: { id },
       select: { accessToken: true, accessTokenExpiresAt: true, isPractice: true },
     });
 
-    if (!interview || interview.accessToken !== accessToken) {
+    if (!interview) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-
-    if (interview.accessTokenExpiresAt && new Date() > new Date(interview.accessTokenExpiresAt)) {
-      return NextResponse.json({ error: "Access token has expired" }, { status: 401 });
-    }
+    const denied = assertInterviewCredential(interview, resolveInterviewCredential(request, id, body));
+    if (denied) return denied;
 
     if (action === "readiness_verified") {
       await prisma.interview.update({
@@ -66,24 +61,8 @@ export async function POST(
     const body = await request.json();
     const { consentRecording, consentProctoring, consentPrivacy } = body;
 
-    // Accept token from body (backward compat) or HttpOnly session cookie (secure)
-    let accessToken = body.accessToken as string | undefined;
-    if (!accessToken) {
-      const sessionCookie = request.cookies.get("interview-session")?.value;
-      if (sessionCookie) {
-        const [cookieId, cookieToken] = sessionCookie.split(":");
-        if (cookieId === id && cookieToken) {
-          accessToken = cookieToken;
-        }
-      }
-    }
-
-    if (!accessToken) {
-      return NextResponse.json(
-        { error: "Access token is required" },
-        { status: 400 }
-      );
-    }
+    // T2: cookie, header, body or query
+    const credential = resolveInterviewCredential(request, id, body);
 
     const interview = await prisma.interview.findUnique({
       where: { id },
@@ -122,23 +101,8 @@ export async function POST(
       );
     }
 
-    if (interview.accessToken !== accessToken) {
-      return NextResponse.json(
-        { error: "Invalid access token" },
-        { status: 401 }
-      );
-    }
-
-    // Check token expiry
-    if (
-      interview.accessTokenExpiresAt &&
-      new Date() > new Date(interview.accessTokenExpiresAt)
-    ) {
-      return NextResponse.json(
-        { error: "Access token has expired" },
-        { status: 401 }
-      );
-    }
+    const denied = assertInterviewCredential(interview, credential);
+    if (denied) return denied;
 
     if (interview.status === "COMPLETED") {
       return NextResponse.json(
