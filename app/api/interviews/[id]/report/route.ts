@@ -1,10 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import {
-  requireInterviewAccess,
-  handleAuthError,
-  getAuthenticatedUser,
-} from "@/lib/auth";
+import { buildInterviewAccessScope, handleAuthError } from "@/lib/auth";
 import { SCORER_MODEL_VERSION, getScorerPromptHash } from "@/lib/gemini";
 import { getSkillModulesHash } from "@/lib/skill-modules";
 import { logInterviewActivity, getClientIp } from "@/lib/interview-audit";
@@ -17,66 +13,66 @@ export async function GET(
   try {
     const { id } = await params;
 
-    await requireInterviewAccess(id);
+    // Tenant-scoped access: the report is reached through the Interview
+    // relation so the tenant filter applies transitively. If the caller
+    // cannot see the interview, they cannot see the report.
+    const scope = await buildInterviewAccessScope(id);
 
-    // Audit trail: log report view
-    const { user, profile } = await getAuthenticatedUser();
-    logInterviewActivity({
-      interviewId: id,
-      action: "report.viewed",
-      userId: user.id,
-      userRole: profile.role,
-      ipAddress: getClientIp(request.headers),
-    }).catch(() => {});
-
-    // All InterviewReport fields (including memoryIntegrityScorecard) are returned
-    // via findUnique + include. No explicit select needed on the report model.
-    const report = await prisma.interviewReport.findUnique({
-      where: { interviewId: id },
-      include: {
-        interview: {
+    const interviewWithReport = await prisma.interview.findFirst({
+      where: scope.whereFragment,
+      select: {
+        id: true,
+        candidateId: true,
+        status: true,
+        type: true,
+        duration: true,
+        overallScore: true,
+        startedAt: true,
+        completedAt: true,
+        candidate: {
           select: {
             id: true,
-            candidateId: true,
-            status: true,
-            type: true,
-            duration: true,
-            overallScore: true,
-            startedAt: true,
-            completedAt: true,
-            candidate: {
-              select: {
-                id: true,
-                fullName: true,
-                currentTitle: true,
-                currentCompany: true,
-              },
-            },
-            template: {
-              select: { isShadow: true },
-            },
+            fullName: true,
+            currentTitle: true,
+            currentCompany: true,
           },
         },
+        template: {
+          select: { isShadow: true },
+        },
+        // All InterviewReport fields (including memoryIntegrityScorecard).
+        report: true,
       },
     });
 
-    if (!report) {
+    if (!interviewWithReport?.report) {
       return NextResponse.json(
         { error: "Report not found for this interview" },
         { status: 404 }
       );
     }
 
-    // Shadow template reports are only visible to admins
-    if (report.interview?.template?.isShadow) {
-      const { profile } = await getAuthenticatedUser();
-      if (profile?.role !== "admin") {
-        return NextResponse.json(
-          { error: "Report not found for this interview" },
-          { status: 404 }
-        );
-      }
+    // Shadow template reports are only visible to admins.
+    if (interviewWithReport.template?.isShadow && !scope.isAdmin) {
+      return NextResponse.json(
+        { error: "Report not found for this interview" },
+        { status: 404 }
+      );
     }
+
+    // Preserve the pre-existing response shape: report fields plus a nested
+    // `interview` summary.
+    const { report: reportRow, ...interviewSummary } = interviewWithReport;
+    const report = { ...reportRow, interview: interviewSummary };
+
+    // Audit trail: only authorised reads are logged.
+    logInterviewActivity({
+      interviewId: id,
+      action: "report.viewed",
+      userId: scope.userId,
+      userRole: scope.role,
+      ipAddress: getClientIp(request.headers),
+    }).catch(() => {});
 
     // Add review banner for pending reviews
     const reviewBanner = report.reviewStatus === "PENDING_REVIEW"
@@ -99,11 +95,12 @@ export async function POST(
   try {
     const { id } = await params;
 
-    await requireInterviewAccess(id);
+    // Tenant-scoped access + data in one query (see buildInterviewAccessScope).
+    const scope = await buildInterviewAccessScope(id);
 
     // Get interview with transcript and integrity events
-    const interview = await prisma.interview.findUnique({
-      where: { id },
+    const interview = await prisma.interview.findFirst({
+      where: scope.whereFragment,
       include: {
         candidate: {
           select: {
@@ -224,19 +221,14 @@ export async function POST(
       },
     });
 
-    // Audit log: report generated
-    try {
-      const { user } = await getAuthenticatedUser();
-      logInterviewActivity({
-        interviewId: id,
-        action: "report.generated",
-        userId: user.id,
-        userRole: "recruiter",
-        ipAddress: getClientIp(request.headers),
-      }).catch(() => {});
-    } catch {
-      // Auth may not be available for system-triggered generation
-    }
+    // Audit log: report generated (identity comes from the resolved scope).
+    logInterviewActivity({
+      interviewId: id,
+      action: "report.generated",
+      userId: scope.userId,
+      userRole: scope.role,
+      ipAddress: getClientIp(request.headers),
+    }).catch(() => {});
 
     return NextResponse.json(report, { status: 201 });
   } catch (error) {

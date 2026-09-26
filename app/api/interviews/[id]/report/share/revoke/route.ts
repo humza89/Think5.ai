@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireInterviewAccess, handleAuthError, getAuthenticatedUser } from "@/lib/auth";
+import { buildInterviewAccessScope, handleAuthError } from "@/lib/auth";
 import { logInterviewActivity, getClientIp } from "@/lib/interview-audit";
 
 // DELETE - Revoke a shared report link
@@ -10,19 +10,25 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params;
-    const { user, profile } = await getAuthenticatedUser();
 
-    if (!profile || !["recruiter", "admin"].includes(profile.role)) {
+    // Tenant-scoped access + data in one query (see buildInterviewAccessScope).
+    const scope = await buildInterviewAccessScope(id);
+
+    // Only recruiters and admins may revoke share links (unchanged policy).
+    if (!["recruiter", "admin"].includes(scope.role)) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    await requireInterviewAccess(id);
-
-    const report = await prisma.interviewReport.findUnique({
-      where: { interviewId: id },
-      select: { id: true, shareToken: true },
+    const interviewWithReport = await prisma.interview.findFirst({
+      where: scope.whereFragment,
+      select: { report: { select: { id: true, shareToken: true } } },
     });
 
+    if (!interviewWithReport) {
+      return NextResponse.json({ error: "Interview not found" }, { status: 404 });
+    }
+
+    const report = interviewWithReport.report;
     if (!report) {
       return NextResponse.json({ error: "Report not found" }, { status: 404 });
     }
@@ -43,8 +49,8 @@ export async function DELETE(
     logInterviewActivity({
       interviewId: id,
       action: "report.share_revoked",
-      userId: user.id,
-      userRole: profile.role,
+      userId: scope.userId,
+      userRole: scope.role,
       ipAddress: getClientIp(request.headers),
     }).catch(() => {});
 

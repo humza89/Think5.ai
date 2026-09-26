@@ -7207,6 +7207,10 @@
       "registered": true
     },
     {
+      "name": "brokenCompletedDetector",
+      "registered": true
+    },
+    {
       "name": "dataDeletionExecute",
       "registered": true
     },

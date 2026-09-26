@@ -1,10 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import {
-  requireInterviewAccess,
-  handleAuthError,
-  getAuthenticatedUser,
-} from "@/lib/auth";
+import { buildInterviewAccessScope, handleAuthError } from "@/lib/auth";
 import { logInterviewActivity, getClientIp } from "@/lib/interview-audit";
 import { isValidTransition, getAllowedTransitions } from "@/lib/interview-state-machine";
 import { inngest } from "@/inngest/client";
@@ -18,20 +14,13 @@ export async function GET(
   try {
     const { id } = await params;
 
-    await requireInterviewAccess(id);
+    // Tenant-scoped read: the whereFragment from buildInterviewAccessScope()
+    // enforces isolation in the query itself. A cross-tenant id matches no
+    // row and falls through to the same 404 as a missing interview.
+    const scope = await buildInterviewAccessScope(id);
 
-    // Audit trail: log interview detail access
-    const { user, profile } = await getAuthenticatedUser();
-    logInterviewActivity({
-      interviewId: id,
-      action: "interview.detail_viewed",
-      userId: user.id,
-      userRole: profile.role,
-      ipAddress: getClientIp(request.headers),
-    }).catch(() => {});
-
-    const interview = await prisma.interview.findUnique({
-      where: { id },
+    const interview = await prisma.interview.findFirst({
+      where: scope.whereFragment,
       include: {
         candidate: {
           select: {
@@ -63,6 +52,15 @@ export async function GET(
       );
     }
 
+    // Audit trail: only successful, authorised reads are logged.
+    logInterviewActivity({
+      interviewId: id,
+      action: "interview.detail_viewed",
+      userId: scope.userId,
+      userRole: scope.role,
+      ipAddress: getClientIp(request.headers),
+    }).catch(() => {});
+
     return NextResponse.json(interview);
   } catch (error) {
     const { error: message, status } = handleAuthError(error);
@@ -79,7 +77,9 @@ export async function PATCH(
   try {
     const { id } = await params;
 
-    await requireInterviewAccess(id);
+    // Tenant-scoped access: every read and the update below share one
+    // whereFragment, so a cross-tenant id can neither be read nor updated.
+    const scope = await buildInterviewAccessScope(id);
 
     const body = await request.json();
     const { status: newStatus, transcript, duration, overallScore } = body;
@@ -88,8 +88,8 @@ export async function PATCH(
 
     if (newStatus) {
       // Validate status transition using state machine
-      const currentInterview = await prisma.interview.findUnique({
-        where: { id },
+      const currentInterview = await prisma.interview.findFirst({
+        where: scope.whereFragment,
         select: { status: true },
       });
       if (!currentInterview) {
@@ -114,8 +114,8 @@ export async function PATCH(
         updateData.completedAt = new Date();
 
         // Update candidate's ariaInterviewed flag
-        const interview = await prisma.interview.findUnique({
-          where: { id },
+        const interview = await prisma.interview.findFirst({
+          where: scope.whereFragment,
           select: { candidateId: true },
         });
 
@@ -135,9 +135,17 @@ export async function PATCH(
     if (duration !== undefined) updateData.duration = duration;
     if (overallScore !== undefined) updateData.overallScore = overallScore;
 
-    const updated = await prisma.interview.update({
-      where: { id },
+    // Scoped update: Prisma's update() needs a unique where, so use
+    // updateMany with the tenant fragment and re-read the row afterwards.
+    const updateResult = await prisma.interview.updateMany({
+      where: scope.whereFragment,
       data: updateData,
+    });
+    if (updateResult.count === 0) {
+      return NextResponse.json({ error: "Interview not found" }, { status: 404 });
+    }
+    const updated = await prisma.interview.findFirst({
+      where: scope.whereFragment,
       include: {
         candidate: {
           select: {
@@ -157,13 +165,12 @@ export async function PATCH(
     // Cascade interview status to invitation lifecycle
     if (newStatus === "CANCELLED") {
       // Recruiter-initiated cancel → REVOKED (not ABANDONED)
-      const interviewForInvite = await prisma.interview.findUnique({
-        where: { id },
+      const interviewForInvite = await prisma.interview.findFirst({
+        where: scope.whereFragment,
         select: { invitationId: true },
       });
       if (interviewForInvite?.invitationId) {
-        const { user } = await getAuthenticatedUser();
-        transitionInvitation(interviewForInvite.invitationId, "REVOKED", { revokedBy: user.id }).catch(console.error);
+        transitionInvitation(interviewForInvite.invitationId, "REVOKED", { revokedBy: scope.userId }).catch(console.error);
       }
     } else if (newStatus) {
       cascadeInterviewStatus(id, newStatus).catch(console.error);

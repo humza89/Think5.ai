@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireInterviewAccess, handleAuthError, getAuthenticatedUser } from "@/lib/auth";
+import { buildInterviewAccessScope, handleAuthError, getAuthenticatedUser } from "@/lib/auth";
 import { logInterviewActivity, getClientIp } from "@/lib/interview-audit";
 
 // POST - Submit a review decision for an interview report
@@ -10,13 +10,21 @@ export async function POST(
 ) {
   try {
     const { id } = await params;
-    const { user, profile } = await getAuthenticatedUser();
 
-    if (!profile || !["recruiter", "admin", "hiring_manager"].includes(profile.role)) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    // Tenant-scoped access. The scope helper rejects any role other than
+    // recruiter / hiring_manager / admin, so the old role check is folded in.
+    const scope = await buildInterviewAccessScope(id);
+    const interviewExists = await prisma.interview.findFirst({
+      where: scope.whereFragment,
+      select: { id: true },
+    });
+    if (!interviewExists) {
+      return NextResponse.json({ error: "Interview not found" }, { status: 404 });
     }
 
-    await requireInterviewAccess(id);
+    // The review record stores the reviewer's email, so the profile is still
+    // needed — resolved after the scoped check so forbidden callers cost nothing.
+    const { user, profile } = await getAuthenticatedUser();
 
     const body = await request.json();
     const { decision, overrideReason, newRecommendation } = body;
@@ -108,12 +116,22 @@ export async function POST(
 
 // GET - List review decisions for an interview
 export async function GET(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { id } = await params;
-    await requireInterviewAccess(id);
+
+    // Tenant-scoped access: callers who cannot see the interview cannot
+    // enumerate its review decisions.
+    const scope = await buildInterviewAccessScope(id);
+    const interview = await prisma.interview.findFirst({
+      where: scope.whereFragment,
+      select: { id: true },
+    });
+    if (!interview) {
+      return NextResponse.json({ error: "Interview not found" }, { status: 404 });
+    }
 
     const decisions = await prisma.reviewDecision.findMany({
       where: { interviewId: id },

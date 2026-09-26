@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireInterviewAccess, handleAuthError } from "@/lib/auth";
+import { buildInterviewAccessScope, handleAuthError } from "@/lib/auth";
 import { renderToBuffer } from "@react-pdf/renderer";
 import { ReportPDF } from "@/lib/pdf/report-pdf";
 import { logActivity } from "@/lib/activity-log";
@@ -12,10 +12,12 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
-    await requireInterviewAccess(id);
 
-    const interview = await prisma.interview.findUnique({
-      where: { id },
+    // Tenant-scoped fetch: a PDF download is a direct exfiltration path, so
+    // the query itself enforces isolation (see buildInterviewAccessScope).
+    const scope = await buildInterviewAccessScope(id);
+    const interview = await prisma.interview.findFirst({
+      where: scope.whereFragment,
       include: {
         candidate: {
           select: { fullName: true, currentTitle: true },
