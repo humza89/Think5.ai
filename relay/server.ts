@@ -25,6 +25,8 @@ import jwt from "jsonwebtoken";
 import { URL } from "url";
 import * as Sentry from "@sentry/node";
 import { relayMetrics, startRelayTelemetry } from "./otel";
+import { CircuitBreaker } from "./circuit-breaker";
+import { buildDegradedFrame, buildFlowFrame, flowLevelFor, type FlowLevel } from "./flow-control";
 
 // ── Task 32: Sentry initialization ───────────────────────────────────
 //
@@ -102,6 +104,12 @@ const GEMINI_CONNECT_TIMEOUT_MS = parseInt(process.env.GEMINI_CONNECT_TIMEOUT_MS
 const GEMINI_SETUP_TIMEOUT_MS = parseInt(process.env.GEMINI_SETUP_TIMEOUT_MS || "15000", 10);
 // Health: consecutive Gemini connect failures before /health reports degraded.
 const GEMINI_UNREACHABLE_THRESHOLD = 3;
+
+// Provider circuit breaker shared by every session on this instance (legacy
+// PR #11 salvage): 3 Gemini connect failures within 60 s open it for 30 s;
+// while OPEN, sessions are told `relay.degraded` and wait out the cooldown
+// instead of each burning its reconnect budget against a known-down provider.
+const geminiBreaker = new CircuitBreaker({ failureThreshold: 3, failureWindowMs: 60_000, cooldownMs: 30_000 });
 const PING_INTERVAL_MS = 30_000;
 // Phase 1.1: raised from 5min → 20min. The previous 5min hard-kill was dropping sessions
 // whenever a candidate went quiet (thinking, reading a problem statement) or whenever the
@@ -178,6 +186,7 @@ function relayHealth(): { status: "healthy" | "degraded"; reasons: string[]; buf
   const bufferPressure = Math.min(1, metrics.bufferedMessages / capacity);
   const geminiReachable = metrics.geminiConsecutiveConnectFailures < GEMINI_UNREACHABLE_THRESHOLD;
   if (!geminiReachable) reasons.push(`gemini_unreachable(${metrics.geminiConsecutiveConnectFailures} consecutive connect failures)`);
+  if (geminiBreaker.getState() === "OPEN") reasons.push(`provider_circuit_open(${geminiBreaker.getFailureCount()} recent failures)`);
   if (bufferPressure > 0.5) reasons.push(`buffer_pressure(${Math.round(bufferPressure * 100)}%)`);
   if (metrics.draining) reasons.push("draining");
   return { status: reasons.length ? "degraded" : "healthy", reasons, bufferPressure, geminiReachable };
@@ -223,6 +232,7 @@ const httpServer = createServer(
           geminiReconnects: metrics.geminiReconnects,
           geminiReconnectFailures: metrics.geminiReconnectFailures,
           bufferOverflows: metrics.bufferOverflows,
+          circuitBreaker: { state: geminiBreaker.getState(), recentFailures: geminiBreaker.getFailureCount() },
           uptimeSeconds: Math.round(process.uptime()),
           memoryMB: Math.round(process.memoryUsage().heapUsed / 1024 / 1024),
         })
@@ -300,6 +310,32 @@ wss.on("connection", (clientWs: WebSocket, req: IncomingMessage) => {
   const messageBuffer: Array<Buffer | string> = [];
   let cleanedUp = false;
 
+  // ── Backpressure flow control (see relay/flow-control.ts) ──
+  // The client mirrors currentFlowLevel in its audio processor: "slow" halves
+  // the audio frame rate, "pause" stops audio until "normal" is emitted again.
+  let currentFlowLevel: FlowLevel = "normal";
+  let bufferDropsThisSession = 0;
+
+  function emitFlowLevel(level: FlowLevel, force = false) {
+    if (level === currentFlowLevel && !force) return;
+    currentFlowLevel = level;
+    if (clientWs.readyState !== WebSocket.OPEN) return;
+    try {
+      clientWs.send(JSON.stringify(buildFlowFrame(level, messageBuffer.length, MESSAGE_BUFFER_LIMIT, bufferDropsThisSession)));
+    } catch { /* client may already be gone */ }
+  }
+
+  function checkAndEmitFlowLevel() {
+    emitFlowLevel(flowLevelFor(messageBuffer.length, MESSAGE_BUFFER_LIMIT));
+  }
+
+  function emitProviderDegraded() {
+    if (clientWs.readyState !== WebSocket.OPEN) return;
+    try {
+      clientWs.send(JSON.stringify(buildDegradedFrame(geminiBreaker.getState(), geminiBreaker.msUntilRetry())));
+    } catch { /* client may already be gone */ }
+  }
+
   // ── Idle timeout ──
   let idleTimer = setTimeout(() => cleanup("idle_timeout"), IDLE_TIMEOUT_MS);
 
@@ -349,6 +385,7 @@ wss.on("connection", (clientWs: WebSocket, req: IncomingMessage) => {
         metrics.geminiConnectTimeouts++;
         relayMetrics.geminiConnectTimeoutsTotal.add(1);
         metrics.geminiConsecutiveConnectFailures++;
+        geminiBreaker.recordFailure();
         console.warn(`[Relay] Gemini connect timeout (${GEMINI_CONNECT_TIMEOUT_MS}ms) for interview=${interviewId}`);
         try { ws.terminate(); } catch { /* ignore */ }
       }
@@ -359,6 +396,7 @@ wss.on("connection", (clientWs: WebSocket, req: IncomingMessage) => {
       metrics.geminiConsecutiveConnectFailures = 0;
       metrics.geminiLastConnectedAt = Date.now();
       geminiAlive = true;
+      geminiBreaker.recordSuccess();
       console.log(`[Relay] Gemini connected for interview=${interviewId}${logSuffix}`);
 
       // If reconnecting, resend the cached setup message first
@@ -377,6 +415,8 @@ wss.on("connection", (clientWs: WebSocket, req: IncomingMessage) => {
         }
       }
       isReconnecting = false;
+      // Buffer drained: let the client resume full-rate sending.
+      emitFlowLevel("normal");
     });
 
     ws.on("message", (data: Buffer | string) => {
@@ -400,7 +440,10 @@ wss.on("connection", (clientWs: WebSocket, req: IncomingMessage) => {
 
     ws.on("error", (err) => {
       clearTimeout(connectTimer);
-      if (!geminiAlive) metrics.geminiConsecutiveConnectFailures++;
+      if (!geminiAlive) {
+        metrics.geminiConsecutiveConnectFailures++;
+        geminiBreaker.recordFailure();
+      }
       console.error(
         `[Relay] Gemini WS error for interview=${interviewId}:${logSuffix}`,
         err.message
@@ -469,6 +512,26 @@ wss.on("connection", (clientWs: WebSocket, req: IncomingMessage) => {
     }
 
     isReconnecting = true;
+
+    // Provider circuit breaker: while it is OPEN (or a probe is in flight)
+    // do not dial Gemini. Tell the client why, and retry after the cooldown.
+    // The attempt still counts so a long outage ends in the exhausted path.
+    if (!geminiBreaker.canAttempt()) {
+      const waitMs = Math.max(500, geminiBreaker.msUntilRetry());
+      reconnectAttempts++;
+      metrics.geminiReconnects++;
+      relayMetrics.geminiReconnectsTotal.add(1);
+      console.warn(`[Relay] Circuit breaker ${geminiBreaker.getState()} — deferring Gemini reconnect ${waitMs}ms (attempt ${reconnectAttempts}/${MAX_GEMINI_RECONNECTS}) for interview=${interviewId}${logSuffix}`);
+      emitProviderDegraded();
+      setTimeout(() => {
+        if (!clientAlive || cleanedUp) return;
+        // Re-enter so the breaker is consulted again (cooldown may have moved).
+        isReconnecting = false;
+        attemptGeminiReconnect();
+      }, waitMs);
+      return;
+    }
+
     const baseDelay = RECONNECT_BACKOFF[reconnectAttempts] ?? 30000;
     // Full jitter: delay randomized in [0.5*base, 1.0*base] to prevent thundering herd
     // when many clients reconnect at the same moment after a Gemini blip.
@@ -486,7 +549,15 @@ wss.on("connection", (clientWs: WebSocket, req: IncomingMessage) => {
   }
 
   // ── Initial Gemini connection ──
-  geminiWs = connectToGemini();
+  if (geminiBreaker.canAttempt()) {
+    geminiWs = connectToGemini();
+  } else {
+    // Provider known down: skip the doomed dial, tell the client, and buffer
+    // its frames until the breaker lets a probe through.
+    console.warn(`[Relay] Circuit breaker ${geminiBreaker.getState()} at session start for interview=${interviewId}${logSuffix}`);
+    emitProviderDegraded();
+    attemptGeminiReconnect();
+  }
 
   // ── Proxy: Client → Gemini ──
   clientWs.on("message", (data: Buffer | string) => {
@@ -521,10 +592,15 @@ wss.on("connection", (clientWs: WebSocket, req: IncomingMessage) => {
       if (messageBuffer.length < MESSAGE_BUFFER_LIMIT) {
         messageBuffer.push(data);
         metrics.bufferedMessages++;
+        // Tell the client to throttle BEFORE the buffer overflows.
+        checkAndEmitFlowLevel();
       } else {
         console.warn(`[Relay] Buffer overflow (${MESSAGE_BUFFER_LIMIT} msgs) for interview=${interviewId}, dropping message${logSuffix}`);
         metrics.bufferOverflows++;
         relayMetrics.bufferOverflowsTotal.add(1);
+        // Surface the drop instead of failing silently (legacy PR #1 item 1.5).
+        bufferDropsThisSession++;
+        emitFlowLevel("pause", true);
         // Task 32: buffer overflows mean audio is being lost. Capture
         // as a warning (not error) since it's a degradation, not a
         // crash — but include the interview ID so ops can correlate
