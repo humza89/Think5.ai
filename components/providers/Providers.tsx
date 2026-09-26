@@ -30,9 +30,15 @@ function ThemedToaster() {
   );
 }
 
-export function Providers({ children }: { children: ReactNode }) {
+interface ProvidersProps {
+  children: ReactNode;
+  /** CSP nonce for next-themes' inline theme script (Issue #14). */
+  nonce?: string;
+}
+
+export function Providers({ children, nonce }: ProvidersProps) {
   return (
-    <ThemeProvider attribute="class" defaultTheme="light" enableSystem>
+    <ThemeProvider attribute="class" defaultTheme="light" enableSystem nonce={nonce}>
       <AuthProvider>
         {children}
         <ThemedToaster />
