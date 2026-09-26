@@ -3,6 +3,7 @@ import { matchesRoutePrefix } from '@/lib/route-prefix';
 import { NextResponse, type NextRequest } from 'next/server';
 import { createHash, randomUUID } from 'crypto';
 import { applyRateLimit } from '@/lib/api-rate-limit';
+import { CSP_HEADER, NONCE_HEADER, buildAppCsp, cspModeFor, generateCspNonce } from '@/lib/csp';
 
 // ─────────────────────────────────────────────────────────────────────
 // CSRF protection + rate limiting (merged from the former middleware.ts;
@@ -195,6 +196,27 @@ function ensureRequestId(request: NextRequest): string {
   return id;
 }
 
+/**
+ * Issue #14: per-request nonce CSP for app/page routes.
+ *
+ * The nonce travels two ways: as the `Content-Security-Policy` *request*
+ * header (Next.js reads the nonce out of it and stamps every framework
+ * script it renders — RSC payload pushes, hydration bootstrap, chunk
+ * loaders) and as `x-nonce` for application code that renders its own
+ * script tags. The same policy is then set on the response. Every
+ * `NextResponse.next()` in this file passes `{ request }` so the mutated
+ * request headers reach the renderer. Returns null for routes whose policy
+ * is static (landing, public marketing/auth pages, Spline embed, API, assets).
+ */
+function applyNonceCsp(request: NextRequest): string | null {
+  if (cspModeFor(request.nextUrl.pathname) !== 'app') return null;
+  const nonce = generateCspNonce();
+  const csp = buildAppCsp(nonce);
+  request.headers.set(NONCE_HEADER, nonce);
+  request.headers.set(CSP_HEADER, csp);
+  return csp;
+}
+
 export async function proxy(request: NextRequest) {
   const requestId = ensureRequestId(request);
   // HTTPS enforcement in production (tokens must never travel over HTTP)
@@ -213,22 +235,27 @@ export async function proxy(request: NextRequest) {
     return rejected;
   }
 
+  const csp = applyNonceCsp(request);
   const response = await authorize(request);
   response.headers.set(REQUEST_ID_HEADER, requestId);
+  // Redirects carry no document; only rendered responses get the policy.
+  if (csp && !response.headers.has('location')) {
+    response.headers.set(CSP_HEADER, csp);
+  }
   return attachCsrfCookies(request, response);
 }
 
 async function authorize(request: NextRequest): Promise<NextResponse> {
   const { pathname } = request.nextUrl;
 
-  // Allow public routes
+  // Allow public routes (forward the request headers: request id + CSP nonce)
   if (publicRoutes.includes(pathname)) {
-    return NextResponse.next();
+    return NextResponse.next({ request });
   }
   // Segment-aware: '/interview' must not make '/interviews/*' public.
   for (const prefix of publicPrefixes) {
     if (matchesRoutePrefix(pathname, prefix)) {
-      return NextResponse.next();
+      return NextResponse.next({ request });
     }
   }
 
