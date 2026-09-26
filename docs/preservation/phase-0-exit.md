@@ -33,6 +33,7 @@ remaining gates close.
 | Exit closeout: legacy salvage (relay) — #1/#11 items | #40 | 69452fc | `relay.flow` backpressure frames + client throttle, provider circuit breaker + `relay.degraded`, breaker on `/health` |
 | Issue #20 mobile `/candidates` | #41 | 5a094d4 | stacked sourcing rows below `md`, `mobile-layout.spec.ts`, CI-adopted 375 baseline |
 | Issue #14 nonce CSP | #42 | 09830d2 | `lib/csp.ts`, per-request `script-src 'nonce-…' 'strict-dynamic'` on app routes, static policy kept on public pages (`force-static`), `csp-nonce.spec.ts`, `docs/ops/csp.md` |
+| T14 remaining scenarios: signup→approval, admin approval, pipeline move | #46 | 517d377 | admin + pending-recruiter fixtures, admin storage state, three golden specs, approvals PATCH honours `?type=recruiter` |
 | Exit closeout record + share-link golden spec + shared-report fixes | #44 | 8b99074 | this record's §8, `writes-share-link.spec.ts`, proxy lets the two share-token routes through without a session, share page validates the HMAC cookie, dot-delimited cookie value, CI `NEXTAUTH_SECRET` |
 
 Pre-T0 fixes that unblocked the authenticated baselines: #16 (CSP `unsafe-inline` restoration with hard-navigation regression tests), #17 (invitation token kept after `replaceState`), #18 (CSRF client), #19 (segment-aware route prefixes; Issue #15 closed).
@@ -42,9 +43,9 @@ Pre-T0 fixes that unblocked the authenticated baselines: #16 (CSP `unsafe-inline
 | # | Gate (plan T14) | Status | Evidence |
 | --- | --- | --- | --- |
 | 1 | `npm run manifest:check` clean; manifest diff since baseline reviewed | **Green** | CI "Verify committed manifest baseline" on every PR; every change reviewed in its PR body. Removed items since the T0 baseline: none. Additions: routes/models/flags/contracts listed per task. |
-| 2 | Golden E2E suite green | **Green in CI on every PR**; scope differs from the plan's spec names, see §3 | `e2e/golden/*`: route matrix (71 routes), visual (24 baselines), `writes-*` per task, `writes-invite-to-report` (#38), `csp-nonce` (#42), `mobile-layout` (#41) |
+| 2 | Golden E2E suite green | **Green in CI on every PR**; every plan scenario covered, see §3 | `e2e/golden/*`: route matrix (71 routes), visual (24 baselines), `writes-*` per task, `writes-invite-to-report` (#38), `csp-nonce` (#42), `mobile-layout` (#41), `writes-share-link` (#44), `writes-signup-to-approval`, `writes-admin-approval`, `writes-pipeline-move` (#46) |
 | 3 | Route matrix green against staging | **Green against the production deployment; no staging exists** | No staging environment is configured (see §6: the Vercel project has one Production environment and SSO-protected previews that share the production database). The logged-out route matrix (`scripts/route-matrix.sh`, read-only GETs, 71 routes: public → 200, protected → redirect to `/auth/signin`) was run on 2026-09-26 18:26 UTC against `https://www.think5.ai` = production deployment of `main` 7cd12cb (GitHub deployment 2026-09-26 17:55 UTC): **71/71 passed, 0 failures**. The signed-in matrix (`route-access.spec.ts`) runs against the local stack in CI on every PR. |
-| 4 | `npx vitest run` green; eval harness `overallPassed` | **Green** | 117 files / 1044 tests on the #42 head; `EVAL_MOCK_MODE=true npm run test:eval` → `Overall: PASSED`; CI "Eval Harness (Mock Mode)" job |
+| 4 | `npx vitest run` green; eval harness `overallPassed` | **Green** | 121 files / 1076 tests on the #46 head; relay `tsc` clean; `EVAL_MOCK_MODE=true npm run test:eval` → `Overall: PASSED, Avg Score 7.7`; CI "Eval Harness (Mock Mode)" job |
 | 5 | k6 `load-tests/concurrent-interviews.js` on staging within thresholds | **Open — owner: no staging** | The script needs a staging deployment with `AI_PROVIDER=mock` and an isolated database; the only non-production deployments are Vercel previews that use the production `DATABASE_URL`, so the load run cannot be executed without writing load traffic into production data. Owner action in §6. Thresholds are unchanged. |
 | 6 | Rollback exercised (T8 messaging legacy route; `FF_P0_USAGE_METERING` off) | **Green in CI; staging flip open — owner: no staging** | Legacy `/api/messages` adapter is exercised in `writes-messaging.spec.ts` on every run; the `FF_P0_USAGE_METERING=false` path is covered by `__tests__/usage`. Flipping the flag in a deployed environment needs a staging deployment (§6). |
 | 7 | Relay chaos in staging (`fly machine stop`) + `docs/ops/regional-failure.md` reviewed | **Open — owner: Fly access + staging relay** | Automated chaos tests green (`__tests__/chaos/relay-drain.test.ts`, `redis-loss.test.ts`, `relay-backpressure.test.ts`). The only Fly app is the production relay `think5-voice-relay` (iad) and this machine has no Fly session (`flyctl auth whoami` → no access token), so the drill was not run; it must never run against production. Owner action in §6. |
@@ -52,7 +53,7 @@ Pre-T0 fixes that unblocked the authenticated baselines: #16 (CSP `unsafe-inline
 | 9 | Contract conformance green for every production implementation | **Green** | `InAppMessageProvider`, `PrismaUsageMeter`, `QuotaEntitlementService`, `PrismaRedisInterviewSessionStore`, `OtelTelemetry`, `GreenhouseAdapter` each run through `lib/contracts/conformance/*` in `npx vitest run` |
 | 10 | Grafana dashboards populated from staging traffic | **Open — owner: OTLP not configured** | Dashboards committed (`docs/ops/grafana/*.json`). Verified 2026-09-26: no `OTEL_EXPORTER_OTLP_*` variable exists in any Vercel environment and the Fly relay secrets could not be inspected (no Fly session), so export is off and the panels are empty. Owner action in §6. |
 | 11 | 7-day production observation with all `FF_P0_*` on | **Not started — preconditions open** | §5 preflight run on 2026-09-26: see the precondition table there. The window must not start until the missing production configuration and the backfills are done. |
-| 12 | Owner sign-off (Humza) | **Pending** | Everything not marked external or owner-gated above is closed as of 2026-09-26; see §8. |
+| 12 | Owner sign-off (Humza) | **Pending** | Every in-repo gate is closed as of 2026-09-26 (§8); the remaining rows need the owner actions in §6, then the observation window (§5). |
 
 ## 3. Golden E2E coverage versus the plan's list
 
@@ -213,13 +214,14 @@ and #20, and leave only the observation window and the sign-off.
 ### Tasks T0–T16
 
 All merged; see §1 for PR and SHA. T14's own record is #38 (7f21e9e); the
-closeout merges are #39–#42 and #44.
+closeout merges are #39–#42, #44, #45 and #46 (the last three plan
+scenarios).
 
 ### Legacy PRs #1–#11
 
 | PR | Disposition | Replacement / rationale |
 | --- | --- | --- |
-| #1 | **Open, untouched** (Humza's interrupted local rebase, per the audit) | Every item is on `main`: 1.1/1.2/1.4 (Track 6, T11), 1.3 heartbeat ladder (`hooks/useVoiceInterview.ts`), 1.5 buffer-drop signal (#40 `relay.flow` forced `pause` frame). Comment posted; closing is the owner's call. |
+| #1 | Closed 2026-09-26 — everything on `main` | 1.1/1.2/1.4 (Track 6, T11), 1.3 heartbeat ladder (`hooks/useVoiceInterview.ts`), 1.5 buffer-drop signal (#40 `relay.flow` forced `pause` frame), full-jitter backoff. Only the GitHub PR was closed; the local `fix/voice-reliability-phase-1` rebase in the owner's working copy is untouched. |
 | #2 | Closed — superseded | `InterviewSessionStore` contract + `PrismaRedisInterviewSessionStore` (T11) |
 | #3 | Closed — Phase 4 | LiveKit transport out of scope; go/no-go criteria kept in the PR description; #43 |
 | #4 | Closed — salvaged | #39: playback integrity, retention gate, scoped access, shared-report rate limits, detector |
