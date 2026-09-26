@@ -1044,9 +1044,10 @@ export default function CandidatesPage() {
         {/* Candidates Table */}
         <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-x-auto">
           {/* Table Header */}
-          <div className="border-b border-gray-200 bg-white px-5 py-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
+          <div className="border-b border-gray-200 bg-white px-4 py-3 sm:px-5">
+            {/* Issue #20: stack the summary and pager on narrow viewports. */}
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex flex-wrap items-center gap-3">
                 <input type="checkbox" className="rounded border-gray-300" />
                 <span className="text-sm font-medium text-gray-900">
                   All Profiles ({(total ?? 0).toLocaleString()})
@@ -1066,8 +1067,8 @@ export default function CandidatesPage() {
                   </DropdownMenuContent>
                 </DropdownMenu>
               </div>
-              <div className="flex items-center gap-3 text-xs text-gray-600">
-                <span>{startIndex}-{endIndex} of {(total ?? 0).toLocaleString()}</span>
+              <div className="flex items-center justify-between gap-3 text-xs text-gray-600 sm:justify-end">
+                <span className="whitespace-nowrap">{startIndex}-{endIndex} of {(total ?? 0).toLocaleString()}</span>
                 <div className="flex items-center gap-1">
                   <Button variant="ghost" size="sm" className="h-7 w-7 p-0" disabled={currentPage === 1}>
                     <ChevronLeft className="h-4 w-4" />
@@ -1080,8 +1081,13 @@ export default function CandidatesPage() {
             </div>
           </div>
 
-          {/* Table Column Headers */}
-          <div className="grid grid-cols-12 gap-4 px-5 py-2.5 border-b border-gray-200 bg-gray-50/50 text-xs font-semibold text-gray-600 uppercase tracking-wide">
+          {/* Table Column Headers — Issue #20: the twelve-column layout only
+              exists from the md breakpoint; below it rows stack and carry
+              their own labels, so the header row is hidden. */}
+          <div
+            data-testid="sourcing-column-headers"
+            className="hidden md:grid grid-cols-12 gap-4 px-5 py-2.5 border-b border-gray-200 bg-gray-50/50 text-xs font-semibold text-gray-600 uppercase tracking-wide"
+          >
             <div className="col-span-3">Name</div>
             <div className="col-span-4">Experiences</div>
             <div className="col-span-3">Schools</div>
@@ -1096,9 +1102,13 @@ export default function CandidatesPage() {
               const education = candidate.education || [];
 
               return (
-                <div key={candidate.id} className="grid grid-cols-12 gap-4 px-5 py-3.5 hover:bg-gray-50/50 transition-colors">
+                <div
+                  key={candidate.id}
+                  data-testid="sourcing-row"
+                  className="grid grid-cols-1 gap-3 px-4 py-3.5 hover:bg-gray-50/50 transition-colors md:grid-cols-12 md:gap-4 md:px-5"
+                >
                   {/* Name Column */}
-                  <div className="col-span-3 flex items-start gap-3">
+                  <div data-testid="sourcing-cell-name" className="flex items-start gap-3 md:col-span-3">
                     <input type="checkbox" className="mt-1 rounded border-gray-300" />
                     <div className="w-12 h-12 bg-gray-200 rounded-full flex-shrink-0 overflow-hidden">
                       {avatarUrl ? (
@@ -1156,7 +1166,8 @@ export default function CandidatesPage() {
                   </div>
 
                   {/* Experiences Column */}
-                  <div className="col-span-4 space-y-1.5">
+                  <div data-testid="sourcing-cell-experiences" className="space-y-1.5 md:col-span-4">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 md:hidden">Experiences</p>
                     {(expandedCandidates.has(candidate.id) ? experiences : experiences.slice(0, 3)).map((exp, idx) => (
                       <div key={idx} className="flex items-start gap-2.5">
                         <div className="w-6 h-6 bg-white border border-gray-200 rounded flex-shrink-0 overflow-hidden">
@@ -1213,7 +1224,8 @@ export default function CandidatesPage() {
                   </div>
 
                   {/* Schools Column */}
-                  <div className="col-span-3 space-y-1.5">
+                  <div data-testid="sourcing-cell-schools" className="space-y-1.5 md:col-span-3">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 md:hidden">Schools</p>
                     {(expandedCandidates.has(candidate.id) ? education : education.slice(0, 2)).map((edu, idx) => (
                       <div key={idx} className="flex items-start gap-2.5">
                         <div className="w-6 h-6 bg-white border border-gray-200 rounded flex-shrink-0 overflow-hidden">
