@@ -100,6 +100,14 @@ Beyond the audit items each task re-confirmed, the gate work itself surfaced:
 - **Interview replay reconstruction threw** (`InterviewFact` was ordered and
   selected by a `createdAt` column that does not exist; it is `extractedAt`).
   Seen as `[replay] Failed` in every CI log since T0. Fixed.
+- **Shared report links did not work for their recipients.** The proxy
+  required a Think5 session for every `/api/*` route except the interview
+  token routes, so a recipient opening `/reports/shared/[token]` got 401
+  from the data and verify-email endpoints before the route's own token,
+  email-gate and rate-limit checks ran. Found by the closeout's
+  `writes-share-link.spec.ts`; fixed in the closeout PR
+  (`sharedReportPublicPattern` in `proxy.ts`, guarded by
+  `__tests__/architecture/shared-report-public.test.ts`).
 - Earlier tasks: CSP blocked hydration on hard navigation (#16); invitation
   token lost after `replaceState` (#17); no browser code sent the CSRF header
   (#18, T1); `/candidate` swallowed `/candidates` (#19); admin routes without

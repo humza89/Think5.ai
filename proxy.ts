@@ -47,6 +47,9 @@ const CSRF_EXEMPT_PATTERNS = [
   /^\/api\/auth\/sso\/callback/, // IdP POST binding
 ];
 
+/** Public shared-report API: token-authenticated by the route (see authorize()). */
+const sharedReportPublicPattern = /^\/api\/reports\/shared\/[^/]+\/(data|verify-email)$/;
+
 // Routes that use their own token validation (not session-based CSRF)
 const TOKEN_AUTH_PATTERNS = [
   /^\/api\/interviews\/[^/]+\/voice/, // Voice endpoints use Bearer token
@@ -294,6 +297,14 @@ async function authorize(request: NextRequest): Promise<NextResponse> {
     // validates the interview credential itself (lib/interview-credential).
     const interviewPublicPattern = /^\/api\/interviews\/(accept|[^/]+\/(stream|validate|report-status|report-stream|consent|pause|recording|proctoring|screen-capture|memory-status|replay|voice|voice-init|voice\/(turn-commit|fragment|recover|context|context-capsule)|session\/refresh))$/;
     if (interviewPublicPattern.test(pathname)) {
+      return supabaseResponse;
+    }
+    // Shared report links are opened by recipients without a Think5 session.
+    // Both routes authenticate with the share token itself (plus the HMAC
+    // email-gate cookie and per-IP/per-token rate limits, #39). Found by the
+    // share-link golden spec: the session requirement here answered 401
+    // before the route's own checks could run.
+    if (sharedReportPublicPattern.test(pathname)) {
       return supabaseResponse;
     }
     if (!user) {
