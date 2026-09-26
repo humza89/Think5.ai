@@ -34,6 +34,8 @@ describe("shared report routes are reachable without a session", () => {
     const start = proxySource.indexOf("const CSRF_EXEMPT_PATTERNS = [");
     const end = proxySource.indexOf("];", start);
     expect(start).toBeGreaterThan(0);
-    expect(proxySource.slice(start, end)).not.toContain("reports");
+    // The exemption list may mention "reports" in comments (CSP violation
+    // reports); what must not appear is an exemption for the shared-report routes.
+    expect(proxySource.slice(start, end)).not.toMatch(/reports\\\/shared/);
   });
 });
