@@ -1,5 +1,6 @@
 import type { NextConfig } from "next";
 import { withSentryConfig } from "@sentry/nextjs";
+import { SPLINE_EMBED_CSP, buildApiCsp, buildLandingCsp } from "./lib/csp";
 
 const nextConfig: NextConfig = {
   images: {
@@ -28,38 +29,14 @@ const nextConfig: NextConfig = {
       },
     ];
 
-    // A local or self-hosted Supabase stack (for example the golden E2E suite
-    // in CI) lives on an origin outside *.supabase.co. Derive it from the
-    // configured URL so the browser can reach GoTrue/PostgREST there. Hosted
-    // projects match the wildcard already, so their CSP stays byte-identical.
-    const supabaseOriginSources = (() => {
-      try {
-        const url = new URL(process.env.NEXT_PUBLIC_SUPABASE_URL ?? "");
-        if (/\.supabase\.(co|in)$/.test(url.hostname)) return "";
-        return ` ${url.origin} ${url.origin.replace(/^http/, "ws")}`;
-      } catch {
-        return "";
-      }
-    })();
-
-    // App routes: strict CSP — no unsafe-eval. 'unsafe-inline' for script-src is
-    // required because Next.js streams the RSC payload and hydration bootstrap
-    // through inline <script> tags; without it every hard load of an app route
-    // (dashboard refresh, /interview/accept, deep links) renders but never
-    // hydrates. Same policy the public/auth pages already use. Nonce-based CSP
-    // with 'strict-dynamic' is the planned hardening (Issue #14).
-    const strictCsp =
-      `default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; connect-src 'self' https://*.supabase.co https://*.upstash.io wss://*.supabase.co${supabaseOriginSources} wss://generativelanguage.googleapis.com https://generativelanguage.googleapis.com https://prod.spline.design https://unpkg.com wss://think5-voice-relay.fly.dev; media-src 'self' blob: data:; font-src 'self' data:; frame-src 'self' https://*.supabase.co blob:; frame-ancestors 'none'; report-uri /api/csp-report`;
-
-    // Spline 3D runtime requires 'unsafe-eval'. Instead of allowing it on
-    // the landing page directly, we load Spline in a sandboxed iframe on
-    // /spline-embed which has its own relaxed CSP, keeping the main landing
-    // page fully hardened.
-    const landingCsp =
-      `default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; connect-src 'self' https://*.supabase.co https://*.upstash.io wss://*.supabase.co${supabaseOriginSources} https://prod.spline.design https://unpkg.com wss://think5-voice-relay.fly.dev; media-src 'self' blob: data:; font-src 'self' data:; frame-src 'self' https://*.supabase.co blob:; frame-ancestors 'none'`;
-    // Sandboxed Spline embed page — unsafe-eval isolated to this route only
-    const splineEmbedCsp =
-      "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://unpkg.com https://prod.spline.design; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; connect-src 'self' https://prod.spline.design https://unpkg.com; frame-ancestors 'self'";
+    // Issue #14: app/page routes get a per-request nonce CSP from proxy.ts
+    // (script-src 'nonce-…' 'strict-dynamic'); the static policies below
+    // cover API routes (unchanged strict policy), the landing/marketing/auth
+    // pages (static, cacheable, hence no nonce) and the sandboxed Spline
+    // embed. See lib/csp.ts and docs/ops/csp.md.
+    const apiCsp = buildApiCsp(process.env.NEXT_PUBLIC_SUPABASE_URL);
+    const landingCsp = buildLandingCsp(process.env.NEXT_PUBLIC_SUPABASE_URL);
+    const splineEmbedCsp = SPLINE_EMBED_CSP;
 
     return [
       // CDN cache headers for static assets
@@ -76,13 +53,19 @@ const nextConfig: NextConfig = {
           { key: "Cache-Control", value: "private, no-store" },
         ],
       },
-      // Strict CSP for app routes (interview, API, candidate, admin, dashboard)
+      // API routes: static strict CSP (JSON responses; no Next.js page render)
       {
-        source: "/(interview|api|candidate|admin|dashboard)(.*)",
+        source: "/api/(.*)",
         headers: [
           ...securityHeaders,
-          { key: "Content-Security-Policy", value: strictCsp },
+          { key: "Content-Security-Policy", value: apiCsp },
         ],
+      },
+      // App routes: security headers only — the Content-Security-Policy is
+      // set per request by proxy.ts with a fresh nonce (Issue #14).
+      {
+        source: "/(interview|candidate|admin|dashboard)(.*)",
+        headers: securityHeaders,
       },
       // Landing page: strict CSP (Spline loaded via sandboxed iframe)
       {
@@ -110,13 +93,10 @@ const nextConfig: NextConfig = {
           { key: "Content-Security-Policy", value: splineEmbedCsp },
         ],
       },
-      // All other routes: strict CSP (no unsafe-eval)
+      // All other page routes: security headers only; nonce CSP from proxy.ts
       {
         source: "/((?!interview|api|candidate|admin|dashboard|spline-embed|product|recruitment|about|ai-training|research|contact|unauthorized|auth).+)",
-        headers: [
-          ...securityHeaders,
-          { key: "Content-Security-Policy", value: strictCsp },
-        ],
+        headers: securityHeaders,
       },
     ];
   },
