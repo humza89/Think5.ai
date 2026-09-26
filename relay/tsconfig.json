@@ -12,6 +12,6 @@
     "resolveJsonModule": true,
     "declaration": true
   },
-  "include": ["server.ts", "otel.ts"],
+  "include": ["server.ts", "otel.ts", "circuit-breaker.ts", "flow-control.ts"],
   "exclude": ["node_modules", "dist"]
 }

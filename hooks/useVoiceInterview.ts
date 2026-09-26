@@ -42,6 +42,7 @@ import {
 } from "@/lib/reconnect-state-machine";
 import type { ReconnectState, ReconnectPhase } from "@/lib/reconnect-state-machine";
 import { drainingUntil, isRelayDrainingFrame, planReconnect } from "@/lib/relay-drain";
+import { isRelayDegradedFrame, isRelayFlowFrame, shouldSendAudioFrame, type RelayFlowLevel } from "@/lib/relay-flow";
 import type { Durability } from "@/lib/contracts/interview-session-store";
 import { apiFetch } from "@/lib/api-client";
 import { logger } from "@/lib/logger";
@@ -221,6 +222,9 @@ export function useVoiceInterview(
   const checkpointResultsRef = useRef<boolean[]>([]); // Rolling window of last 5 checkpoint results
   const consecutiveSetupFailuresRef = useRef(0); // Circuit breaker counter
   const tabHiddenRef = useRef(false); // F5: Tab visibility — suppress heartbeat when hidden
+  // Relay backpressure (lib/relay-flow): level set by relay.flow frames, read by the audio processor.
+  const flowLevelRef = useRef<RelayFlowLevel>("normal");
+  const flowFrameIndexRef = useRef(0); // outbound audio frame counter for the "slow" level
   const circuitBreakerStateRef = useRef<"CLOSED" | "OPEN" | "HALF_OPEN">("CLOSED"); // F3: Circuit breaker state
   const circuitBreakerTimerRef = useRef<NodeJS.Timeout | null>(null); // F3: OPEN → HALF_OPEN timer
   const endInterviewInternalRef = useRef<(() => void) | null>(null); // Forward ref for checkpoint→endInterview
@@ -309,6 +313,8 @@ export function useVoiceInterview(
     // 7. Reset monitoring counters
     droppedFramesRef.current = 0;
     silentFramesRef.current = 0;
+    flowLevelRef.current = "normal";
+    flowFrameIndexRef.current = 0;
     setMicIsSilent(false);
 
     // Fix 1: Safety-net — clear recovery mutex on cleanup to prevent permanent lock
@@ -427,6 +433,32 @@ export function useVoiceInterview(
       if (isRelayDrainingFrame(data)) {
         relayDrainingUntilRef.current = drainingUntil(data);
         console.log(`[Voice] Relay draining (${data.reason ?? "deploy"}) — will reconnect as soon as the socket closes`);
+        return;
+      }
+
+      // Relay backpressure: throttle outbound audio while the relay buffers
+      // for a (re)connecting provider. Connection quality shows "poor" while
+      // throttled; the quality monitor recovers it once frames flow again.
+      if (isRelayFlowFrame(data)) {
+        const previous = flowLevelRef.current;
+        flowLevelRef.current = data.level;
+        if (data.level !== "normal") {
+          if (previous !== data.level) {
+            console.warn(`[Voice] Relay backpressure: ${data.level} (buffer ${Math.round((data.bufferUtilization ?? 0) * 100)}%, dropped ${data.droppedThisSession ?? 0})`);
+          }
+          setConnectionQuality("poor");
+        } else if (previous !== "normal") {
+          console.log("[Voice] Relay backpressure cleared — resuming full-rate audio");
+        }
+        return;
+      }
+
+      // Relay provider circuit breaker is open: the voice provider is known
+      // to be down for ~cooldownMs. Surface it as degraded quality; the
+      // relay retries after the cooldown and the normal reconnect path applies.
+      if (isRelayDegradedFrame(data)) {
+        console.warn(`[Voice] Relay degraded: ${data.reason ?? "provider"} (breaker ${data.breakerState ?? "OPEN"}, cooldown ${data.cooldownMs ?? 0}ms)`);
+        setConnectionQuality("poor");
         return;
       }
 
@@ -1323,6 +1355,9 @@ export function useVoiceInterview(
 
         ws.onopen = () => {
           console.log("[Voice] WebSocket connected, sending setup message...");
+          // A fresh relay session starts at flow level "normal".
+          flowLevelRef.current = "normal";
+          flowFrameIndexRef.current = 0;
 
           // Build tool declarations — single object wrapping all declarations
           const functionDeclarations = tools.map((tool: { name: string; description: string; parameters: Record<string, unknown> }) => ({
@@ -1797,6 +1832,14 @@ export function useVoiceInterview(
         if (!isMicEnabledRef.current) return;
         const ws2 = wsRef.current;
         if (!ws2 || ws2.readyState !== WebSocket.OPEN) return;
+
+        // Relay backpressure throttle (relay.flow): "pause" drops outbound
+        // audio, "slow" sends every other frame, "normal" sends everything.
+        const frameIndex = flowFrameIndexRef.current++;
+        if (!shouldSendAudioFrame(flowLevelRef.current, frameIndex)) {
+          droppedFramesRef.current += 1;
+          return;
+        }
 
         // Convert Int16 PCM ArrayBuffer to base64
         const bytes = new Uint8Array(pcm16Buffer);
