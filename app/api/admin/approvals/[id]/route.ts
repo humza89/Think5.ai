@@ -89,7 +89,12 @@ export async function PATCH(
     const { user, profile } = await requireRole(["admin"]);
     const { id } = await params;
     const body = await request.json();
-    const { action, reason, type = "candidate" } = body;
+    // The admin approvals page sends `?type=recruiter` on the query string
+    // (as GET does) with `{ action, reason }` in the body; accept either.
+    // Found by the T14 signup→approval golden spec: recruiter approvals from
+    // the UI were routed to the candidate handler and answered 404.
+    const { action, reason } = body;
+    const type = new URL(request.url).searchParams.get("type") ?? body.type ?? "candidate";
 
     // Route to recruiter approval handler
     if (type === "recruiter") {

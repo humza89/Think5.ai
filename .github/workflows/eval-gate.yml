@@ -113,6 +113,7 @@ jobs:
           E2E_AUTH_FIXTURES: "true"
           E2E_RECRUITER_STORAGE_STATE: e2e/.auth/recruiter.json
           E2E_CANDIDATE_STORAGE_STATE: e2e/.auth/candidate.json
+          E2E_ADMIN_STORAGE_STATE: e2e/.auth/admin.json
           ROUTE_MATRIX_FIXTURES: '{"/jobs/[id]":"/jobs/e2e-job-backend","/candidates/[id]":"/candidates/e2e-candidate-jordan","/interview/[id]":"/interview/e2e-interview-welcome"}'
         run: npm run test:e2e:golden
       - name: Upload Playwright artifacts

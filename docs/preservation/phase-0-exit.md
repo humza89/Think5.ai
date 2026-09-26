@@ -62,19 +62,17 @@ The plan names `auth.spec`, `invite-to-report.spec`, `pipeline.spec`,
 
 | Plan spec | Covered by | Notes |
 | --- | --- | --- |
-| `auth.spec` (signup → verify → onboarding → approval) | partially: `auth.setup.ts` (real sign-in), `writes-identity.spec.ts` (redirectTo, reason banners, MFA enrol/verify/recover, password change, deletion request) | Signup → email verify → recruiter onboarding → admin approval is **not** automated (needs an admin seed account and the onboarding wizard). |
+| `auth.spec` (signup → verify → onboarding → approval) | `writes-signup-to-approval.spec.ts` (closeout) plus `auth.setup.ts` (real sign-in) and `writes-identity.spec.ts` (redirectTo, reason banners, MFA enrol/verify/recover, password change, deletion request) | Real signup form → verification token read from `verification_tokens` (no mail service locally; the product's verify route still consumes it) → real sign-in → proxy holds the recruiter at onboarding → onboarding API steps 1–5 (joins the seeded company) → held at the status page → admin approves on `/admin/approvals` → recruiter reaches `/dashboard`. Fixture recipe in `e2e/fixtures/README.md`. |
 | `invite-to-report.spec` | `writes-invite-to-report.spec.ts` | Consent → mocked text interview → `interview/completed` → Inngest `interview/report.generate` → report page. Uses `AI_PROVIDER=mock` and the Inngest dev server (CI job step). |
-| `pipeline.spec` (kanban move persists) | not automated | Job-detail kanban uses dnd-kit; API-level status change is covered indirectly by T15's webhook test only. |
+| `pipeline.spec` (kanban move persists) | `writes-pipeline-move.spec.ts` (closeout) | Real pointer drag on the dnd-kit board (PointerSensor, 8 px activation): Interviewing → Screening, the board's `PATCH /api/jobs/[id]/applications/[appId]` must answer 200 with the new status, the stage survives a reload and is read back from `Application.status`; then dragged back and verified again. |
 | `share-link.spec` (email gate) | `writes-share-link.spec.ts` (closeout) | recruiter shares a report with a recipient email; anonymous data fetch is gated, wrong email refused, right email sets the HMAC cookie, data served, revoke ends access. Route-level cookie/rate-limit branches in `__tests__/api/shared-report-rate-limit.test.ts`. |
 | `messaging.spec` | `writes-messaging.spec.ts` | recruiter → candidate by email, delivery/read states, legacy adapter headers, both pages |
-| `admin-approval.spec` | not automated | needs an admin seed account. |
+| `admin-approval.spec` | `writes-admin-approval.spec.ts` (closeout) | Seeded admin + pending recruiter: pending list via API, pending recruiter held at the status page, recruiter session refused (403), approve from the Recruiters tab (PATCH 200), approved list, recruiter reaches `/dashboard`, reject-without-reason refused (400); fixture reset afterwards. |
 | `writes.spec` | `writes.spec.ts` (+ `writes-candidate-results`, `writes-soft-delete`, `writes-security-guards`, `writes-interview-credential`, `writes-ats`, `writes-stubs`) | |
 | `visual.spec` | `visual.spec.ts` | 24 baselines, CI-captured |
 
-Missing specs (auth signup → approval, admin approval, pipeline kanban move)
-need an admin seed account and a drag-and-drop driver; they stay on the
-observation-week backlog. None blocks a merge gate: the behaviour they cover
-is unchanged by Phase 0.
+Every scenario in the plan's list is now automated and runs in Preservation
+Gates on every PR.
 
 ## 4. Defects found and fixed while building the gates
 
@@ -114,6 +112,12 @@ Beyond the audit items each task re-confirmed, the gate work itself surfaced:
   HMAC cookie's `|` delimiter was percent-encoded by the cookie store; both
   fixed in the closeout PR (page uses `verifyReportShareCookie`; cookie is
   dot-delimited and verification tolerates percent-encoding).
+- **Recruiter approvals from the admin UI answered 404.** The approvals
+  page sends `?type=recruiter` on the query string, but `PATCH
+  /api/admin/approvals/[id]` read `type` from the body only, so every
+  recruiter approve/reject from the UI was routed to the candidate handler.
+  Found by the closeout's `writes-signup-to-approval.spec.ts`; the route now
+  honours the query string as GET does. Guarded by both approval specs.
 - Earlier tasks: CSP blocked hydration on hard navigation (#16); invitation
   token lost after `replaceState` (#17); no browser code sent the CSRF header
   (#18, T1); `/candidate` swallowed `/candidates` (#19); admin routes without
