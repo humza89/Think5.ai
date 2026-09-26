@@ -1,6 +1,6 @@
 # Phase 0 exit gate (T14)
 
-Status as of 2026-09-25. Phase 0 is defined by the plan
+Status as of 2026-09-26 (exit closeout). Phase 0 is defined by the plan
 (`docs/superpowers/plans/2026-09-16-phase-0-stabilise.md`) as T0–T16 merged,
 this gate's checks green, and a clean 7-day production observation window with
 every `FF_P0_*` flag on. This document is the record; it is updated as the
@@ -28,7 +28,11 @@ remaining gates close.
 | T15 Greenhouse two-way proof | #35 | c43fc72 | `GreenhouseAdapter`, sync engine, `ATSSyncRun`/`ATSEntityLink`, integrations UI, nightly sandbox workflow |
 | T13 repository hygiene | #37 | 0bf8050 | scratch files, `docs/legacy`, relay `node_modules` untracked, relay OTel SDK, README, quiet prompt logging |
 | T10 no dead-end controls | #36 | 414fedf | all 16 rows of the stub table, `ApiKey` + `/api/v1/me`, single nav config, `LogoMark` |
-| T14 golden path (this PR) | — | — | mock interviewer/scorer, Inngest dev server in CI, `writes-invite-to-report.spec.ts`, two Inngest defects fixed |
+| T14 golden path + this exit record | #38 | 7f21e9e | mock interviewer/scorer, Inngest dev server in CI, `writes-invite-to-report.spec.ts`, Inngest pipeline defects fixed |
+| Exit closeout: legacy salvage (security) — #4/#6/#8 items | #39 | 2ae4aef | `buildInterviewAccessScope` + 8 scoped routes, `RecordingMergeFailedError` and no first-chunk playback, `REPORT_STATE_SAFE_FOR_RETENTION`, HMAC share cookie + shared-report rate limits, broken-COMPLETED detector (hourly Inngest cron) |
+| Exit closeout: legacy salvage (relay) — #1/#11 items | #40 | 69452fc | `relay.flow` backpressure frames + client throttle, provider circuit breaker + `relay.degraded`, breaker on `/health` |
+| Issue #20 mobile `/candidates` | #41 | 5a094d4 | stacked sourcing rows below `md`, `mobile-layout.spec.ts`, CI-adopted 375 baseline |
+| Issue #14 nonce CSP | #42 | 09830d2 | `lib/csp.ts`, per-request `script-src 'nonce-…' 'strict-dynamic'` on app routes, static policy kept on public pages (`force-static`), `csp-nonce.spec.ts`, `docs/ops/csp.md` |
 
 Pre-T0 fixes that unblocked the authenticated baselines: #16 (CSP `unsafe-inline` restoration with hard-navigation regression tests), #17 (invitation token kept after `replaceState`), #18 (CSRF client), #19 (segment-aware route prefixes; Issue #15 closed).
 
@@ -37,9 +41,9 @@ Pre-T0 fixes that unblocked the authenticated baselines: #16 (CSP `unsafe-inline
 | # | Gate (plan T14) | Status | Evidence |
 | --- | --- | --- | --- |
 | 1 | `npm run manifest:check` clean; manifest diff since baseline reviewed | **Green** | CI "Verify committed manifest baseline" on every PR; every change reviewed in its PR body. Removed items since the T0 baseline: none. Additions: routes/models/flags/contracts listed per task. |
-| 2 | Golden E2E suite green | **Green in CI on every PR**; scope differs from the plan's spec names, see §3 | `e2e/golden/*`: route matrix (71 routes), visual (24 baselines), `writes-*` per task, `writes-invite-to-report` (this PR) |
+| 2 | Golden E2E suite green | **Green in CI on every PR**; scope differs from the plan's spec names, see §3 | `e2e/golden/*`: route matrix (71 routes), visual (24 baselines), `writes-*` per task, `writes-invite-to-report` (#38), `csp-nonce` (#42), `mobile-layout` (#41) |
 | 3 | Route matrix green against staging | **Open — external** | Runs against the local stack in CI (`route-access.spec.ts`, 71 routes). Against staging: `npm run route:matrix` with `BASE_URL=<staging>` once staging exists. |
-| 4 | `npx vitest run` green; eval harness `overallPassed` | **Green** | 106 files / 918 tests on the T13 head; `EVAL_MOCK_MODE=true npm run test:eval` → `Overall: PASSED, Avg Score 7.7`; CI "Eval Harness (Mock Mode)" job |
+| 4 | `npx vitest run` green; eval harness `overallPassed` | **Green** | 117 files / 1044 tests on the #42 head; `EVAL_MOCK_MODE=true npm run test:eval` → `Overall: PASSED`; CI "Eval Harness (Mock Mode)" job |
 | 5 | k6 `load-tests/concurrent-interviews.js` on staging within thresholds | **Open — external** | Script present; needs staging URL and a mocked provider there (`AI_PROVIDER=mock` is now supported). Baseline number to be recorded here. |
 | 6 | Rollback exercised (T8 messaging legacy route; `FF_P0_USAGE_METERING` off) | **Partly green** | Legacy `/api/messages` adapter is exercised in `writes-messaging.spec.ts` on every run. `FF_P0_USAGE_METERING=false` path covered by unit tests (`__tests__/usage`), not yet flipped in staging. |
 | 7 | Relay chaos in staging (`fly machine stop`) + `docs/ops/regional-failure.md` reviewed | **Open — external** | Automated chaos tests green (`__tests__/chaos/relay-drain.test.ts`, `redis-loss.test.ts`); the live drill needs a staging Fly app. |
@@ -47,7 +51,7 @@ Pre-T0 fixes that unblocked the authenticated baselines: #16 (CSP `unsafe-inline
 | 9 | Contract conformance green for every production implementation | **Green** | `InAppMessageProvider`, `PrismaUsageMeter`, `QuotaEntitlementService`, `PrismaRedisInterviewSessionStore`, `OtelTelemetry`, `GreenhouseAdapter` each run through `lib/contracts/conformance/*` in `npx vitest run` |
 | 10 | Grafana dashboards populated from staging traffic | **Open — external** | Dashboards committed (`docs/ops/grafana/*.json`); export is off until `OTEL_EXPORTER_OTLP_*` are set (`docs/ops/observability.md`). |
 | 11 | 7-day production observation with all `FF_P0_*` on | **Not started** | See §5. Note `FF_P0_MFA_ENFORCEMENT` requires every admin/tenant admin enrolled first (`docs/ops/identity.md`). |
-| 12 | Owner sign-off (Humza) | **Pending** | |
+| 12 | Owner sign-off (Humza) | **Pending** | Everything not marked external or owner-gated above is closed as of 2026-09-26; see §8. |
 
 ## 3. Golden E2E coverage versus the plan's list
 
@@ -60,15 +64,16 @@ The plan names `auth.spec`, `invite-to-report.spec`, `pipeline.spec`,
 | `auth.spec` (signup → verify → onboarding → approval) | partially: `auth.setup.ts` (real sign-in), `writes-identity.spec.ts` (redirectTo, reason banners, MFA enrol/verify/recover, password change, deletion request) | Signup → email verify → recruiter onboarding → admin approval is **not** automated (needs an admin seed account and the onboarding wizard). |
 | `invite-to-report.spec` | `writes-invite-to-report.spec.ts` | Consent → mocked text interview → `interview/completed` → Inngest `interview/report.generate` → report page. Uses `AI_PROVIDER=mock` and the Inngest dev server (CI job step). |
 | `pipeline.spec` (kanban move persists) | not automated | Job-detail kanban uses dnd-kit; API-level status change is covered indirectly by T15's webhook test only. |
-| `share-link.spec` (email gate) | not automated | `/reports/shared/[token]` + `verify-email` exist; no golden spec yet. |
+| `share-link.spec` (email gate) | `writes-share-link.spec.ts` (closeout) | recruiter shares a report with a recipient email; anonymous data fetch is gated, wrong email refused, right email sets the HMAC cookie, data served, revoke ends access. Route-level cookie/rate-limit branches in `__tests__/api/shared-report-rate-limit.test.ts`. |
 | `messaging.spec` | `writes-messaging.spec.ts` | recruiter → candidate by email, delivery/read states, legacy adapter headers, both pages |
 | `admin-approval.spec` | not automated | needs an admin seed account. |
 | `writes.spec` | `writes.spec.ts` (+ `writes-candidate-results`, `writes-soft-delete`, `writes-security-guards`, `writes-interview-credential`, `writes-ats`, `writes-stubs`) | |
 | `visual.spec` | `visual.spec.ts` | 24 baselines, CI-captured |
 
-Missing specs (auth signup/approval, pipeline move, share-link gate) are the
-first items of the observation-week backlog; none of them blocks a merge gate
-today because the behaviour they cover is unchanged by Phase 0.
+Missing specs (auth signup → approval, admin approval, pipeline kanban move)
+need an admin seed account and a drag-and-drop driver; they stay on the
+observation-week backlog. None blocks a merge gate: the behaviour they cover
+is unchanged by Phase 0.
 
 ## 4. Defects found and fixed while building the gates
 
@@ -147,10 +152,58 @@ Sources: Vercel analytics / OTLP `traces_spanmetrics_calls_total` by status,
 
 ## 7. Deferred beyond Phase 0 (recorded, not lost)
 
-Issue #14 nonce CSP; Issue #20 mobile `/candidates` overlap; photos bucket
+Issue #43 (Phase 1: legacy #5 finalization manifest + repairing reconciler,
+#7 recording health model, #8 device binding and transcript encryption; #3
+LiveKit transport is Phase 4); photos bucket
 still public (needs an image proxy); per-instance fallbacks are weaker than
 Redis during an outage (T11 runbook); Sentry ↔ OTel span-processor wiring at
 the moment export is enabled; logs over OTLP; execution of non-candidate
 `AccountDeletionRequest`s; `/roles/new` and talent-pool detail views (Phase 1
 CRM); org-wide "MFA or SSO" (Phase 3); other ATSs (Phase 3); multi-region
 relay (Phase 4); billing UI (Phase 5).
+
+## 8. Exit closeout checklist (2026-09-26)
+
+Reconciled against `main` after every merge above. The mandate for this
+closeout: close every remaining exit gate that does not need the owner or an
+external environment, clean up the superseded legacy PRs, finish Issues #14
+and #20, and leave only the observation window and the sign-off.
+
+### Tasks T0–T16
+
+All merged; see §1 for PR and SHA. T14's own record is #38 (7f21e9e).
+
+### Legacy PRs #1–#11
+
+| PR | Disposition | Replacement / rationale |
+| --- | --- | --- |
+| #1 | **Open, untouched** (Humza's interrupted local rebase, per the audit) | Every item is on `main`: 1.1/1.2/1.4 (Track 6, T11), 1.3 heartbeat ladder (`hooks/useVoiceInterview.ts`), 1.5 buffer-drop signal (#40 `relay.flow` forced `pause` frame). Comment posted; closing is the owner's call. |
+| #2 | Closed — superseded | `InterviewSessionStore` contract + `PrismaRedisInterviewSessionStore` (T11) |
+| #3 | Closed — Phase 4 | LiveKit transport out of scope; go/no-go criteria kept in the PR description; #43 |
+| #4 | Closed — salvaged | #39: playback integrity, retention gate, scoped access, shared-report rate limits, detector |
+| #5 | Closed — deferred | Detector cron covers the exit gates; manifest + flagged state-machine change + repairing reconciler in #43 |
+| #6 | Closed — salvaged | #39: seven routes + `GET/PATCH /api/interviews/[id]` scoped; sweep test |
+| #7 | Closed — deferred | `RecordingState` + `mergeSucceeded` + detector invariant B cover playback trust; #43 |
+| #8 | Closed | HMAC share cookie salvaged (#39); validate rate limit via the proxy limiter (T1/T2); device binding + transcript encryption deferred (#43) |
+| #9 | Merged 2026-04-13 (Track 6) | — |
+| #10 | Merged 2026-04-13 (relay Sentry) | — |
+| #11 | Closed — salvaged | #40: flow-control frames + client throttle, provider circuit breaker |
+
+### Issues
+
+| Issue | State | Resolution |
+| --- | --- | --- |
+| #13 | closed (T0) | authenticated baselines |
+| #14 | closed (#42) | nonce + `strict-dynamic` CSP on app routes; public pages static and documented; hard-load + refresh coverage signed out and signed in |
+| #15 | closed (#19) | segment-aware prefixes |
+| #20 | closed (#41) | stacked `/candidates` rows at phone widths; geometry spec + adopted baseline |
+| #43 | open (Phase 1) | deferred legacy ideas, with rationale |
+
+### What remains
+
+Only the items marked **external** or owner-gated in §2 and §6: staging
+route matrix (3), k6 load run (5), staging flag flip for the metering
+rollback (6), live relay chaos drill (7), Greenhouse sandbox nightly ×5 (8),
+Grafana population (10), the 7-day production observation window with every
+`FF_P0_*` on (11, §5), and the owner sign-off (12).
+
