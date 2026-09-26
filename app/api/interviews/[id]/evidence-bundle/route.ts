@@ -7,7 +7,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireInterviewAccess, handleAuthError, getAuthenticatedUser } from "@/lib/auth";
+import { buildInterviewAccessScope, handleAuthError } from "@/lib/auth";
 import { logInterviewActivity, getClientIp } from "@/lib/interview-audit";
 
 // GET — Export evidence bundle
@@ -17,15 +17,25 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
-    await requireInterviewAccess(id);
 
-    // Audit trail: log evidence bundle access
-    const { user, profile } = await getAuthenticatedUser();
+    // Tenant-scoped access: evidence bundles carry the full audit artifact
+    // set, so the interview row is resolved through the scoped query and the
+    // bundle is only read once that row is visible to the caller.
+    const scope = await buildInterviewAccessScope(id);
+    const interviewScope = await prisma.interview.findFirst({
+      where: scope.whereFragment,
+      select: { id: true, evidenceBundle: true, legalHold: true },
+    });
+    if (!interviewScope) {
+      return NextResponse.json({ error: "Interview not found" }, { status: 404 });
+    }
+
+    // Audit trail: only authorised access is logged.
     logInterviewActivity({
       interviewId: id,
       action: "evidence_bundle.accessed",
-      userId: user.id,
-      userRole: profile.role,
+      userId: scope.userId,
+      userRole: scope.role,
       ipAddress: getClientIp(request.headers),
     }).catch(() => {});
 
@@ -34,13 +44,8 @@ export async function GET(
     });
 
     if (!bundle) {
-      // Fall back to JSON blob on Interview if EvidenceBundle record doesn't exist yet
-      const interview = await prisma.interview.findUnique({
-        where: { id },
-        select: { evidenceBundle: true, legalHold: true },
-      });
-
-      if (!interview?.evidenceBundle) {
+      // Fall back to the JSON blob on the tenant-scoped Interview row.
+      if (!interviewScope.evidenceBundle) {
         return NextResponse.json(
           { error: "Evidence bundle not yet compiled" },
           { status: 404 }
@@ -49,8 +54,8 @@ export async function GET(
 
       return NextResponse.json({
         source: "legacy",
-        bundle: interview.evidenceBundle,
-        legalHold: interview.legalHold,
+        bundle: interviewScope.evidenceBundle,
+        legalHold: interviewScope.legalHold,
       });
     }
 
@@ -141,7 +146,16 @@ export async function POST(
 ) {
   try {
     const { id } = await params;
-    await requireInterviewAccess(id);
+
+    // Tenant-scoped access before triggering compilation.
+    const scope = await buildInterviewAccessScope(id);
+    const interview = await prisma.interview.findFirst({
+      where: scope.whereFragment,
+      select: { id: true },
+    });
+    if (!interview) {
+      return NextResponse.json({ error: "Interview not found" }, { status: 404 });
+    }
 
     const { compileEvidenceBundle } = await import(
       "@/lib/evidence-bundle-compiler"

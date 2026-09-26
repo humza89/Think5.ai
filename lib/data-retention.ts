@@ -8,22 +8,61 @@ export async function getDefaultRetentionPolicy() {
   return prisma.retentionPolicy.findFirst({ where: { isDefault: true } });
 }
 
+/**
+ * Retention must not run against interviews whose reports are still pending
+ * or generating: clearing a transcript under a stuck report-generation job
+ * makes the report fail permanently with "no transcript" (legacy PR #4).
+ *
+ * Evidence may be removed only when the report is durable
+ * (reportStatus = "completed") or terminally failed (reportStatus = "failed"
+ * with reportRetryCount >= 5, matching the retry cap in report-generator).
+ * Everything else — pending, generating, null, failed-with-retries-left — is
+ * skipped and counted so operators can see deferred retention accumulate.
+ */
+export const REPORT_STATE_SAFE_FOR_RETENTION = {
+  OR: [
+    { reportStatus: "completed" },
+    {
+      AND: [
+        { reportStatus: "failed" },
+        { reportRetryCount: { gte: 5 } },
+      ],
+    },
+  ],
+} as const;
+
 export async function applyRetentionPolicies() {
   const policy = await getDefaultRetentionPolicy();
-  if (!policy) return { deleted: 0 };
+  if (!policy) return { deleted: 0, skippedDueToReport: 0 };
 
   const now = new Date();
   let totalDeleted = 0;
+  let skippedDueToReport = 0;
 
-  // Delete old recordings
+  // Delete old recordings — gated on report state.
   const recordingCutoff = new Date(now.getTime() - policy.recordingDays * 24 * 60 * 60 * 1000);
   const oldRecordings = await prisma.interview.findMany({
     where: {
       recordingUrl: { not: null },
       completedAt: { lt: recordingCutoff },
+      ...REPORT_STATE_SAFE_FOR_RETENTION,
     },
     select: { id: true, recordingUrl: true },
   });
+
+  const recordingsSkipped = await prisma.interview.count({
+    where: {
+      recordingUrl: { not: null },
+      completedAt: { lt: recordingCutoff },
+      NOT: REPORT_STATE_SAFE_FOR_RETENTION,
+    },
+  });
+  skippedDueToReport += recordingsSkipped;
+  if (recordingsSkipped > 0) {
+    logger.warn(
+      `[Retention] Skipped ${recordingsSkipped} recording(s) past cutoff because reportStatus is not terminal; investigate stuck reports if this grows.`,
+    );
+  }
 
   if (oldRecordings.length > 0) {
     // Delete actual R2 files before clearing database URLs
@@ -52,16 +91,33 @@ export async function applyRetentionPolicies() {
     }).catch(() => {});
   }
 
-  // Clear old transcripts (fix: use Prisma.DbNull instead of undefined)
+  // Clear old transcripts — gated on report state. This is the critical gate:
+  // a transcript cleared while its report is still generating breaks the
+  // interview permanently.
   const transcriptCutoff = new Date(now.getTime() - policy.transcriptDays * 24 * 60 * 60 * 1000);
   const transcriptResult = await prisma.interview.updateMany({
     where: {
       transcript: { not: Prisma.DbNull },
       completedAt: { lt: transcriptCutoff },
+      ...REPORT_STATE_SAFE_FOR_RETENTION,
     },
     data: { transcript: Prisma.DbNull },
   });
   totalDeleted += transcriptResult.count;
+
+  const transcriptsSkipped = await prisma.interview.count({
+    where: {
+      transcript: { not: Prisma.DbNull },
+      completedAt: { lt: transcriptCutoff },
+      NOT: REPORT_STATE_SAFE_FOR_RETENTION,
+    },
+  });
+  skippedDueToReport += transcriptsSkipped;
+  if (transcriptsSkipped > 0) {
+    logger.warn(
+      `[Retention] Skipped ${transcriptsSkipped} transcript(s) past cutoff because reportStatus is not terminal; investigate stuck reports if this grows.`,
+    );
+  }
 
   if (transcriptResult.count > 0) {
     // Audit log: transcript deletions
@@ -75,12 +131,14 @@ export async function applyRetentionPolicies() {
     }).catch(() => {});
   }
 
-  // Clear old candidate data
+  // Clear old candidate data — also gated on report state, since anonymising
+  // a candidate whose report is still pending would corrupt that report.
   const candidateCutoff = new Date(now.getTime() - policy.candidateDataDays * 24 * 60 * 60 * 1000);
   const oldCandidateInterviews = await prisma.interview.findMany({
     where: {
       status: "COMPLETED",
       completedAt: { lt: candidateCutoff },
+      ...REPORT_STATE_SAFE_FOR_RETENTION,
     },
     select: { candidateId: true },
     distinct: ["candidateId"],
@@ -156,5 +214,6 @@ export async function applyRetentionPolicies() {
     recordingsCleared: oldRecordings.length,
     transcriptsCleared: transcriptResult.count,
     auditLogsDeleted,
+    skippedDueToReport,
   };
 }

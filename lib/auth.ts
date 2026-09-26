@@ -253,10 +253,122 @@ export async function requireCandidateAccess(candidateId: string) {
 }
 
 /**
+ * Prisma `where` fragment that enforces tenant isolation for the authenticated
+ * user against the Interview table. Build one with `buildInterviewAccessScope()`
+ * and pass it straight into a `findFirst` / `updateMany` so the database query
+ * itself refuses to return or touch cross-tenant rows.
+ *
+ * Salvaged from legacy PRs #4 / #6 (see docs/phase0/legacy-pr-audit.md): the
+ * older pattern was a two-query dance — `requireInterviewAccess()` ran the auth
+ * check, then the caller ran a SECOND unscoped `findUnique({ where: { id } })`
+ * to fetch data. A bug in the auth logic or a future refactor could let
+ * cross-tenant data leak. This contract keeps auth and data in ONE scoped query.
+ */
+export interface InterviewAccessScope {
+  interviewId: string;
+  /**
+   * Prisma `where` fragment to merge into the caller's query. Always includes
+   * the interview id plus a tenant filter appropriate to the user's role
+   * (admins get no tenant filter — see isAdmin).
+   */
+  whereFragment: Record<string, unknown>;
+  /** True if the caller is an admin (global access — no tenant filter). */
+  isAdmin: boolean;
+  /** The authenticated user's role, for audit logging. */
+  role: string;
+  /** The authenticated user's id, for audit logging. */
+  userId: string;
+}
+
+/**
+ * Build a tenant-scoped Prisma `where` fragment for the authenticated user.
+ * Throws AuthError(401) when unauthenticated and AuthError(404) for every
+ * other failure — wrong role, no active hiring-manager membership — so the
+ * response shape never reveals whether an interview id exists.
+ *
+ * Callers MUST use the returned whereFragment in their Prisma query and MUST
+ * NOT bypass it with a direct `findUnique({ where: { id } })`.
+ * `__tests__/lib/tenant-scope-sweep.test.ts` enforces this at source level.
+ */
+export async function buildInterviewAccessScope(
+  interviewId: string,
+): Promise<InterviewAccessScope> {
+  const { user, profile } = await getAuthenticatedUser();
+
+  if (!profile || !['recruiter', 'admin', 'hiring_manager'].includes(profile.role)) {
+    // Same error shape as "not found" on purpose — never leak role info.
+    throw new AuthError('Interview not found', 404);
+  }
+
+  // Admins: no tenant filter, full access by design.
+  if (profile.role === 'admin') {
+    return {
+      interviewId,
+      whereFragment: { id: interviewId },
+      isAdmin: true,
+      role: 'admin',
+      userId: user.id,
+    };
+  }
+
+  // Hiring managers: scope by company via explicit, active, unexpired membership.
+  if (profile.role === 'hiring_manager') {
+    const memberships = await prisma.hiringManagerMembership.findMany({
+      where: {
+        userId: user.id,
+        isActive: true,
+        OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
+      },
+      select: { companyId: true },
+    });
+    const companyIds = memberships.map((m: { companyId: string }) => m.companyId);
+    if (companyIds.length === 0) {
+      throw new AuthError('Interview not found', 404);
+    }
+    return {
+      interviewId,
+      whereFragment: { id: interviewId, companyId: { in: companyIds } },
+      isAdmin: false,
+      role: 'hiring_manager',
+      userId: user.id,
+    };
+  }
+
+  // Recruiters: scheduled the interview OR own the candidate, resolved the
+  // same way requireInterviewAccess does.
+  const recruiter = await getRecruiterForUser(
+    user.id,
+    profile.email,
+    `${profile.first_name} ${profile.last_name}`,
+  );
+
+  return {
+    interviewId,
+    whereFragment: {
+      id: interviewId,
+      OR: [
+        { scheduledBy: recruiter.id },
+        { candidate: { recruiterId: recruiter.id } },
+      ],
+      // Defence in depth: a recruiter attached to a company may only reach
+      // interviews of that company.
+      ...(recruiter.companyId ? { companyId: recruiter.companyId } : {}),
+    },
+    isAdmin: false,
+    role: 'recruiter',
+    userId: user.id,
+  };
+}
+
+/**
  * Verify that the authenticated user has access to a specific interview.
  * Admins can access any interview.
  * Recruiters must have scheduled it or own the candidate.
  * Hiring managers can access interviews within their company scope.
+ *
+ * Note: this runs an unscoped lookup and then checks the result, so callers
+ * need a second query for their data. Routes that read interview data should
+ * prefer `buildInterviewAccessScope()` and a single scoped query.
  */
 export async function requireInterviewAccess(interviewId: string) {
   const { user, profile } = await getAuthenticatedUser();

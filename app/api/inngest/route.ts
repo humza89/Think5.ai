@@ -21,6 +21,7 @@ import {
   usageAggregate,
   atsSync,
   atsScheduledImport,
+  brokenCompletedDetector,
 } from "@/inngest/functions";
 
 export const { GET, POST, PUT } = serve({
@@ -39,5 +40,6 @@ export const { GET, POST, PUT } = serve({
     usageAggregate,
     atsSync,
     atsScheduledImport,
+    brokenCompletedDetector,
   ],
 });

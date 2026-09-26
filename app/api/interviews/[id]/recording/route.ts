@@ -108,17 +108,24 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         });
 
         try {
-          // Merge chunks and create manifest in R2
+          // Merge chunks and create manifest in R2. If every merge attempt
+          // fails this throws RecordingMergeFailedError and the catch below
+          // reverts recordingState so the UI shows "unavailable" and the
+          // client (or recording-finalize-retry) can retry.
           const metadata = await finalizeR2Recording(id, totalChunks, format, durationSeconds);
 
-          // Get signed playback URL
+          // Signed playback URL. null means the merged file is missing — a
+          // hard failure, never "show the first chunk as the interview".
           const playbackUrl = await getSignedPlaybackUrl(id);
+          if (!playbackUrl) {
+            throw new Error(`[Recording] finalize completed but no playback URL could be generated for interview ${id}`);
+          }
 
           // Update interview with final recording info
           await prisma.interview.update({
             where: { id },
             data: {
-              recordingUrl: playbackUrl || `r2://recordings/${id}/recording.${format}`,
+              recordingUrl: playbackUrl,
               recordingFormat: format,
               recordingSize: metadata.sizeBytes,
               recordingState: "COMPLETE",

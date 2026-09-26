@@ -54,6 +54,33 @@ export interface RecordingMetadata {
   durationSeconds?: number;
   uploadedAt: string;
   chunkCount: number;
+  /**
+   * Whether the chunk-merge step produced a playable merged file. Recorded in
+   * the manifest so every downstream consumer can see the truth; callers must
+   * not treat a recording as playable while this is false.
+   */
+  mergeSucceeded: boolean;
+}
+
+/**
+ * Thrown by finalizeRecording when every merge attempt failed. The manifest is
+ * still written (with mergeSucceeded=false) before this is raised, so the
+ * record is durable and the finalize-retry job can pick the interview up.
+ *
+ * Salvaged from legacy PR #4: the previous behaviour logged the failure and
+ * carried on, and getSignedPlaybackUrl then silently served the FIRST CHUNK of
+ * the recording as if it were the whole interview.
+ */
+export class RecordingMergeFailedError extends Error {
+  readonly interviewId: string;
+  readonly attempts: number;
+  constructor(interviewId: string, attempts: number, cause?: unknown) {
+    super(`Recording merge failed after ${attempts} attempts for interview ${interviewId}`);
+    this.name = "RecordingMergeFailedError";
+    this.interviewId = interviewId;
+    this.attempts = attempts;
+    if (cause !== undefined) (this as { cause?: unknown }).cause = cause;
+  }
 }
 
 // ── Upload Functions ───────────────────────────────────────────────────
@@ -145,34 +172,18 @@ export async function finalizeRecording(
     }
   }
 
-  const metadata: RecordingMetadata = {
-    interviewId,
-    format,
-    sizeBytes: totalSize,
-    durationSeconds,
-    uploadedAt: new Date().toISOString(),
-    chunkCount: totalChunks,
-  };
-
-  // Store manifest
-  await client.send(
-    new PutObjectCommand({
-      Bucket: R2_BUCKET_NAME,
-      Key: `recordings/${interviewId}/manifest.json`,
-      Body: JSON.stringify(metadata),
-      ContentType: "application/json",
-    })
-  );
-
-  // Merge chunks into a single playback file with retry
+  // Merge chunks into a single playback file with retry BEFORE writing the
+  // manifest, so the manifest records the real merge outcome.
   const MAX_MERGE_RETRIES = 3;
   let mergeSuccess = false;
+  let lastMergeError: unknown = null;
   for (let attempt = 1; attempt <= MAX_MERGE_RETRIES; attempt++) {
     try {
       await mergeRecordingChunks(interviewId, totalChunks, format);
       mergeSuccess = true;
       break;
     } catch (err) {
+      lastMergeError = err;
       logger.error(
         `[Recording Merge] Attempt ${attempt}/${MAX_MERGE_RETRIES} failed for interview ${interviewId}`,
         { error: err }
@@ -183,8 +194,30 @@ export async function finalizeRecording(
       }
     }
   }
+
+  const metadata: RecordingMetadata = {
+    interviewId,
+    format,
+    sizeBytes: totalSize,
+    durationSeconds,
+    uploadedAt: new Date().toISOString(),
+    chunkCount: totalChunks,
+    mergeSucceeded: mergeSuccess,
+  };
+
+  // Store the manifest — the durable record of what happened, including the
+  // merge outcome — even when the merge failed.
+  await client.send(
+    new PutObjectCommand({
+      Bucket: R2_BUCKET_NAME,
+      Key: `recordings/${interviewId}/manifest.json`,
+      Body: JSON.stringify(metadata),
+      ContentType: "application/json",
+    })
+  );
+
   if (!mergeSuccess) {
-    const mergeError = new Error(`Recording merge failed after ${MAX_MERGE_RETRIES} attempts`);
+    const mergeError = new RecordingMergeFailedError(interviewId, MAX_MERGE_RETRIES, lastMergeError);
     Sentry.captureException(mergeError, {
       level: "fatal",
       tags: { component: "recording_merge" },
@@ -192,8 +225,9 @@ export async function finalizeRecording(
     });
     logger.error(
       `[Recording Merge] CRITICAL: All ${MAX_MERGE_RETRIES} merge attempts failed for interview ${interviewId}. ` +
-      `Playback will use first chunk only. Total chunks: ${totalChunks}, total size: ${totalSize} bytes.`
+      `Recording is NOT playable; the caller must surface this and retry. Total chunks: ${totalChunks}, total size: ${totalSize} bytes.`
     );
+    throw mergeError;
   }
 
   return metadata;
@@ -255,6 +289,11 @@ async function mergeRecordingChunks(
 /**
  * Get a time-limited signed URL for recording playback.
  * Default expiry: 1 hour.
+ *
+ * Returns null when the merged recording does not exist. It deliberately does
+ * NOT fall back to the first chunk: serving a 10MB chunk of a 45-minute
+ * interview as if it were the whole recording is a hiring-integrity defect
+ * (legacy PR #4). Callers treat null as "recording unavailable".
  */
 export async function getSignedPlaybackUrl(
   interviewId: string,
@@ -262,7 +301,6 @@ export async function getSignedPlaybackUrl(
 ): Promise<string | null> {
   const client = getR2Client();
 
-  // Try complete recording first
   const completeKey = `recordings/${interviewId}/recording.webm`;
   try {
     await client.send(
@@ -271,40 +309,19 @@ export async function getSignedPlaybackUrl(
         Key: completeKey,
       })
     );
-
-    return getSignedUrl(
-      client,
-      new GetObjectCommand({
-        Bucket: R2_BUCKET_NAME,
-        Key: completeKey,
-      }),
-      { expiresIn: expiresInSeconds }
-    );
   } catch {
-    // No complete recording, try first chunk as fallback
-  }
-
-  // Fallback: sign first chunk (for immediate low-res playback)
-  const chunkKey = `recordings/${interviewId}/chunks/000000`;
-  try {
-    await client.send(
-      new HeadObjectCommand({
-        Bucket: R2_BUCKET_NAME,
-        Key: chunkKey,
-      })
-    );
-
-    return getSignedUrl(
-      client,
-      new GetObjectCommand({
-        Bucket: R2_BUCKET_NAME,
-        Key: chunkKey,
-      }),
-      { expiresIn: expiresInSeconds }
-    );
-  } catch {
+    logger.warn(`[Recording Playback] Merged recording missing for interview ${interviewId}; refusing first-chunk fallback`);
     return null;
   }
+
+  return getSignedUrl(
+    client,
+    new GetObjectCommand({
+      Bucket: R2_BUCKET_NAME,
+      Key: completeKey,
+    }),
+    { expiresIn: expiresInSeconds }
+  );
 }
 
 /**

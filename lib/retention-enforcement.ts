@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { REPORT_STATE_SAFE_FOR_RETENTION } from "@/lib/data-retention";
 
 export interface RetentionResult {
   recordingsDeleted: number;
@@ -63,6 +64,8 @@ export async function enforceRetentionPolicies(): Promise<RetentionResult> {
         completedAt: { lt: recordingCutoff },
         recordingState: { not: "DELETED" },
         legalHold: false,
+        // Never remove evidence while the report is still pending/generating.
+        ...REPORT_STATE_SAFE_FOR_RETENTION,
       },
       data: {
         recordingUrl: null,
@@ -92,6 +95,8 @@ export async function enforceRetentionPolicies(): Promise<RetentionResult> {
         transcript: { not: null },
         completedAt: { lt: transcriptCutoff },
         legalHold: false,
+        // Never clear a transcript while the report is still pending/generating.
+        ...REPORT_STATE_SAFE_FOR_RETENTION,
       },
       data: {
         transcript: null,
