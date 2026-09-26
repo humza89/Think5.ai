@@ -75,3 +75,10 @@ setup("candidate storage state", async ({ page }) => {
 
   await persist(page, STORAGE_STATE_PATHS.candidate);
 });
+
+setup("admin storage state", async ({ page }) => {
+  setup.skip(!fixturesEnabled, "Set E2E_AUTH_FIXTURES=true against a seeded local Supabase stack");
+  // T14: the admin lands on /admin; the approval specs reuse this session.
+  await signIn(page, E2E_FIXTURES.admin.email, /\/admin(?:\/|\?|$)/);
+  await persist(page, STORAGE_STATE_PATHS.admin);
+});

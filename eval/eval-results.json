@@ -1,0 +1,109 @@
+[
+  {
+    "runDate": "2026-09-26T18:22:34.027Z",
+    "results": [
+      {
+        "benchmarkId": "benchmark-junior-frontend",
+        "benchmarkName": "Junior Frontend Developer",
+        "runNumber": 1,
+        "timestamp": "2026-09-26T18:22:34.025Z",
+        "dimensionScores": {
+          "coverage": 8,
+          "role_calibration": 10,
+          "hypothesis_testing": 5,
+          "depth": 9.5,
+          "adaptivity": 8,
+          "consistency": 7,
+          "signal_extraction": 7,
+          "false_confidence": 7.75,
+          "realism": 9
+        },
+        "weightedScore": 8,
+        "passed": true,
+        "details": {
+          "sectionsGenerated": 3,
+          "topicsCovered": [
+            "React fundamentals",
+            "CSS/styling",
+            "problem solving approach"
+          ],
+          "topicsMissed": [],
+          "hypothesesGenerated": 0,
+          "questionsGenerated": 6,
+          "followUpRatio": 1
+        },
+        "errors": []
+      },
+      {
+        "benchmarkId": "benchmark-mid-data-scientist",
+        "benchmarkName": "Mid-Level Data Scientist",
+        "runNumber": 1,
+        "timestamp": "2026-09-26T18:22:34.026Z",
+        "dimensionScores": {
+          "coverage": 6,
+          "role_calibration": 8.5,
+          "hypothesis_testing": 5,
+          "depth": 9.5,
+          "adaptivity": 8,
+          "consistency": 7,
+          "signal_extraction": 7,
+          "false_confidence": 7.75,
+          "realism": 9
+        },
+        "weightedScore": 7.5,
+        "passed": true,
+        "details": {
+          "sectionsGenerated": 3,
+          "topicsCovered": [
+            "ML fundamentals",
+            "production deployment",
+            "business impact"
+          ],
+          "topicsMissed": [
+            "statistics"
+          ],
+          "hypothesesGenerated": 0,
+          "questionsGenerated": 6,
+          "followUpRatio": 1
+        },
+        "errors": []
+      },
+      {
+        "benchmarkId": "benchmark-senior-swe",
+        "benchmarkName": "Senior Software Engineer — Backend",
+        "runNumber": 1,
+        "timestamp": "2026-09-26T18:22:34.027Z",
+        "dimensionScores": {
+          "coverage": 6,
+          "role_calibration": 7,
+          "hypothesis_testing": 6,
+          "depth": 9.5,
+          "adaptivity": 8,
+          "consistency": 7,
+          "signal_extraction": 7,
+          "false_confidence": 8.5,
+          "realism": 9
+        },
+        "weightedScore": 7.5,
+        "passed": true,
+        "details": {
+          "sectionsGenerated": 3,
+          "topicsCovered": [
+            "system design",
+            "team leadership"
+          ],
+          "topicsMissed": [
+            "distributed systems",
+            "code quality"
+          ],
+          "hypothesesGenerated": 1,
+          "questionsGenerated": 6,
+          "followUpRatio": 1
+        },
+        "errors": []
+      }
+    ],
+    "overallPassed": true,
+    "avgScore": 7.666666666666667
+  }
+]

@@ -25,6 +25,8 @@ There is no route-guard bypass, no forged cookie, no test-only auth exemption an
 | `E2E_SEED_PASSWORD` | Password for the seeded accounts. Must be identical for `npm run e2e:seed` and the Playwright run. Not a secret for the local stack. |
 | `E2E_RECRUITER_STORAGE_STATE` | Path to the recruiter storage state. Defaults to `e2e/.auth/recruiter.json` when that file exists. |
 | `E2E_CANDIDATE_STORAGE_STATE` | Path to the candidate storage state. Defaults to `e2e/.auth/candidate.json` when that file exists. |
+| `E2E_ADMIN_STORAGE_STATE` | Path to the admin storage state (T14 approval specs). Defaults to `e2e/.auth/admin.json` when that file exists. |
+| `NEXTAUTH_SECRET` | Signs the email-gated shared-report cookie (`writes-share-link.spec.ts`). Any local-only value. |
 | `ROUTE_MATRIX_FIXTURES` | JSON mapping dynamic route patterns to seeded routes for the logged-out route matrix, e.g. `{"/jobs/[id]":"/jobs/e2e-job-backend"}`. `ROUTE_MATRIX_FIXTURES` in `e2e-fixtures.ts` holds the canonical values. |
 | `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `DATABASE_URL`, `DIRECT_URL` | Taken from `supabase status -o env` after the stack starts. |
 
@@ -48,3 +50,24 @@ Baselines committed under `e2e/golden/visual.spec.ts-snapshots/` are `chromium-l
 ## How CI provisions it
 
 The `Preservation Gates` job in `.github/workflows/eval-gate.yml` runs exactly the sequence above with `supabase/setup-cli` pinned to the same CLI version, exports the stack credentials into `GITHUB_ENV`, and sets `E2E_AUTH_FIXTURES=true` for the golden step. The storage-state files are excluded from the uploaded artifacts.
+
+## T14 accounts and how the signup flow is verified without email
+
+The seed creates, in addition to the recruiter, candidate and identity
+accounts:
+
+| Account | Role | State after `npm run e2e:seed` | Used by |
+| --- | --- | --- | --- |
+| `e2e-admin@think5.test` | admin | no `Recruiter` row, so the approvals API is not tenant-scoped | `auth.setup.ts` (admin storage state), `writes-admin-approval.spec.ts`, `writes-signup-to-approval.spec.ts` |
+| `e2e-pending@think5.test` | recruiter | `Recruiter.onboardingStatus = PENDING_APPROVAL`, `profiles.onboarding_status = pending_approval`, onboarding completed | `writes-admin-approval.spec.ts` (approved through the admin UI, then reset to pending by the spec) |
+| `e2e-signup@think5.test` | recruiter | **not seeded** — created by the spec through `/auth/signup`; the seed and the spec delete any leftover | `writes-signup-to-approval.spec.ts` |
+
+The local stack runs without a mail service (`mailpit` is excluded), so no
+verification email is delivered. `POST /api/auth/register` stores the token
+it would have emailed in `public.verification_tokens`; the signup spec reads
+that row with the service-role client and opens the product's own
+`/api/auth/verify?token=…` URL. The route still validates, consumes and
+single-uses the token and marks the Supabase user confirmed — no bypass is
+added to the application. Recruiter onboarding is completed through the
+wizard's endpoint (`PATCH /api/recruiter/onboarding`, steps 1–5, joining the
+seeded company); approval happens on `/admin/approvals`.

@@ -41,7 +41,7 @@ const supabase = createClient(supabaseUrl, serviceRoleKey, {
 });
 const prisma = new PrismaClient({ datasources: { db: { url: databaseUrl } } });
 
-type Role = "recruiter" | "candidate";
+type Role = "recruiter" | "candidate" | "admin";
 
 interface Identity {
   email: string;
@@ -61,7 +61,26 @@ const identityAccount: Identity = {
   profileOnboardingStatus: "completed",
 };
 
-const identities: Record<Role, Identity> = {
+// T14: platform admin for the approval specs. No Recruiter row → global scope.
+const adminAccount: Identity = {
+  email: E2E_FIXTURES.admin.email,
+  firstName: E2E_FIXTURES.admin.firstName,
+  lastName: E2E_FIXTURES.admin.lastName,
+  role: "admin",
+  profileOnboardingStatus: "completed",
+};
+
+// T14: recruiter parked at PENDING_APPROVAL; the proxy sends them to
+// /recruiter/onboarding/status until an admin approves.
+const pendingRecruiterAccount: Identity = {
+  email: E2E_FIXTURES.pendingRecruiter.email,
+  firstName: E2E_FIXTURES.pendingRecruiter.firstName,
+  lastName: E2E_FIXTURES.pendingRecruiter.lastName,
+  role: "recruiter",
+  profileOnboardingStatus: "pending_approval",
+};
+
+const identities: Record<"recruiter" | "candidate", Identity> = {
   recruiter: {
     email: E2E_FIXTURES.recruiter.email,
     firstName: E2E_FIXTURES.recruiter.firstName,
@@ -126,6 +145,18 @@ async function ensureProfile(userId: string, identity: Identity): Promise<void> 
     { onConflict: "id" },
   );
   if (error) throw error;
+}
+
+async function removeSignupAccount(): Promise<void> {
+  const email = E2E_FIXTURES.signup.email;
+  await prisma.recruiter.deleteMany({ where: { email } });
+  const { data } = await supabase.auth.admin.listUsers({ page: 1, perPage: 1000 });
+  const leftover = data?.users.find((user) => user.email?.toLowerCase() === email);
+  if (leftover) {
+    // profiles / verification_tokens cascade from auth.users.
+    const { error } = await supabase.auth.admin.deleteUser(leftover.id);
+    if (error) throw error;
+  }
 }
 
 async function seedPrisma(recruiterUserId: string): Promise<void> {
@@ -391,6 +422,33 @@ async function main(): Promise<void> {
     update: identityRow,
   });
 
+  // T14: admin + pending recruiter for the approval specs.
+  const adminUserId = await ensureAuthUser(adminAccount);
+  await ensureProfile(adminUserId, adminAccount);
+
+  const pendingUserId = await ensureAuthUser(pendingRecruiterAccount);
+  await ensureProfile(pendingUserId, pendingRecruiterAccount);
+  const pendingRow = {
+    supabaseUserId: pendingUserId,
+    name: E2E_FIXTURES.pendingRecruiter.name,
+    email: pendingRecruiterAccount.email,
+    title: "Recruiting Coordinator",
+    companyId: E2E_FIXTURES.ids.company,
+    onboardingStep: 5,
+    onboardingCompleted: true,
+    onboardingStatus: "PENDING_APPROVAL" as const,
+    createdAt: new Date(E2E_FIXTURES.seededAt),
+  };
+  await prisma.recruiter.upsert({
+    where: { id: E2E_FIXTURES.ids.pendingRecruiter },
+    create: { id: E2E_FIXTURES.ids.pendingRecruiter, ...pendingRow },
+    update: pendingRow,
+  });
+
+  // T14: the signup spec creates this account through the real form; remove
+  // any leftover from an interrupted run so the spec starts clean.
+  await removeSignupAccount();
+
   console.log(
     [
       "E2E seed complete",
@@ -398,6 +456,8 @@ async function main(): Promise<void> {
       `  recruiter: ${identities.recruiter.email} (${recruiterUserId})`,
       `  candidate: ${identities.candidate.email} (${candidateUserId})`,
       `  identity: ${identityAccount.email} (${identityUserId})`,
+      `  admin: ${adminAccount.email} (${adminUserId})`,
+      `  pending recruiter: ${pendingRecruiterAccount.email} (${pendingUserId})`,
       `  job: ${E2E_FIXTURES.routes.jobDetail}`,
       `  interview (welcome): ${E2E_FIXTURES.routes.interviewWelcome}`,
     ].join("\n"),

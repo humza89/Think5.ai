@@ -11,6 +11,8 @@
 const ids = {
   company: "e2e-company-northwind",
   recruiter: "e2e-recruiter-riley",
+  /** T14: recruiter row that the admin-approval spec approves and then resets. */
+  pendingRecruiter: "e2e-recruiter-casey",
   candidate: "e2e-candidate-jordan",
   candidateB: "e2e-candidate-priya",
   candidateC: "e2e-candidate-samuel",
@@ -51,6 +53,38 @@ export const E2E_FIXTURES = {
     lastName: "Okafor",
     name: "Sam Okafor",
   },
+  /**
+   * T14: platform admin (no Recruiter row, so the approvals API is not
+   * tenant-scoped). Signs in through the real form in auth.setup.ts.
+   */
+  admin: {
+    email: "e2e-admin@think5.test",
+    firstName: "Morgan",
+    lastName: "Lee",
+    name: "Morgan Lee",
+  },
+  /**
+   * T14: recruiter who finished onboarding and is waiting for approval
+   * (Recruiter.onboardingStatus PENDING_APPROVAL, profiles.onboarding_status
+   * pending_approval). writes-admin-approval.spec.ts approves and resets it.
+   */
+  pendingRecruiter: {
+    email: "e2e-pending@think5.test",
+    firstName: "Casey",
+    lastName: "Park",
+    name: "Casey Park",
+  },
+  /**
+   * T14: account created by writes-signup-to-approval.spec.ts through the
+   * real signup form. Never seeded; the seed and the spec remove leftovers.
+   */
+  signup: {
+    email: "e2e-signup@think5.test",
+    firstName: "Taylor",
+    lastName: "Brooks",
+    name: "Taylor Brooks",
+    password: "E2e-signup-local-only-Pa55",
+  },
   ids,
   tokens: {
     invitation: "e2e-invitation-token-0001",
@@ -71,6 +105,7 @@ export const E2E_FIXTURES = {
 export const STORAGE_STATE_PATHS = {
   recruiter: "e2e/.auth/recruiter.json",
   candidate: "e2e/.auth/candidate.json",
+  admin: "e2e/.auth/admin.json",
 } as const;
 
 /** Dynamic-route fixtures for the logged-out route matrix and route-access spec. */
