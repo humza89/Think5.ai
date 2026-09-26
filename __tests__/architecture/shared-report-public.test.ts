@@ -31,6 +31,9 @@ describe("shared report routes are reachable without a session", () => {
   });
 
   it("verify-email stays under the CSRF check (state-changing POST, cookie issued on page load)", () => {
-    expect(proxySource).not.toMatch(/CSRF_EXEMPT_PATTERNS[\s\S]*reports\\\/shared/);
+    const start = proxySource.indexOf("const CSRF_EXEMPT_PATTERNS = [");
+    const end = proxySource.indexOf("];", start);
+    expect(start).toBeGreaterThan(0);
+    expect(proxySource.slice(start, end)).not.toContain("reports");
   });
 });
