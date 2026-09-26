@@ -33,6 +33,7 @@ remaining gates close.
 | Exit closeout: legacy salvage (relay) — #1/#11 items | #40 | 69452fc | `relay.flow` backpressure frames + client throttle, provider circuit breaker + `relay.degraded`, breaker on `/health` |
 | Issue #20 mobile `/candidates` | #41 | 5a094d4 | stacked sourcing rows below `md`, `mobile-layout.spec.ts`, CI-adopted 375 baseline |
 | Issue #14 nonce CSP | #42 | 09830d2 | `lib/csp.ts`, per-request `script-src 'nonce-…' 'strict-dynamic'` on app routes, static policy kept on public pages (`force-static`), `csp-nonce.spec.ts`, `docs/ops/csp.md` |
+| Exit closeout record + share-link golden spec + shared-report fixes | #44 | 8b99074 | this record's §8, `writes-share-link.spec.ts`, proxy lets the two share-token routes through without a session, share page validates the HMAC cookie, dot-delimited cookie value, CI `NEXTAUTH_SECRET` |
 
 Pre-T0 fixes that unblocked the authenticated baselines: #16 (CSP `unsafe-inline` restoration with hard-navigation regression tests), #17 (invitation token kept after `replaceState`), #18 (CSRF client), #19 (segment-aware route prefixes; Issue #15 closed).
 
@@ -184,7 +185,8 @@ and #20, and leave only the observation window and the sign-off.
 
 ### Tasks T0–T16
 
-All merged; see §1 for PR and SHA. T14's own record is #38 (7f21e9e).
+All merged; see §1 for PR and SHA. T14's own record is #38 (7f21e9e); the
+closeout merges are #39–#42 and #44.
 
 ### Legacy PRs #1–#11
 
