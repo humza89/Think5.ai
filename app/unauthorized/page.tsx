@@ -2,6 +2,14 @@ import Link from "next/link";
 import { LogoMark } from "@/components/brand/LogoMark";
 import { pill } from "@/components/marketing/styles";
 
+/**
+ * Issue #14: this public segment keeps the static, cacheable CSP from
+ * next.config.ts and is prerendered at build time. The root layout reads
+ * headers() for the app-route CSP nonce; force-static makes that read
+ * return empty here so the page stays a static prerender (as on main).
+ */
+export const dynamic = "force-static";
+
 export default function UnauthorizedPage() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-paper px-6">

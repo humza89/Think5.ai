@@ -50,19 +50,33 @@ Every other directive is shared between the app and API policies
 ## Caching and rendering trade-off
 
 A nonce is unique per response, so a nonced document cannot be served from
-a shared cache. In this application that changes nothing in practice:
+a shared cache or a build-time prerender. Measured with `next build` on
+`main` (69452fc) and on the Issue #14 head:
 
-- Every app route is already dynamic. They are session-gated by the proxy,
-  read cookies, and render client-side guards (`ProtectedRoute`,
-  `DashboardLayout`) that fetch per-user data. None was statically
-  prerendered or CDN-cached before #14.
-- `/reports/shared/[token]` is public but token-specific and was already
-  rendered per request; it now also gets the nonce policy.
-- The marketing pages and `/auth/*` keep their static policy precisely so
-  they remain statically rendered and cacheable.
+| Route class | Before (`main`) | After |
+| --- | --- | --- |
+| App routes (`/dashboard`, `/interview/accept`, `/candidates`, …) | mostly `○` static prerenders of the client shell (the guard's "Loading..." HTML) | `ƒ` dynamic: the shell is server-rendered per request so the nonce can be stamped into it |
+| `/reports/shared/[token]` | `ƒ` dynamic | `ƒ` dynamic (unchanged) |
+| `/`, `/product`, `/recruitment`, `/about`, `/ai-training`, `/research`, `/contact`, `/unauthorized`, `/auth/*` | `○` static | `○` static — pinned with `export const dynamic = "force-static"` on those segments |
 
-Cost: one `crypto.getRandomValues` and a string build per app-route
-request in the proxy. No additional database or network work.
+Why app routes must be dynamic: the root layout reads `headers()` to pass
+the nonce to the theme provider's inline script, and Next.js can only stamp
+a per-request nonce on framework scripts it renders per request. A
+statically prerendered shell would carry no nonce and be blocked by the
+policy. The cost is one server render of a small client shell per app-route
+request (no data fetching happens in that render; every app page fetches
+after hydration as before). App routes were never CDN-cacheable in a useful
+way: they are session-gated by the proxy and immediately fetch per-user
+data.
+
+Why the public pages stay static: they carry no session and no user data,
+so they keep `script-src 'self' 'unsafe-inline'` and a build-time prerender
+(`force-static` makes the root layout's `headers()` read return empty, so no
+nonce is needed there). If a public page ever renders user-controlled
+content, move it to the app policy by dropping the pin.
+
+Cost per app-route request in the proxy: one `crypto.getRandomValues` and a
+string build. No additional database or network work.
 
 ## Why `'unsafe-inline'` is no longer needed on app routes
 
