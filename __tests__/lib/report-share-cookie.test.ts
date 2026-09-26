@@ -28,7 +28,8 @@ describe("sign / verify", () => {
   it("round-trips on the happy path and reports the embedded expiry", () => {
     const now = 1_700_000_000_000;
     const signed = signReportShareCookie({ ...baseArgs, now });
-    expect(signed.split("|")).toHaveLength(3);
+    expect(signed.split(".")).toHaveLength(3);
+    expect(signed).not.toContain("|"); // dot-delimited so cookie stores need not percent-encode it
     const result = verifyReportShareCookie({ ...baseArgs, cookieValue: signed, now: now + 1000 });
     expect(result).toEqual({ ok: true, expiresAt: Math.floor(now / 1000) + REPORT_COOKIE_TTL_SECONDS });
   });
@@ -44,7 +45,7 @@ describe("sign / verify", () => {
     expect(verifyReportShareCookie({ ...baseArgs, cookieValue: signed })).toEqual({ ok: false, reason: "no_secret" });
   });
 
-  it.each(["", "not-a-valid-cookie", "a|b", "x|y|z|w", "notanumber|aGVsbG8|abcd"])("rejects malformed value %j", (value) => {
+  it.each(["", "not-a-valid-cookie", "a.b", "x.y.z.w", "notanumber.aGVsbG8.abcd", "1790450216|Ojox|abcd"])("rejects malformed value %j", (value) => {
     expect(verifyReportShareCookie({ ...baseArgs, cookieValue: value })).toEqual({ ok: false, reason: "malformed" });
   });
 
@@ -55,20 +56,25 @@ describe("sign / verify", () => {
 
 describe("tamper resistance", () => {
   it("rejects a mutated MAC", () => {
-    const [exp, ip, mac] = signReportShareCookie(baseArgs).split("|");
+    const [exp, ip, mac] = signReportShareCookie(baseArgs).split(".");
     const flipped = (mac![0] === "0" ? "1" : "0") + mac!.slice(1);
-    expect(verifyReportShareCookie({ ...baseArgs, cookieValue: `${exp}|${ip}|${flipped}` })).toEqual({ ok: false, reason: "bad_mac" });
+    expect(verifyReportShareCookie({ ...baseArgs, cookieValue: `${exp}.${ip}.${flipped}` })).toEqual({ ok: false, reason: "bad_mac" });
   });
 
   it("rejects an extended expiry", () => {
-    const [exp, ip, mac] = signReportShareCookie(baseArgs).split("|");
+    const [exp, ip, mac] = signReportShareCookie(baseArgs).split(".");
     const later = parseInt(exp!, 10) + 86_400 * 365;
-    expect(verifyReportShareCookie({ ...baseArgs, cookieValue: `${later}|${ip}|${mac}` })).toEqual({ ok: false, reason: "bad_mac" });
+    expect(verifyReportShareCookie({ ...baseArgs, cookieValue: `${later}.${ip}.${mac}` })).toEqual({ ok: false, reason: "bad_mac" });
   });
 
   it("rejects a MAC of the wrong length", () => {
-    const [exp, ip] = signReportShareCookie(baseArgs).split("|");
-    expect(verifyReportShareCookie({ ...baseArgs, cookieValue: `${exp}|${ip}|abcd` })).toEqual({ ok: false, reason: "bad_mac" });
+    const [exp, ip] = signReportShareCookie(baseArgs).split(".");
+    expect(verifyReportShareCookie({ ...baseArgs, cookieValue: `${exp}.${ip}.abcd` })).toEqual({ ok: false, reason: "bad_mac" });
+  });
+
+  it("accepts a percent-encoded copy of a valid cookie", () => {
+    const signed = signReportShareCookie(baseArgs);
+    expect(verifyReportShareCookie({ ...baseArgs, cookieValue: encodeURIComponent(signed) }).ok).toBe(true);
   });
 
   it("rejects a cookie signed with a different secret", () => {

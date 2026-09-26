@@ -36,7 +36,8 @@ npx supabase start -x studio,imgproxy,edge-runtime,logflare,vector,realtime,mail
 eval "$(npx supabase status -o env)"
 export NEXT_PUBLIC_SUPABASE_URL="$API_URL" NEXT_PUBLIC_SUPABASE_ANON_KEY="$ANON_KEY" \
   SUPABASE_SERVICE_ROLE_KEY="$SERVICE_ROLE_KEY" DATABASE_URL="$DB_URL" DIRECT_URL="$DB_URL" \
-  E2E_SEED_PASSWORD="local-only-password" E2E_AUTH_FIXTURES=true TZ=UTC
+  E2E_SEED_PASSWORD="local-only-password" E2E_AUTH_FIXTURES=true TZ=UTC \
+  NEXTAUTH_SECRET="local-only-nextauth-secret"
 npm run e2e:db
 npm run e2e:seed
 npm run test:e2e:golden

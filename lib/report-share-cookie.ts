@@ -14,8 +14,10 @@
  *      another.
  *   4. Constant-time comparison.
  *
- * Cookie format (pipe-delimited — IPv4 prefixes contain dots):
- *   "{expiryUnix}|{base64url(ipPrefix)}|{macHex}"
+ * Cookie format (dot-delimited; every field is dot-free — digits, base64url,
+ * hex — and "." needs no cookie encoding, unlike "|" which Next's cookie
+ * store percent-encodes on Set-Cookie):
+ *   "{expiryUnix}.{base64url(ipPrefix)}.{macHex}"
  *
  * The plaintext ipPrefix is redundant with the MAC material; it is carried so
  * a rejected cookie can be diagnosed (expired vs moved network vs tampered).
@@ -99,7 +101,7 @@ export function signReportShareCookie(args: SignCookieArgs): string {
 
   const mac = computeMac(secret, args.token, args.emailHash, ipPrefix, expiryUnix);
   const encodedIp = Buffer.from(ipPrefix, "utf8").toString("base64url");
-  return `${expiryUnix}|${encodedIp}|${mac}`;
+  return `${expiryUnix}.${encodedIp}.${mac}`;
 }
 
 /**
@@ -111,7 +113,16 @@ export function verifyReportShareCookie(args: VerifyCookieArgs): VerifyResult {
   if (!secret) return { ok: false, reason: "no_secret" };
 
   const now = args.now ?? Date.now();
-  const parts = args.cookieValue.split("|");
+  // Tolerate a percent-encoded value (some cookie stores encode on write).
+  let value = args.cookieValue;
+  if (value.includes("%")) {
+    try {
+      value = decodeURIComponent(value);
+    } catch {
+      return { ok: false, reason: "malformed" };
+    }
+  }
+  const parts = value.split(".");
   if (parts.length !== 3) return { ok: false, reason: "malformed" };
 
   const [expiryStr, encodedIpPrefix, providedMac] = parts;
@@ -149,6 +160,6 @@ function computeMac(
   ipPrefix: string,
   expiryUnix: number,
 ): string {
-  const material = `${token}|${emailHash}|${ipPrefix}|${expiryUnix}`;
+  const material = `${token}|${emailHash}|${ipPrefix}|${expiryUnix}`; // MAC material stays pipe-joined (never leaves the server)
   return createHmac("sha256", secret).update(material).digest("hex");
 }
