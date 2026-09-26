@@ -18,6 +18,12 @@ import { test, expect, Page } from "@playwright/test";
 
 const CSP_VIOLATION = /Content Security Policy/i;
 
+// A production server (`next start`) redirects plain-http requests to https
+// unless the proxy sees x-forwarded-proto=https. Sending it lets this spec
+// run against a local production build as well as `next dev`; the header is
+// ignored in development.
+test.use({ extraHTTPHeaders: { "x-forwarded-proto": "https" } });
+
 /**
  * Issue #14: app routes serve a per-request nonce policy. The script-src
  * directive must be exactly nonce + strict-dynamic — no 'unsafe-inline', no
