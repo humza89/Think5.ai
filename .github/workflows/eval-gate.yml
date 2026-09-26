@@ -36,6 +36,9 @@ jobs:
       # Password for the throwaway accounts inside the local Supabase stack
       # booted below. It is not a secret: the stack lives and dies with the job.
       E2E_SEED_PASSWORD: "think5-e2e-local-only-Pa55"
+      # Signs the email-gated shared-report cookie (lib/report-share-cookie);
+      # local-only value for the golden share-link spec.
+      NEXTAUTH_SECRET: "think5-e2e-local-only-nextauth-secret-0123456789"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
