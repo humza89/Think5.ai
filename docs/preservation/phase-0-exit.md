@@ -107,7 +107,12 @@ Beyond the audit items each task re-confirmed, the gate work itself surfaced:
   email-gate and rate-limit checks ran. Found by the closeout's
   `writes-share-link.spec.ts`; fixed in the closeout PR
   (`sharedReportPublicPattern` in `proxy.ts`, guarded by
-  `__tests__/architecture/shared-report-public.test.ts`).
+  `__tests__/architecture/shared-report-public.test.ts`). The same spec
+  then showed the share page itself still validated the legacy plain-SHA256
+  cookie after #39 moved the API routes to the HMAC cookie, and that the
+  HMAC cookie's `|` delimiter was percent-encoded by the cookie store; both
+  fixed in the closeout PR (page uses `verifyReportShareCookie`; cookie is
+  dot-delimited and verification tolerates percent-encoding).
 - Earlier tasks: CSP blocked hydration on hard navigation (#16); invitation
   token lost after `replaceState` (#17); no browser code sent the CSRF header
   (#18, T1); `/candidate` swallowed `/candidates` (#19); admin routes without

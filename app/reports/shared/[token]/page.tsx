@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { notFound } from "next/navigation";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
+import { verifyReportShareCookie, extractClientIp } from "@/lib/report-share-cookie";
 import { createHash } from "crypto";
 import { InterviewReportViewer } from "@/components/interview/InterviewReportViewer";
 import { EmailVerificationGate } from "@/components/reports/EmailVerificationGate";
@@ -61,15 +62,17 @@ export default async function SharedReportPage({
     const cookieName = `report-access-${token}`;
     const cookie = cookieStore.get(cookieName);
 
+    // HMAC-signed cookie issued by verify-email (lib/report-share-cookie):
+    // the same check the data route performs. The legacy plain-SHA256
+    // comparison that lived here was missed when the API routes moved to
+    // the HMAC cookie (#39); the share-link golden spec caught it.
     let cookieValid = false;
     if (cookie) {
       const emailHash = createHash("sha256")
         .update(reportMeta.recipientEmail.toLowerCase().trim())
         .digest("hex");
-      const expectedCookieValue = createHash("sha256")
-        .update(`${token}:${emailHash}:${process.env.NEXTAUTH_SECRET}`)
-        .digest("hex");
-      cookieValid = cookie.value === expectedCookieValue;
+      const ip = extractClientIp(await headers());
+      cookieValid = verifyReportShareCookie({ token, emailHash, ip, cookieValue: cookie.value }).ok;
     }
 
     if (!cookieValid) {
