@@ -78,7 +78,7 @@ test("recruiter shares a report behind an email gate; verification issues the HM
     expect(await right.json()).toEqual({ verified: true });
     const accessCookie = (await anonymous.cookies()).find((c) => c.name === `report-access-${shareToken}`);
     expect(accessCookie, "HMAC access cookie set").toBeTruthy();
-    expect(accessCookie!.value.split("|"), "cookie format {expiry}|{ipPrefix}|{mac}").toHaveLength(3);
+    expect(accessCookie!.value.split("."), "cookie format {expiry}.{ipPrefix}.{mac}").toHaveLength(3);
     expect(accessCookie!.httpOnly).toBe(true);
 
     // 4. With the cookie the data is served, without the recipient email.
