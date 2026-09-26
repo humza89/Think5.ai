@@ -33,6 +33,7 @@ remaining gates close.
 | Exit closeout: legacy salvage (relay) — #1/#11 items | #40 | 69452fc | `relay.flow` backpressure frames + client throttle, provider circuit breaker + `relay.degraded`, breaker on `/health` |
 | Issue #20 mobile `/candidates` | #41 | 5a094d4 | stacked sourcing rows below `md`, `mobile-layout.spec.ts`, CI-adopted 375 baseline |
 | Issue #14 nonce CSP | #42 | 09830d2 | `lib/csp.ts`, per-request `script-src 'nonce-…' 'strict-dynamic'` on app routes, static policy kept on public pages (`force-static`), `csp-nonce.spec.ts`, `docs/ops/csp.md` |
+| T14 remaining scenarios: signup→approval, admin approval, pipeline move | #46 | 517d377 | admin + pending-recruiter fixtures, admin storage state, three golden specs, approvals PATCH honours `?type=recruiter` |
 | Exit closeout record + share-link golden spec + shared-report fixes | #44 | 8b99074 | this record's §8, `writes-share-link.spec.ts`, proxy lets the two share-token routes through without a session, share page validates the HMAC cookie, dot-delimited cookie value, CI `NEXTAUTH_SECRET` |
 
 Pre-T0 fixes that unblocked the authenticated baselines: #16 (CSP `unsafe-inline` restoration with hard-navigation regression tests), #17 (invitation token kept after `replaceState`), #18 (CSRF client), #19 (segment-aware route prefixes; Issue #15 closed).
@@ -42,17 +43,17 @@ Pre-T0 fixes that unblocked the authenticated baselines: #16 (CSP `unsafe-inline
 | # | Gate (plan T14) | Status | Evidence |
 | --- | --- | --- | --- |
 | 1 | `npm run manifest:check` clean; manifest diff since baseline reviewed | **Green** | CI "Verify committed manifest baseline" on every PR; every change reviewed in its PR body. Removed items since the T0 baseline: none. Additions: routes/models/flags/contracts listed per task. |
-| 2 | Golden E2E suite green | **Green in CI on every PR**; scope differs from the plan's spec names, see §3 | `e2e/golden/*`: route matrix (71 routes), visual (24 baselines), `writes-*` per task, `writes-invite-to-report` (#38), `csp-nonce` (#42), `mobile-layout` (#41) |
-| 3 | Route matrix green against staging | **Open — external** | Runs against the local stack in CI (`route-access.spec.ts`, 71 routes). Against staging: `npm run route:matrix` with `BASE_URL=<staging>` once staging exists. |
-| 4 | `npx vitest run` green; eval harness `overallPassed` | **Green** | 117 files / 1044 tests on the #42 head; `EVAL_MOCK_MODE=true npm run test:eval` → `Overall: PASSED`; CI "Eval Harness (Mock Mode)" job |
-| 5 | k6 `load-tests/concurrent-interviews.js` on staging within thresholds | **Open — external** | Script present; needs staging URL and a mocked provider there (`AI_PROVIDER=mock` is now supported). Baseline number to be recorded here. |
-| 6 | Rollback exercised (T8 messaging legacy route; `FF_P0_USAGE_METERING` off) | **Partly green** | Legacy `/api/messages` adapter is exercised in `writes-messaging.spec.ts` on every run. `FF_P0_USAGE_METERING=false` path covered by unit tests (`__tests__/usage`), not yet flipped in staging. |
-| 7 | Relay chaos in staging (`fly machine stop`) + `docs/ops/regional-failure.md` reviewed | **Open — external** | Automated chaos tests green (`__tests__/chaos/relay-drain.test.ts`, `redis-loss.test.ts`); the live drill needs a staging Fly app. |
-| 8 | Greenhouse sandbox nightly green ×5 | **Open — external** | `.github/workflows/ats-sandbox-nightly.yml` skips until `GREENHOUSE_SANDBOX_API_KEY` / `_ON_BEHALF_OF` exist. Fixture-level conformance green. |
+| 2 | Golden E2E suite green | **Green in CI on every PR**; every plan scenario covered, see §3 | `e2e/golden/*`: route matrix (71 routes), visual (24 baselines), `writes-*` per task, `writes-invite-to-report` (#38), `csp-nonce` (#42), `mobile-layout` (#41), `writes-share-link` (#44), `writes-signup-to-approval`, `writes-admin-approval`, `writes-pipeline-move` (#46) |
+| 3 | Route matrix green against staging | **Green against the production deployment; no staging exists** | No staging environment is configured (see §6: the Vercel project has one Production environment and SSO-protected previews that share the production database). The logged-out route matrix (`scripts/route-matrix.sh`, read-only GETs, 71 routes: public → 200, protected → redirect to `/auth/signin`) was run on 2026-09-26 18:26 UTC against `https://www.think5.ai` = production deployment of `main` 7cd12cb (GitHub deployment 2026-09-26 17:55 UTC): **71/71 passed, 0 failures**. The signed-in matrix (`route-access.spec.ts`) runs against the local stack in CI on every PR. |
+| 4 | `npx vitest run` green; eval harness `overallPassed` | **Green** | 121 files / 1076 tests on the #46 head; relay `tsc` clean; `EVAL_MOCK_MODE=true npm run test:eval` → `Overall: PASSED, Avg Score 7.7`; CI "Eval Harness (Mock Mode)" job |
+| 5 | k6 `load-tests/concurrent-interviews.js` on staging within thresholds | **Open — owner: no staging** | The script needs a staging deployment with `AI_PROVIDER=mock` and an isolated database; the only non-production deployments are Vercel previews that use the production `DATABASE_URL`, so the load run cannot be executed without writing load traffic into production data. Owner action in §6. Thresholds are unchanged. |
+| 6 | Rollback exercised (T8 messaging legacy route; `FF_P0_USAGE_METERING` off) | **Green in CI; staging flip open — owner: no staging** | Legacy `/api/messages` adapter is exercised in `writes-messaging.spec.ts` on every run; the `FF_P0_USAGE_METERING=false` path is covered by `__tests__/usage`. Flipping the flag in a deployed environment needs a staging deployment (§6). |
+| 7 | Relay chaos in staging (`fly machine stop`) + `docs/ops/regional-failure.md` reviewed | **Open — owner: Fly access + staging relay** | Automated chaos tests green (`__tests__/chaos/relay-drain.test.ts`, `redis-loss.test.ts`, `relay-backpressure.test.ts`). The only Fly app is the production relay `think5-voice-relay` (iad) and this machine has no Fly session (`flyctl auth whoami` → no access token), so the drill was not run; it must never run against production. Owner action in §6. |
+| 8 | Greenhouse sandbox nightly green ×5 | **Open — owner: secrets** | The repository has **no** Actions secrets (`gh secret list` is empty), so `ats-sandbox-nightly.yml` skips every night. Fixture-level conformance is green on every PR. Owner action in §6. |
 | 9 | Contract conformance green for every production implementation | **Green** | `InAppMessageProvider`, `PrismaUsageMeter`, `QuotaEntitlementService`, `PrismaRedisInterviewSessionStore`, `OtelTelemetry`, `GreenhouseAdapter` each run through `lib/contracts/conformance/*` in `npx vitest run` |
-| 10 | Grafana dashboards populated from staging traffic | **Open — external** | Dashboards committed (`docs/ops/grafana/*.json`); export is off until `OTEL_EXPORTER_OTLP_*` are set (`docs/ops/observability.md`). |
-| 11 | 7-day production observation with all `FF_P0_*` on | **Not started** | See §5. Note `FF_P0_MFA_ENFORCEMENT` requires every admin/tenant admin enrolled first (`docs/ops/identity.md`). |
-| 12 | Owner sign-off (Humza) | **Pending** | Everything not marked external or owner-gated above is closed as of 2026-09-26; see §8. |
+| 10 | Grafana dashboards populated from staging traffic | **Open — owner: OTLP not configured** | Dashboards committed (`docs/ops/grafana/*.json`). Verified 2026-09-26: no `OTEL_EXPORTER_OTLP_*` variable exists in any Vercel environment and the Fly relay secrets could not be inspected (no Fly session), so export is off and the panels are empty. Owner action in §6. |
+| 11 | 7-day production observation with all `FF_P0_*` on | **Not started — preconditions open** | §5 preflight run on 2026-09-26: see the precondition table there. The window must not start until the missing production configuration and the backfills are done. |
+| 12 | Owner sign-off (Humza) | **Pending** | Every in-repo gate is closed as of 2026-09-26 (§8); the remaining rows need the owner actions in §6, then the observation window (§5). |
 
 ## 3. Golden E2E coverage versus the plan's list
 
@@ -129,6 +130,22 @@ Beyond the audit items each task re-confirmed, the gate work itself surfaced:
 
 ## 5. Production observation window (7 days)
 
+### Preflight (2026-09-26, against the Vercel project `think5`, production = `main` 7cd12cb)
+
+Checked with `vercel env ls` (names only) and `GET https://www.think5.ai/api/health`.
+
+| Precondition | State | Evidence / action |
+| --- | --- | --- |
+| Upstash (`UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`) | **Configured but failing** | Both variables exist in Production/Preview/Development, yet `/api/health` reports `redis: "unhealthy"` (the ping threw) and `durability: "postgres"` — the safe-to-fail downgrade is doing its job, but Redis-backed rate limiting, session fan-out and leases are running on the per-instance fallbacks. Owner: verify the Upstash database and token in Vercel → Production. |
+| `CRON_SECRET` | **Missing** | Not in any Vercel environment. Cron routes (`/api/cron/*`) answer 401 to everything until it is set. |
+| `ATS_ENCRYPTION_KEY` | **Missing** | Not in any Vercel environment; Greenhouse credentials cannot be stored (T15). |
+| `INNGEST_SIGNING_KEY`, `INNGEST_EVENT_KEY` | **Missing** | `/api/health` reports `inngest: "not_configured"`. In production the report pipeline runs only through the in-process fallback, and the retention, SLO, broken-COMPLETED and finalize-retry jobs never run. |
+| `NEXTAUTH_SECRET` | **Missing** | Not in any Vercel environment. Email-gated shared reports answer 500 ("Server configuration error") in production because the share cookie cannot be signed (the pre-Phase 0 code needed the same variable). |
+| `OTEL_EXPORTER_OTLP_*` | **Missing** (gate 10) | See §2 row 10. |
+| `FF_P0_*` flags | **Defaults** | No `FF_P0_*` variable is set anywhere, so production runs the code defaults: see §9. |
+| Backfills (`scripts/backfill-conversations.ts`, `scripts/backfill-usage-events.ts`) | **Not run** | Both scripts are idempotent and resumable (`--batch`, `--dry-run`; ids derive from the subject; `createMany … skipDuplicates`). They were **not executed** from this session: the automation policy in this environment blocks reads and writes against the production database, so the dry-run/real-run/verification sequence is an owner action (exact commands in §6). |
+| Tenant-admin assignments / MFA enrolment | **Not verifiable here** | Requires production data access (§6). |
+
 Preconditions (owner):
 
 1. Vercel production env: `UPSTASH_REDIS_REST_URL/TOKEN` (also preview),
@@ -158,15 +175,22 @@ Sources: Vercel analytics / OTLP `traces_spanmetrics_calls_total` by status,
 `GET /api/admin/usage` (started vs completed), Sentry search
 `CSRF token validation failed`, `/api/health` (`voice`, `durability`).
 
-## 6. Open external gates (owner actions)
+## 6. Owner actions required (consolidated, 2026-09-26)
 
-| Gate | Needs |
-| --- | --- |
-| Staging environment | a Vercel preview/staging project with the Supabase, Upstash and Inngest env set, plus a Fly staging relay for the chaos drill |
-| Grafana Cloud | stack + OTLP token → Vercel env + `fly secrets set` (`docs/ops/observability.md`) |
-| Greenhouse sandbox | `GREENHOUSE_SANDBOX_API_KEY`, `GREENHOUSE_SANDBOX_ON_BEHALF_OF` repository secrets (`docs/ops/ats-greenhouse.md`) |
-| MFA enforcement | admins enrolled, tenant admins flagged, then `FF_P0_MFA_ENFORCEMENT=true` |
-| Owner sign-off | after the observation table above is filled |
+Everything in the repository is done; each row below needs a credential, an
+account, infrastructure or a production decision. No secret values are
+recorded here.
+
+| # | What is missing | Blocks | Where to configure / what to run |
+| --- | --- | --- | --- |
+| 1 | A staging deployment with its own database | gates 5, 6 (flag flip), 7 | Vercel: a second project (or a branch-scoped Preview with its own `DATABASE_URL`/`DIRECT_URL`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`, `INNGEST_*`, `AI_PROVIDER=mock`, `NEXTAUTH_SECRET`, `CRON_SECRET`). Previews currently share the production database and are behind Vercel SSO protection; for automation set `VERCEL_AUTOMATION_BYPASS_SECRET` (Project → Deployment Protection → Protection Bypass for Automation). Then: `BASE_URL=<staging> npm run route:matrix`; `k6 run --env BASE_URL=<staging> --env API_TOKEN=<staging token> load-tests/concurrent-interviews.js` and record concurrency/duration/thresholds/p50-p95-p99/error rate/completed-failed counts; flip `FF_P0_USAGE_METERING=false`, create an interview, flip back. |
+| 2 | Fly access for the chaos drill | gate 7 | `flyctl auth login` on the operator machine (or `FLY_API_TOKEN`), a **staging** relay app (clone of `relay/fly.toml` under another name — never `think5-voice-relay`), then the T11 runbook `docs/ops/regional-failure.md`: mocked interview → `fly machine stop <id>` → reconnect, transcript/state integrity, degraded/recovery telemetry. |
+| 3 | Greenhouse sandbox secrets | gate 8 | GitHub → repo Settings → Secrets and variables → Actions: `GREENHOUSE_SANDBOX_API_KEY`, `GREENHOUSE_SANDBOX_ON_BEHALF_OF`, optional `GREENHOUSE_SANDBOX_WEBHOOK_SECRET`. Then run `ats-sandbox-nightly.yml` (workflow_dispatch) five nights or five times and record run ids in §2 row 8. |
+| 4 | OTLP export | gate 10 | Vercel → Production (and staging): `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_EXPORTER_OTLP_HEADERS`, `OTEL_SERVICE_NAME=think5-web`; `fly secrets set` the same on the relay with `OTEL_SERVICE_NAME=think5-relay` (`docs/ops/observability.md`). Import `docs/ops/grafana/*.json`, generate traffic, confirm web/relay/queue/provider/interview panels have data. |
+| 5 | Production configuration gaps | gate 11 preflight | Vercel → Production: `CRON_SECRET`, `ATS_ENCRYPTION_KEY`, `INNGEST_SIGNING_KEY`, `INNGEST_EVENT_KEY` (and sync the app in the Inngest dashboard), `NEXTAUTH_SECRET`. Fix the Upstash credentials until `/api/health` reports `redis: "healthy"` and `durability: "postgres+redis"`. |
+| 6 | Backfills | gate 11 preflight | From a machine allowed to reach the production database, with `DATABASE_URL`/`DIRECT_URL` set: `npx tsx scripts/backfill-conversations.ts --dry-run` → `npx tsx scripts/backfill-conversations.ts` → verify `SELECT count(*) FROM "Conversation"` equals the distinct `Message.conversationId` count; `npx tsx scripts/backfill-usage-events.ts --dry-run` → real run → verify `UsageEvent` counts against interviews with `startedAt`/`completedAt` and `AIUsageLog` rows, and `TenantQuota` rows against `Client.monthlyAiBudgetUsd`. Both scripts are idempotent; re-running is safe. |
+| 7 | MFA enforcement readiness | gate 11 (flag value) | Enrol every Think5 admin (`/settings/security`), mark tenant admins (`Recruiter.isTenantAdmin`, bootstrap SQL in `docs/ops/identity.md`), then set `FF_P0_MFA_ENFORCEMENT=true`. Until then it stays `false` (documented in §9). |
+| 8 | Observation window + sign-off | gates 11, 12 | Start the 7-day window only after rows 5–7; fill the daily table in §5 (never in advance); sign off in §2 row 12. |
 
 ## 7. Deferred beyond Phase 0 (recorded, not lost)
 
@@ -190,13 +214,14 @@ and #20, and leave only the observation window and the sign-off.
 ### Tasks T0–T16
 
 All merged; see §1 for PR and SHA. T14's own record is #38 (7f21e9e); the
-closeout merges are #39–#42 and #44.
+closeout merges are #39–#42, #44, #45 and #46 (the last three plan
+scenarios).
 
 ### Legacy PRs #1–#11
 
 | PR | Disposition | Replacement / rationale |
 | --- | --- | --- |
-| #1 | **Open, untouched** (Humza's interrupted local rebase, per the audit) | Every item is on `main`: 1.1/1.2/1.4 (Track 6, T11), 1.3 heartbeat ladder (`hooks/useVoiceInterview.ts`), 1.5 buffer-drop signal (#40 `relay.flow` forced `pause` frame). Comment posted; closing is the owner's call. |
+| #1 | Closed 2026-09-26 — everything on `main` | 1.1/1.2/1.4 (Track 6, T11), 1.3 heartbeat ladder (`hooks/useVoiceInterview.ts`), 1.5 buffer-drop signal (#40 `relay.flow` forced `pause` frame), full-jitter backoff. Only the GitHub PR was closed; the local `fix/voice-reliability-phase-1` rebase in the owner's working copy is untouched. |
 | #2 | Closed — superseded | `InterviewSessionStore` contract + `PrismaRedisInterviewSessionStore` (T11) |
 | #3 | Closed — Phase 4 | LiveKit transport out of scope; go/no-go criteria kept in the PR description; #43 |
 | #4 | Closed — salvaged | #39: playback integrity, retention gate, scoped access, shared-report rate limits, detector |
@@ -226,3 +251,15 @@ rollback (6), live relay chaos drill (7), Greenhouse sandbox nightly ×5 (8),
 Grafana population (10), the 7-day production observation window with every
 `FF_P0_*` on (11, §5), and the owner sign-off (12).
 
+## 9. Feature flag readiness (production, 2026-09-26)
+
+No `FF_P0_*` variable is set in any Vercel environment (`vercel env ls`), so
+production runs the defaults from `lib/feature-flags.ts`.
+
+| Flag | Current production value | Phase 0 observation value | Rollback value | Validation |
+| --- | --- | --- | --- | --- |
+| `FF_P0_COOKIE_INTERVIEW_AUTH` | `true` (default) | `true` | `false` (raw tokens keep working; `lib/interview-credential.ts`) | `writes-interview-credential.spec.ts` (cookie path) and unit tests for both modes, every PR |
+| `FF_P0_SINGLE_INTERVIEW_ROOM` | `true` (default) | `true` | `false` | T4 golden path + `writes-candidate-results.spec.ts` |
+| `FF_P0_REDIS_SAFE_TO_FAIL` | `true` (default) | `true` | `false` (fail closed on Redis loss) | `__tests__/chaos/redis-loss.test.ts`; production `/api/health` shows the downgrade active (`durability: "postgres"`) |
+| `FF_P0_USAGE_METERING` | `true` (default) | `true` | `false` (`__tests__/usage` covers the off path) | `writes-messaging`/T16 usage tests; staging flip pending (§6 row 1) |
+| `FF_P0_MFA_ENFORCEMENT` | `false` (default) | `true` **only after §6 row 7** | `false` | `writes-identity.spec.ts` (enrol/verify/recover), `__tests__/lib/mfa-policy.test.ts` |
